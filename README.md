@@ -32,6 +32,7 @@ The `.env` file is ignored and contains development identifiers only. Never comm
 - [Namespace and identity](docs/protocol/namespace.md)
 - [Telemetry contract](docs/protocol/telemetry.md) and [versioning](docs/protocol/versioning.md)
 - [Metadata and producer status](docs/protocol/metadata-status.md)
+- [Delivery and bounded buffering](docs/protocol/delivery.md), [durability decision](docs/decisions/0004-delivery-durability.md), and [Zeus receipt proposal](docs/integration/zeus-transfer.md)
 - [Selected dependency inventory](docs/dependencies.md) and [native probes](examples/component-probes/README.md)
 
 Run `./scripts/check-contracts` for the offline Go conformance CLI. [Conformance documentation](docs/protocol/conformance.md) describes fixture checks, review baselines, and CI. Probe results cover native loopback capabilities, not a deployed stack.
