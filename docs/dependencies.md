@@ -24,4 +24,4 @@ Preserve the selected artifacts' copyright/license notices and inspect transitiv
 
 ## Development tools
 
-Python 3.11+ supports repository checks; Python 3.14.6 was used for the probes. JSON Schema development requirements are introduced with the contract checks. CMake 4.x, Apple Clang 17, OpenSSL 3.6.3, and cJSON 1.7.18 were used for the disposable native Mosquitto build. The probe runner uses only the Python standard library.
+Python 3.11+ supports repository checks; Python 3.14.6 was used for the probes. JSON Schema development requirements are introduced with the contract checks. CMake 3.31.4, Apple Clang 17, OpenSSL 3.6.3, and cJSON 1.7.18 were used for the disposable native Mosquitto build. The probe runner uses only the Python standard library.

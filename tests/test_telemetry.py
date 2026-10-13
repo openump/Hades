@@ -19,9 +19,12 @@ class TelemetryTests(unittest.TestCase):
                         validate_payload('telemetry', raw)
 
     def test_invalid_wire_json_is_rejected(self):
-        for raw in [b'{"value": NaN}', b'{"value": Infinity}', b'{"value": 1e999}',
-                    b'{"value": 1, "value": 2}', b'\xff', b'[]', b'{']:
-            with self.subTest(raw=raw):
+        fixture = json.loads((ROOT / 'examples/contracts/telemetry/cases.json').read_text())[0]['payload']
+        valid = json.dumps(fixture).encode()
+        duplicate = valid.replace(b'{', b'{"schema_version": "1.0",', 1)
+        invalid = [valid.replace(b'67.2', token) for token in (b'NaN', b'Infinity', b'1e999')]
+        for raw in invalid + [duplicate, b'\xff', b'[]', b'{']:
+            with self.subTest(raw=raw[:80]):
                 with self.assertRaises(ValueError):
                     validate_payload('telemetry', raw)
 
@@ -31,6 +34,12 @@ class TelemetryTests(unittest.TestCase):
         validate_payload('telemetry', raw + b' ' * (65536 - len(raw)))
         with self.assertRaises(ValueError):
             validate_payload('telemetry', raw + b' ' * (65537 - len(raw)))
+        fixture['measurements'] = {f'm{i}': {'value': '😀' * 256, 'unit': '1', 'quality': 'good'} for i in range(64)}
+        text = json.dumps(fixture, ensure_ascii=False)
+        self.assertLess(len(text), 65536)
+        self.assertGreater(len(text.encode()), 65536)
+        with self.assertRaises(ValueError):
+            validate_payload('telemetry', text.encode())
 
     def test_unsupported_message_type_cannot_select_arbitrary_file(self):
         with self.assertRaises(ValueError):

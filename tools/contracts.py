@@ -80,4 +80,65 @@ def validate_payload(kind, raw):
     error = next(validator.iter_errors(payload), None)
     if error:
         raise ValueError(f'{list(error.absolute_path)}: {error.message}')
+    if kind == "metadata":
+        validate_metadata_semantics(payload)
     return payload
+
+
+def validate_metadata_semantics(metadata):
+    """Checks needing comparisons between otherwise schema-valid fields."""
+    from datetime import datetime
+
+    enterprise = metadata['asset_id'].split(':')[2]
+    if metadata['hierarchy']['enterprise'] != enterprise:
+        raise ValueError('metadata hierarchy disagrees with asset ownership')
+    for definition in metadata['measurements'].values():
+        bounds = definition.get('valid_range')
+        if bounds and bounds['minimum'] > bounds['maximum']:
+            raise ValueError('measurement range is inverted')
+    relationships = set()
+    for relationship in metadata.get('relationships', []):
+        target = relationship['target_asset_id']
+        key = (relationship['relation'], target)
+        if target == metadata['asset_id'] or key in relationships:
+            raise ValueError('self or duplicate relationship')
+        if target.split(':')[2] != enterprise:
+            raise ValueError('cross-enterprise relationships require a future authorized profile')
+        relationships.add(key)
+        if 'effective_until' in relationship:
+            if datetime.fromisoformat(relationship['effective_until']) <= datetime.fromisoformat(relationship['effective_from']):
+                raise ValueError('relationship effective period must be positive')
+
+
+def validate_measurement_context(telemetry, metadata):
+    """Compare already schema-validated telemetry and metadata snapshots."""
+    if (telemetry['asset_id'], telemetry['metadata_revision']) != (metadata['asset_id'], metadata['metadata_revision']):
+        raise ValueError('exact asset metadata revision is unavailable')
+    if (telemetry['source']['gateway_id'], telemetry['source']['protocol']) != (metadata['acquisition']['gateway_id'], metadata['acquisition']['protocol']):
+        raise ValueError('observation source disagrees with configured acquisition')
+    for name, measurement in telemetry['measurements'].items():
+        definition = metadata['measurements'].get(name)
+        if definition is None or definition['unit'] != measurement['unit']:
+            raise ValueError('unknown measurement or mismatched unit')
+        value = measurement['value']
+        if value is None:
+            continue  # Schema validation already requires bad quality and a reason.
+        valid_type = {'number': type(value) in (int, float), 'boolean': type(value) is bool,
+                      'string': type(value) is str}[definition['type']]
+        if not valid_type:
+            raise ValueError('measurement value disagrees with configured type')
+        bounds = definition.get('valid_range')
+        if bounds and not bounds['minimum'] <= value <= bounds['maximum'] and measurement['quality'] == 'good':
+            raise ValueError('out-of-range reading cannot have good quality')
+
+
+def observation_freshness(observed_at, now, expected_interval_ms, clock_uncertainty_ms):
+    """Return freshness for one reading; caller supplies trusted time and metadata."""
+    from datetime import datetime
+
+    if clock_uncertainty_ms is None:
+        return 'unknown'
+    age = (datetime.fromisoformat(now) - datetime.fromisoformat(observed_at)).total_seconds() * 1000
+    if age < -clock_uncertainty_ms:
+        return 'unknown'
+    return 'stale' if age > 3 * expected_interval_ms + clock_uncertainty_ms else 'fresh'

@@ -1069,5 +1069,32 @@
         }
       }
     }
+  },
+  {
+    "name": "trailing-newline-in-protocol",
+    "valid": false,
+    "payload": {
+      "schema_version": "1.0",
+      "message_id": "019a1234-5678-7000-8000-000000000001",
+      "asset_id": "urn:openump:acme:berlin:press-04",
+      "metadata_revision": 1,
+      "observed_at": "2026-10-13T14:00:00.000Z",
+      "ingested_at": "2026-10-13T14:00:00.120Z",
+      "source": {
+        "gateway_id": "gateway-01",
+        "protocol": "modbus\n",
+        "boot_id": "019a1234-5678-7000-8000-000000000002",
+        "sequence": 1042,
+        "clock_origin": "gateway",
+        "clock_uncertainty_ms": 5
+      },
+      "measurements": {
+        "motor_temperature": {
+          "value": 67.2,
+          "unit": "Cel",
+          "quality": "good"
+        }
+      }
+    }
   }
 ]
