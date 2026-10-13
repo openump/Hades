@@ -17,3 +17,7 @@ Public contracts require examples, negative fixtures, a compatibility policy, an
 Record exact versions, provenance, license identifiers, distribution obligations, supported architecture, and capability evidence before adding a dependency. Prefer maintained OSI-approved permissive dependencies. Review copyleft obligations per usage and distribution mode. Source-available/commercial-only components are not part of the intended open-source baseline without an explicit owner exception. Never describe such an exception as open source.
 
 Development, runtime, and optional external integrations have distinct inventories. Do not vendor dependency source or licenses indiscriminately; document the actual artifacts and obligations. Runtime upgrades require repeated capability probes and review of license and maintenance changes.
+
+## Runtime implementation
+
+Follow [ADR-0003](docs/decisions/0003-runtime-language.md): write custom deployed services and operational CLI tools in Go; prefer existing components and configuration before adding code. Python may remain in development tooling. Use shared schemas and fixtures to verify Go/Python contract agreement during transition. Pin the Go toolchain and dependencies when introduced, and measure resource limits on the target hardware.

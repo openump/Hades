@@ -4,6 +4,10 @@ Hades is the industrial edge stack of OpenUMP (Open Unified Machine Protocol). I
 
 This repository currently contains the [white paper](WHITEPAPER.md) and foundation work. A production deployment is not yet available.
 
+## Implementation language
+
+Custom deployed services and operational CLI tools use **Go**. Reuse the selected upstream components and declarative configuration for their existing capabilities. Python is development tooling for contract tests and capability probes; deployed custom services must not require it. See [ADR-0003](docs/decisions/0003-runtime-language.md). The first Go implementation will pin its supported toolchain and dependencies.
+
 ## Development setup
 
 Git and Python 3.11 or later are required for contract development. Runtime probe prerequisites are documented alongside each probe when introduced.
