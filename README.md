@@ -1,6 +1,6 @@
 # OpenUMP — Hades
 
-Hades is the industrial edge stack of OpenUMP (Open Unified Machine Protocol). It acquires read-only machine observations, normalizes them, publishes contextualized data over MQTT, and supports local numeric history and outbound cloud transfer.
+Hades is the industrial edge stack of OpenUMP (Open Universal Manufacturing Protocol). It acquires read-only machine observations, normalizes them, publishes contextualized data over MQTT, and supports local numeric history and outbound cloud transfer.
 
 This repository currently contains the [white paper](WHITEPAPER.md) and foundation work. A production deployment is not yet available.
 
