@@ -1,0 +1,249 @@
+{
+  "type": "object",
+  "properties": {
+    "schema_version": {
+      "const": "1.0"
+    },
+    "message_id": {
+      "$ref": "urn:openump:schema:1.0:common#/$defs/uuid"
+    },
+    "asset_id": {
+      "$ref": "urn:openump:schema:1.0:common#/$defs/asset_id"
+    },
+    "metadata_revision": {
+      "$ref": "urn:openump:schema:1.0:common#/$defs/revision"
+    },
+    "published_at": {
+      "$ref": "urn:openump:schema:1.0:common#/$defs/timestamp"
+    },
+    "display_name": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128
+    },
+    "asset_type": {
+      "$ref": "urn:openump:schema:1.0:common#/$defs/segment"
+    },
+    "hierarchy": {
+      "type": "object",
+      "properties": {
+        "enterprise": {
+          "$ref": "urn:openump:schema:1.0:common#/$defs/segment"
+        },
+        "site": {
+          "$ref": "urn:openump:schema:1.0:common#/$defs/segment"
+        },
+        "area": {
+          "$ref": "urn:openump:schema:1.0:common#/$defs/segment"
+        },
+        "line": {
+          "$ref": "urn:openump:schema:1.0:common#/$defs/segment"
+        },
+        "asset": {
+          "$ref": "urn:openump:schema:1.0:common#/$defs/segment"
+        }
+      },
+      "required": [
+        "enterprise",
+        "site",
+        "area",
+        "line",
+        "asset"
+      ],
+      "additionalProperties": false
+    },
+    "acquisition": {
+      "type": "object",
+      "properties": {
+        "gateway_id": {
+          "$ref": "urn:openump:schema:1.0:common#/$defs/segment"
+        },
+        "protocol": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9-]{0,31}$(?![\\s\\S])"
+        },
+        "expected_status_interval_ms": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 86400000
+        }
+      },
+      "required": [
+        "gateway_id",
+        "protocol",
+        "expected_status_interval_ms"
+      ],
+      "additionalProperties": false
+    },
+    "measurements": {
+      "type": "object",
+      "minProperties": 1,
+      "maxProperties": 64,
+      "propertyNames": {
+        "$ref": "urn:openump:schema:1.0:common#/$defs/measurement_name"
+      },
+      "additionalProperties": {
+        "type": "object",
+        "properties": {
+          "display_name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          },
+          "type": {
+            "enum": [
+              "number",
+              "boolean",
+              "string"
+            ]
+          },
+          "unit": {
+            "$ref": "urn:openump:schema:1.0:common#/$defs/unit"
+          },
+          "expected_interval_ms": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 86400000
+          },
+          "valid_range": {
+            "type": "object",
+            "properties": {
+              "minimum": {
+                "type": "number",
+                "minimum": -1e+308,
+                "maximum": 1e+308
+              },
+              "maximum": {
+                "type": "number",
+                "minimum": -1e+308,
+                "maximum": 1e+308
+              }
+            },
+            "required": [
+              "minimum",
+              "maximum"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "display_name",
+          "type",
+          "unit",
+          "expected_interval_ms"
+        ],
+        "additionalProperties": false,
+        "allOf": [
+          {
+            "if": {
+              "properties": {
+                "type": {
+                  "enum": [
+                    "boolean",
+                    "string"
+                  ]
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "unit": {
+                  "const": "1"
+                }
+              },
+              "not": {
+                "required": [
+                  "valid_range"
+                ]
+              }
+            }
+          }
+        ]
+      }
+    },
+    "relationships": {
+      "type": "array",
+      "maxItems": 64,
+      "items": {
+        "type": "object",
+        "properties": {
+          "relation": {
+            "$ref": "urn:openump:schema:1.0:common#/$defs/segment"
+          },
+          "target_asset_id": {
+            "$ref": "urn:openump:schema:1.0:common#/$defs/asset_id"
+          },
+          "effective_from": {
+            "$ref": "urn:openump:schema:1.0:common#/$defs/timestamp"
+          },
+          "effective_until": {
+            "$ref": "urn:openump:schema:1.0:common#/$defs/timestamp"
+          },
+          "provenance": {
+            "type": "object",
+            "properties": {
+              "authority": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128
+              },
+              "source_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 256
+              },
+              "source_revision": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 64
+              },
+              "verified_by": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128
+              },
+              "verified_at": {
+                "$ref": "urn:openump:schema:1.0:common#/$defs/timestamp"
+              }
+            },
+            "required": [
+              "authority",
+              "source_id",
+              "source_revision",
+              "verified_by",
+              "verified_at"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "relation",
+          "target_asset_id",
+          "effective_from",
+          "provenance"
+        ],
+        "additionalProperties": false
+      },
+      "uniqueItems": true
+    },
+    "extensions": {
+      "$ref": "urn:openump:schema:1.0:common#/$defs/extensions"
+    }
+  },
+  "required": [
+    "schema_version",
+    "message_id",
+    "asset_id",
+    "metadata_revision",
+    "published_at",
+    "display_name",
+    "asset_type",
+    "hierarchy",
+    "acquisition",
+    "measurements"
+  ],
+  "additionalProperties": false,
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:openump:schema:1.0:metadata",
+  "title": "OpenUMP v1.0 asset metadata"
+}

@@ -1,0 +1,167 @@
+{
+  "type": "object",
+  "properties": {
+    "schema_version": {
+      "const": "1.0"
+    },
+    "message_id": {
+      "$ref": "urn:openump:schema:1.0:common#/$defs/uuid"
+    },
+    "asset_id": {
+      "$ref": "urn:openump:schema:1.0:common#/$defs/asset_id"
+    },
+    "metadata_revision": {
+      "$ref": "urn:openump:schema:1.0:common#/$defs/revision"
+    },
+    "reported_at": {
+      "$ref": "urn:openump:schema:1.0:common#/$defs/timestamp"
+    },
+    "kind": {
+      "enum": [
+        "heartbeat",
+        "shutdown",
+        "last_will"
+      ]
+    },
+    "source": {
+      "type": "object",
+      "properties": {
+        "gateway_id": {
+          "$ref": "urn:openump:schema:1.0:common#/$defs/segment"
+        },
+        "boot_id": {
+          "$ref": "urn:openump:schema:1.0:common#/$defs/uuid"
+        },
+        "session_id": {
+          "$ref": "urn:openump:schema:1.0:common#/$defs/uuid"
+        }
+      },
+      "required": [
+        "gateway_id",
+        "boot_id",
+        "session_id"
+      ],
+      "additionalProperties": false
+    },
+    "producer_state": {
+      "enum": [
+        "online",
+        "degraded",
+        "offline"
+      ]
+    },
+    "acquisition_state": {
+      "enum": [
+        "healthy",
+        "degraded",
+        "unknown"
+      ]
+    },
+    "last_observed_at": {
+      "oneOf": [
+        {
+          "$ref": "urn:openump:schema:1.0:common#/$defs/timestamp"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "valid_for_ms": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 86400000
+    },
+    "reason": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 256
+    },
+    "extensions": {
+      "$ref": "urn:openump:schema:1.0:common#/$defs/extensions"
+    }
+  },
+  "required": [
+    "schema_version",
+    "message_id",
+    "asset_id",
+    "metadata_revision",
+    "reported_at",
+    "kind",
+    "source",
+    "producer_state",
+    "acquisition_state",
+    "last_observed_at",
+    "valid_for_ms"
+  ],
+  "additionalProperties": false,
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:openump:schema:1.0:status",
+  "title": "OpenUMP v1.0 producer status",
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "kind": {
+            "enum": [
+              "shutdown",
+              "last_will"
+            ]
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "producer_state": {
+            "const": "offline"
+          },
+          "acquisition_state": {
+            "const": "unknown"
+          }
+        }
+      },
+      "else": {
+        "properties": {
+          "producer_state": {
+            "enum": [
+              "online",
+              "degraded"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "kind": {
+            "const": "last_will"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "last_observed_at": {
+            "type": "null"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "acquisition_state": {
+            "const": "healthy"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "last_observed_at": {
+            "$ref": "urn:openump:schema:1.0:common#/$defs/timestamp"
+          }
+        }
+      }
+    }
+  ]
+}

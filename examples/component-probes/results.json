@@ -1,0 +1,22 @@
+{
+  "versions": {
+    "mosquitto": "mosquitto version 2.1.2",
+    "bento": "Version: 1.22.0\nDate: 2026-10-09T11:57:00Z",
+    "telegraf": "Telegraf 1.40.2 (git: HEAD@2e0a2ed1)",
+    "victoriametrics": "victoria-metrics-20261009-125748-tags-v1.154.0-0-g29c43cd2fe"
+  },
+  "mqtt_qos1": "passed",
+  "mapping": "passed",
+  "modbus_function3_scaling": "passed",
+  "history_write_query": "passed",
+  "checked_on": "2026-10-13",
+  "host": "macOS-26.7.1-arm64-arm-64bit-Mach-O",
+  "python": "3.14.6",
+  "scope": "native macOS arm64, loopback only; no real device, TLS handshake, container deployment, or durability test",
+  "archives_sha256": {
+    "mosquitto": "fd905380691ac65ea5a93779e8214941829e3d6e038d5edff9eac5fd74cbed02",
+    "bento": "432b7e86c75916ed871b2116be292f10e8af104e18ad9f6e1832dcba1186a2d1",
+    "telegraf": "04e559186b50c0844cfb6afc18176e0d5d698525dff16e9a527c466bea7b208e",
+    "victoriametrics": "8599fe6254c2601666f729b98abffea4892762c91e1f67e421590e2d64566797"
+  }
+}

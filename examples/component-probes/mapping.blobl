@@ -1,0 +1,6 @@
+root = {
+  "asset_id": this.asset_id,
+  "observed_at": this.observed_at,
+  "temperature": this.raw_temperature * 0.1,
+  "unit": "Cel"
+}
