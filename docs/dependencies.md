@@ -25,3 +25,7 @@ Preserve the selected artifacts' copyright/license notices and inspect transitiv
 ## Development tools
 
 Python 3.11+ supports repository checks; Python 3.14.6 was used for the probes. JSON Schema development requirements are introduced with the contract checks. CMake 3.31.4, Apple Clang 17, OpenSSL 3.6.3, and cJSON 1.7.18 were used for the disposable native Mosquitto build. The probe runner uses only the Python standard library.
+
+## Go conformance implementation (Hades-006)
+
+Go 1.27.2 is pinned in go.mod. The runtime validator uses `github.com/santhosh-tekuri/jsonschema/v6` 6.0.3 (Apache-2.0) and `golang.org/x/text` 0.43.0 (BSD-3-Clause). The development-only vulnerability scanner is `golang.org/x/vuln` 1.9.0 (BSD-3-Clause). See [conformance documentation](protocol/conformance.md) for official API sources, checks, and architecture builds. Source dependencies are verified with go.sum and `go mod verify`; redistribution still requires notices.

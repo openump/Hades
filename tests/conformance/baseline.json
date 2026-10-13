@@ -1,0 +1,11 @@
+{
+  "examples/contracts/assets.json": "9d9900824286d33ce6d3a60c3c867572fdab8a99b11a256e7e355a2bcbebc371",
+  "examples/contracts/context/cases.json": "63347bccd2a075c90bd157d669dc64a0516484e1f8d2fcbe0fb44d6d9247e2bf",
+  "examples/contracts/telemetry/cases.json": "c3a522cabd6c192cfeedfe6afa857eb563259fa2de84cbee134a2e31de0ef7dc",
+  "examples/contracts/topics.json": "af8a62258fda9f66a8b5abd043b17e52fac84ab19ea43a0a11220e87afa81e04",
+  "examples/contracts/wire-cases.json": "c221361b5138c5fd11f218e91ca952fb5dd68cdb8ff9c744daf16b451df6b9e1",
+  "schemas/v1/common.schema.json": "55ab280822660e6eb05b98cb93b967e6585666393afe96615ca40d44cda55a83",
+  "schemas/v1/metadata.schema.json": "c388d8e3a5c70d32ccafb2ee4a18163330f3833aa4014490666074f45733ffff",
+  "schemas/v1/status.schema.json": "cfaa1ae18497d2aa2e5e75b85dc9e09540feca8f1e6e3ba8add0323a6385cb7b",
+  "schemas/v1/telemetry.schema.json": "29dab39fc953d8fe3aa952b044adee146c7fc3be59251e2fa079dc4b2bd8aa66"
+}

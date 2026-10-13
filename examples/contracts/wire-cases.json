@@ -1,0 +1,71 @@
+[
+  {
+    "name": "wire-valid",
+    "raw": "{\"schema_version\": \"1.0\", \"message_id\": \"019a1234-5678-7000-8000-000000000001\", \"asset_id\": \"urn:openump:acme:berlin:press-04\", \"metadata_revision\": 1, \"observed_at\": \"2026-10-13T14:00:00.000Z\", \"ingested_at\": \"2026-10-13T14:00:00.120Z\", \"source\": {\"gateway_id\": \"gateway-01\", \"protocol\": \"modbus\", \"boot_id\": \"019a1234-5678-7000-8000-000000000002\", \"sequence\": 1042, \"clock_origin\": \"gateway\", \"clock_uncertainty_ms\": 5}, \"measurements\": {\"motor_temperature\": {\"value\": 67.2, \"unit\": \"Cel\", \"quality\": \"good\"}}}",
+    "valid": true
+  },
+  {
+    "name": "duplicate-envelope-field",
+    "raw": "{\"schema_version\":\"1.0\",\"schema_version\": \"1.0\", \"message_id\": \"019a1234-5678-7000-8000-000000000001\", \"asset_id\": \"urn:openump:acme:berlin:press-04\", \"metadata_revision\": 1, \"observed_at\": \"2026-10-13T14:00:00.000Z\", \"ingested_at\": \"2026-10-13T14:00:00.120Z\", \"source\": {\"gateway_id\": \"gateway-01\", \"protocol\": \"modbus\", \"boot_id\": \"019a1234-5678-7000-8000-000000000002\", \"sequence\": 1042, \"clock_origin\": \"gateway\", \"clock_uncertainty_ms\": 5}, \"measurements\": {\"motor_temperature\": {\"value\": 67.2, \"unit\": \"Cel\", \"quality\": \"good\"}}}",
+    "valid": false,
+    "error": "wire"
+  },
+  {
+    "name": "nonfinite-NaN",
+    "raw": "{\"schema_version\": \"1.0\", \"message_id\": \"019a1234-5678-7000-8000-000000000001\", \"asset_id\": \"urn:openump:acme:berlin:press-04\", \"metadata_revision\": 1, \"observed_at\": \"2026-10-13T14:00:00.000Z\", \"ingested_at\": \"2026-10-13T14:00:00.120Z\", \"source\": {\"gateway_id\": \"gateway-01\", \"protocol\": \"modbus\", \"boot_id\": \"019a1234-5678-7000-8000-000000000002\", \"sequence\": 1042, \"clock_origin\": \"gateway\", \"clock_uncertainty_ms\": 5}, \"measurements\": {\"motor_temperature\": {\"value\": NaN, \"unit\": \"Cel\", \"quality\": \"good\"}}}",
+    "valid": false,
+    "error": "wire"
+  },
+  {
+    "name": "nonfinite-Infinity",
+    "raw": "{\"schema_version\": \"1.0\", \"message_id\": \"019a1234-5678-7000-8000-000000000001\", \"asset_id\": \"urn:openump:acme:berlin:press-04\", \"metadata_revision\": 1, \"observed_at\": \"2026-10-13T14:00:00.000Z\", \"ingested_at\": \"2026-10-13T14:00:00.120Z\", \"source\": {\"gateway_id\": \"gateway-01\", \"protocol\": \"modbus\", \"boot_id\": \"019a1234-5678-7000-8000-000000000002\", \"sequence\": 1042, \"clock_origin\": \"gateway\", \"clock_uncertainty_ms\": 5}, \"measurements\": {\"motor_temperature\": {\"value\": Infinity, \"unit\": \"Cel\", \"quality\": \"good\"}}}",
+    "valid": false,
+    "error": "wire"
+  },
+  {
+    "name": "nonfinite-1e999",
+    "raw": "{\"schema_version\": \"1.0\", \"message_id\": \"019a1234-5678-7000-8000-000000000001\", \"asset_id\": \"urn:openump:acme:berlin:press-04\", \"metadata_revision\": 1, \"observed_at\": \"2026-10-13T14:00:00.000Z\", \"ingested_at\": \"2026-10-13T14:00:00.120Z\", \"source\": {\"gateway_id\": \"gateway-01\", \"protocol\": \"modbus\", \"boot_id\": \"019a1234-5678-7000-8000-000000000002\", \"sequence\": 1042, \"clock_origin\": \"gateway\", \"clock_uncertainty_ms\": 5}, \"measurements\": {\"motor_temperature\": {\"value\": 1e999, \"unit\": \"Cel\", \"quality\": \"good\"}}}",
+    "valid": false,
+    "error": "wire"
+  },
+  {
+    "name": "trailing-value",
+    "raw": "{\"schema_version\": \"1.0\", \"message_id\": \"019a1234-5678-7000-8000-000000000001\", \"asset_id\": \"urn:openump:acme:berlin:press-04\", \"metadata_revision\": 1, \"observed_at\": \"2026-10-13T14:00:00.000Z\", \"ingested_at\": \"2026-10-13T14:00:00.120Z\", \"source\": {\"gateway_id\": \"gateway-01\", \"protocol\": \"modbus\", \"boot_id\": \"019a1234-5678-7000-8000-000000000002\", \"sequence\": 1042, \"clock_origin\": \"gateway\", \"clock_uncertainty_ms\": 5}, \"measurements\": {\"motor_temperature\": {\"value\": 67.2, \"unit\": \"Cel\", \"quality\": \"good\"}}} {}",
+    "valid": false,
+    "error": "wire"
+  },
+  {
+    "name": "malformed",
+    "raw": "{\"schema_version\": \"1.0\", \"message_id\": \"019a1234-5678-7000-8000-000000000001\", \"asset_id\": \"urn:openump:acme:berlin:press-04\", \"metadata_revision\": 1, \"observed_at\": \"2026-10-13T14:00:00.000Z\", \"ingested_at\": \"2026-10-13T14:00:00.120Z\", \"source\": {\"gateway_id\": \"gateway-01\", \"protocol\": \"modbus\", \"boot_id\": \"019a1234-5678-7000-8000-000000000002\", \"sequence\": 1042, \"clock_origin\": \"gateway\", \"clock_uncertainty_ms\": 5}, \"measurements\": {\"motor_temperature\": {\"value\": 67.2, \"unit\": \"Cel\", \"quality\": \"good\"}}",
+    "valid": false,
+    "error": "wire"
+  },
+  {
+    "name": "unpaired-high-surrogate",
+    "raw": "{\"schema_version\": \"1.0\", \"message_id\": \"019a1234-5678-7000-8000-000000000001\", \"asset_id\": \"urn:openump:acme:berlin:press-04\", \"metadata_revision\": 1, \"observed_at\": \"2026-10-13T14:00:00.000Z\", \"ingested_at\": \"2026-10-13T14:00:00.120Z\", \"source\": {\"gateway_id\": \"gateway-01\", \"protocol\": \"modbus\", \"boot_id\": \"019a1234-5678-7000-8000-000000000002\", \"sequence\": 1042, \"clock_origin\": \"gateway\", \"clock_uncertainty_ms\": 5}, \"measurements\": {\"motor_temperature\": {\"value\": 67.2, \"unit\": \"Cel\", \"quality\": \"good\"}}, \"extensions\": {\"acme.text\": \"\\ud800\"}}",
+    "valid": false,
+    "error": "wire"
+  },
+  {
+    "name": "unpaired-low-surrogate",
+    "raw": "{\"schema_version\": \"1.0\", \"message_id\": \"019a1234-5678-7000-8000-000000000001\", \"asset_id\": \"urn:openump:acme:berlin:press-04\", \"metadata_revision\": 1, \"observed_at\": \"2026-10-13T14:00:00.000Z\", \"ingested_at\": \"2026-10-13T14:00:00.120Z\", \"source\": {\"gateway_id\": \"gateway-01\", \"protocol\": \"modbus\", \"boot_id\": \"019a1234-5678-7000-8000-000000000002\", \"sequence\": 1042, \"clock_origin\": \"gateway\", \"clock_uncertainty_ms\": 5}, \"measurements\": {\"motor_temperature\": {\"value\": 67.2, \"unit\": \"Cel\", \"quality\": \"good\"}}, \"extensions\": {\"acme.text\": \"\\udc00\"}}",
+    "valid": false,
+    "error": "wire"
+  },
+  {
+    "name": "valid-surrogate-pair",
+    "raw": "{\"schema_version\": \"1.0\", \"message_id\": \"019a1234-5678-7000-8000-000000000001\", \"asset_id\": \"urn:openump:acme:berlin:press-04\", \"metadata_revision\": 1, \"observed_at\": \"2026-10-13T14:00:00.000Z\", \"ingested_at\": \"2026-10-13T14:00:00.120Z\", \"source\": {\"gateway_id\": \"gateway-01\", \"protocol\": \"modbus\", \"boot_id\": \"019a1234-5678-7000-8000-000000000002\", \"sequence\": 1042, \"clock_origin\": \"gateway\", \"clock_uncertainty_ms\": 5}, \"measurements\": {\"motor_temperature\": {\"value\": 67.2, \"unit\": \"Cel\", \"quality\": \"good\"}}, \"extensions\": {\"acme.text\": \"\\ud83d\\ude00\"}}",
+    "valid": true
+  },
+  {
+    "name": "numeric-underflow",
+    "raw": "{\"schema_version\": \"1.0\", \"message_id\": \"019a1234-5678-7000-8000-000000000001\", \"asset_id\": \"urn:openump:acme:berlin:press-04\", \"metadata_revision\": 1, \"observed_at\": \"2026-10-13T14:00:00.000Z\", \"ingested_at\": \"2026-10-13T14:00:00.120Z\", \"source\": {\"gateway_id\": \"gateway-01\", \"protocol\": \"modbus\", \"boot_id\": \"019a1234-5678-7000-8000-000000000002\", \"sequence\": 1042, \"clock_origin\": \"gateway\", \"clock_uncertainty_ms\": 5}, \"measurements\": {\"motor_temperature\": {\"value\": 1e-999999, \"unit\": \"Cel\", \"quality\": \"good\"}}}",
+    "valid": false,
+    "error": "wire"
+  },
+  {
+    "name": "zero-large-exponent",
+    "raw": "{\"schema_version\": \"1.0\", \"message_id\": \"019a1234-5678-7000-8000-000000000001\", \"asset_id\": \"urn:openump:acme:berlin:press-04\", \"metadata_revision\": 1, \"observed_at\": \"2026-10-13T14:00:00.000Z\", \"ingested_at\": \"2026-10-13T14:00:00.120Z\", \"source\": {\"gateway_id\": \"gateway-01\", \"protocol\": \"modbus\", \"boot_id\": \"019a1234-5678-7000-8000-000000000002\", \"sequence\": 1042, \"clock_origin\": \"gateway\", \"clock_uncertainty_ms\": 5}, \"measurements\": {\"motor_temperature\": {\"value\": 0e-999999, \"unit\": \"Cel\", \"quality\": \"good\"}}}",
+    "valid": true
+  }
+]
