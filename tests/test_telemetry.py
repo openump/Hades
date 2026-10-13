@@ -18,6 +18,16 @@ class TelemetryTests(unittest.TestCase):
                     with self.assertRaises(ValueError):
                         validate_payload('telemetry', raw)
 
+    def test_shared_wire_fixtures(self):
+        cases = json.loads((ROOT / 'examples/contracts/wire-cases.json').read_text())
+        for case in cases:
+            with self.subTest(case=case['name']):
+                if case['valid']:
+                    validate_payload('telemetry', case['raw'].encode())
+                else:
+                    with self.assertRaises(ValueError):
+                        validate_payload('telemetry', case['raw'].encode())
+
     def test_invalid_wire_json_is_rejected(self):
         fixture = json.loads((ROOT / 'examples/contracts/telemetry/cases.json').read_text())[0]['payload']
         valid = json.dumps(fixture).encode()

@@ -4,9 +4,9 @@
 
 ## Encoding and validation
 
-Publish a UTF-8 JSON object of at most 65,536 bytes, including whitespace. Reject duplicate object keys, invalid UTF-8, non-finite values (`NaN`, infinities, overflowing exponents), and malformed JSON before schema validation. Limits apply before parsing. Measurement count is 1–64. Producers must split larger observations into separate messages with distinct IDs.
+Publish a UTF-8 JSON object of at most 65,536 bytes, including whitespace. Reject duplicate object keys, invalid UTF-8, non-finite values (`NaN`, infinities, overflowing exponents), unpaired Unicode surrogates, numeric underflow that would silently become zero, and malformed JSON before schema validation. Limits apply before parsing. Measurement count is 1–64. Producers must split larger observations into separate messages with distinct IDs.
 
-Use [JSON Schema Draft 2020-12](https://json-schema.org/draft/2020-12/json-schema-validation) with format checking enabled, not annotation-only handling. Resolve the local schema IDs without network access. Validate [telemetry.schema.json](../../schemas/v1/telemetry.schema.json) and [common.schema.json](../../schemas/v1/common.schema.json). Format assertions must check calendar validity and UUID syntax as well as the schema patterns. The foundation helper is `tools.contracts.validate_payload`; Hades-006 will provide the complete CLI/CI integration.
+Use [JSON Schema Draft 2020-12](https://json-schema.org/draft/2020-12/json-schema-validation) with format checking enabled, not annotation-only handling. Resolve the local schema IDs without network access. Validate [telemetry.schema.json](../../schemas/v1/telemetry.schema.json) and [common.schema.json](../../schemas/v1/common.schema.json). Format assertions must check calendar validity and UUID syntax as well as the schema patterns. Use the reusable Go validator in `internal/contracts` and the [conformance CLI](conformance.md). Python remains development reference tooling.
 
 ## Required envelope fields
 

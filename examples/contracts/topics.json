@@ -21,78 +21,91 @@
     "name": "empty",
     "topic": "openump/v1/acme/berlin//line-01/press-04/telemetry",
     "asset_id": "urn:openump:acme:berlin:press-04",
-    "valid": false
+    "valid": false,
+    "error": "namespace"
   },
   {
     "name": "wildcard",
     "topic": "openump/v1/acme/berlin/assembly/+/press-04/telemetry",
     "asset_id": "urn:openump:acme:berlin:press-04",
-    "valid": false
+    "valid": false,
+    "error": "namespace"
   },
   {
     "name": "multilevel-wildcard",
     "topic": "openump/v1/acme/berlin/assembly/#/press-04/telemetry",
     "asset_id": "urn:openump:acme:berlin:press-04",
-    "valid": false
+    "valid": false,
+    "error": "namespace"
   },
   {
     "name": "unicode",
     "topic": "openump/v1/acme/b\u00e9rlin/assembly/line-01/press-04/telemetry",
     "asset_id": "urn:openump:acme:berlin:press-04",
-    "valid": false
+    "valid": false,
+    "error": "namespace"
   },
   {
     "name": "encoded-separator",
     "topic": "openump/v1/acme/berlin/assembly/line%2f01/press-04/telemetry",
     "asset_id": "urn:openump:acme:berlin:press-04",
-    "valid": false
+    "valid": false,
+    "error": "namespace"
   },
   {
     "name": "uppercase",
     "topic": "openump/v1/Acme/berlin/assembly/line-01/press-04/telemetry",
     "asset_id": "urn:openump:acme:berlin:press-04",
-    "valid": false
+    "valid": false,
+    "error": "namespace"
   },
   {
     "name": "long-segment",
     "topic": "openump/v1/acme/berlin/assembly/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/press-04/telemetry",
     "asset_id": "urn:openump:acme:berlin:press-04",
-    "valid": false
+    "valid": false,
+    "error": "namespace"
   },
   {
     "name": "unsupported-major",
     "topic": "openump/v2/acme/berlin/assembly/line-01/press-04/telemetry",
     "asset_id": "urn:openump:acme:berlin:press-04",
-    "valid": false
+    "valid": false,
+    "error": "namespace"
   },
   {
     "name": "unsupported-type",
     "topic": "openump/v1/acme/berlin/assembly/line-01/press-04/command",
     "asset_id": "urn:openump:acme:berlin:press-04",
-    "valid": false
+    "valid": false,
+    "error": "namespace"
   },
   {
     "name": "trailing-separator",
     "topic": "openump/v1/acme/berlin/assembly/line-01/press-04/telemetry/",
     "asset_id": "urn:openump:acme:berlin:press-04",
-    "valid": false
+    "valid": false,
+    "error": "namespace"
   },
   {
     "name": "mismatched-asset",
     "topic": "openump/v1/acme/berlin/assembly/line-01/press-04/telemetry",
     "asset_id": "urn:openump:acme:berlin:pump-02",
-    "valid": false
+    "valid": false,
+    "error": "namespace"
   },
   {
     "name": "unknown-asset",
     "topic": "openump/v1/acme/berlin/assembly/line-01/press-04/telemetry",
     "asset_id": "urn:openump:acme:berlin:unknown",
-    "valid": false
+    "valid": false,
+    "error": "namespace"
   },
   {
     "name": "old-location",
     "topic": "openump/v1/acme/berlin/utilities/unassigned/pump-02/status",
     "asset_id": "urn:openump:acme:berlin:pump-02",
-    "valid": false
+    "valid": false,
+    "error": "namespace"
   }
 ]

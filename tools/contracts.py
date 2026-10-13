@@ -61,6 +61,9 @@ def validate_payload(kind, raw):
 
     def finite_float(value):
         number = float(value)
+        mantissa = value.lower().split("e")[0]
+        if number == 0 and mantissa.strip("+-.0"):
+            raise ValueError("number underflows binary64")
         if not math.isfinite(number):
             raise ValueError('non-finite JSON number')
         return number
@@ -70,6 +73,20 @@ def validate_payload(kind, raw):
                              parse_constant=reject_constant, parse_float=finite_float)
     except (UnicodeError, RecursionError) as error:
         raise ValueError('invalid UTF-8 or excessive JSON nesting') from error
+    def unicode_scalars(value):
+        if isinstance(value, str):
+            try:
+                value.encode("utf-8")
+            except UnicodeError as error:
+                raise ValueError("unpaired Unicode surrogate") from error
+        elif isinstance(value, dict):
+            for key, item in value.items():
+                unicode_scalars(key)
+                unicode_scalars(item)
+        elif isinstance(value, list):
+            for item in value:
+                unicode_scalars(item)
+    unicode_scalars(payload)
     root = Path(__file__).resolve().parents[1] / 'schemas/v1'
     schemas = [json.loads(path.read_text()) for path in sorted(root.glob('*.schema.json'))]
     registry = Registry().with_resources((schema['$id'], Resource.from_contents(schema)) for schema in schemas)

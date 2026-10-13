@@ -4,7 +4,7 @@ Use short-lived `codex/` branches for agent work. Keep each commit focused on on
 
 Before committing, review the staged diff, run `git diff --check`, verify the checks relevant to the change, and inspect staged files for credentials or generated state. Record commands, versions, results, and known limits in the PR. Do not claim runtime behavior from documentation alone.
 
-Run the setup commands in README.md on a clean checkout. Contract and component probe commands will be documented as those artifacts are introduced. There is no application build command yet.
+Run the setup commands in README.md on a clean checkout. Use `./scripts/check-contracts`, `go test -race ./...`, `go vet ./...`, and `go build ./cmd/hades-check` for Go conformance work. Component probe commands are documented with their examples. Deployed application services remain later tickets.
 
 ## Architecture decisions
 

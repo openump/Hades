@@ -6,17 +6,20 @@ This repository currently contains the [white paper](WHITEPAPER.md) and foundati
 
 ## Implementation language
 
-Custom deployed services and operational CLI tools use **Go**. Reuse the selected upstream components and declarative configuration for their existing capabilities. Python is development tooling for contract tests and capability probes; deployed custom services must not require it. See [ADR-0003](docs/decisions/0003-runtime-language.md). The first Go implementation will pin its supported toolchain and dependencies.
+Custom deployed services and operational CLI tools use **Go**. Reuse the selected upstream components and declarative configuration for their existing capabilities. Python is development tooling for contract tests and capability probes; deployed custom services must not require it. See [ADR-0003](docs/decisions/0003-runtime-language.md). The conformance implementation pins its Go toolchain and dependencies in go.mod/go.sum.
 
 ## Development setup
 
-Git and Python 3.11 or later are required for contract development. Runtime probe prerequisites are documented alongside each probe when introduced.
+Go 1.27.2 is pinned in go.mod for conformance tooling. Go 1.21+ can automatically obtain the pinned toolchain. Python 3.11+ is optional development reference tooling. Runtime probe prerequisites are documented alongside each probe when introduced.
 
 ```sh
 git clone https://github.com/openump/Hades.git
 cd Hades
 cp .env.example .env
 git diff --check
+./scripts/check-contracts
+go test ./...
+# Optional Python development reference:
 python3 -m venv .venv
 .venv/bin/python -m pip install -r requirements-dev.txt
 .venv/bin/python -m unittest discover -s tests -v
@@ -31,7 +34,7 @@ The `.env` file is ignored and contains development identifiers only. Never comm
 - [Metadata and producer status](docs/protocol/metadata-status.md)
 - [Selected dependency inventory](docs/dependencies.md) and [native probes](examples/component-probes/README.md)
 
-The contract checks are foundation tests; the complete conformance CLI and CI are Hades-006. Probe results cover native loopback capabilities, not a deployed stack.
+Run `./scripts/check-contracts` for the offline Go conformance CLI. [Conformance documentation](docs/protocol/conformance.md) describes fixture checks, review baselines, and CI. Probe results cover native loopback capabilities, not a deployed stack.
 
 ## Planning and contributions
 
