@@ -1,0 +1,26 @@
+# OpenUMP — Hades
+
+Hades is the industrial edge stack of OpenUMP (Open Unified Machine Protocol). It acquires read-only machine observations, normalizes them, publishes contextualized data over MQTT, and supports local numeric history and outbound cloud transfer.
+
+This repository currently contains the [white paper](WHITEPAPER.md) and foundation work. A production deployment is not yet available.
+
+## Development setup
+
+Git and Python 3.11 or later are required for contract development. Runtime probe prerequisites are documented alongside each probe when introduced.
+
+```sh
+git clone https://github.com/openump/Hades.git
+cd Hades
+cp .env.example .env
+git diff --check
+```
+
+The `.env` file is ignored and contains development identifiers only. Never commit device credentials, private keys, site exports, or runtime data.
+
+## Planning and contributions
+
+Implementation tickets live in [Hermes](https://github.com/openump/Hermes/blob/main/plans/hades/PROJECT_PLAN.md). Reference their stable `Hades-` IDs in commits and implementation PRs. See [CONTRIBUTING.md](CONTRIBUTING.md) for verification and decision conventions.
+
+## License status
+
+The owner has not yet selected a project license. No open-source license grant is asserted by this repository until that decision is recorded and a `LICENSE` file is added. See [ADR-0001](docs/decisions/0001-license-policy.md). The intended open-source reference stack requires explicit review of each dependency's exact edition and license.
