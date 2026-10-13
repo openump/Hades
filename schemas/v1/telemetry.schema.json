@@ -1,0 +1,120 @@
+{
+  "type": "object",
+  "properties": {
+    "schema_version": {
+      "const": "1.0"
+    },
+    "message_id": {
+      "$ref": "urn:openump:schema:1.0:common#/$defs/uuid"
+    },
+    "asset_id": {
+      "$ref": "urn:openump:schema:1.0:common#/$defs/asset_id"
+    },
+    "metadata_revision": {
+      "$ref": "urn:openump:schema:1.0:common#/$defs/revision"
+    },
+    "observed_at": {
+      "$ref": "urn:openump:schema:1.0:common#/$defs/timestamp"
+    },
+    "ingested_at": {
+      "$ref": "urn:openump:schema:1.0:common#/$defs/timestamp"
+    },
+    "source": {
+      "$ref": "urn:openump:schema:1.0:common#/$defs/source"
+    },
+    "measurements": {
+      "type": "object",
+      "minProperties": 1,
+      "maxProperties": 64,
+      "propertyNames": {
+        "$ref": "urn:openump:schema:1.0:common#/$defs/measurement_name"
+      },
+      "additionalProperties": {
+        "type": "object",
+        "properties": {
+          "value": {
+            "oneOf": [
+              {
+                "type": "number",
+                "minimum": -1e+308,
+                "maximum": 1e+308
+              },
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "string",
+                "maxLength": 256
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "unit": {
+            "$ref": "urn:openump:schema:1.0:common#/$defs/unit"
+          },
+          "quality": {
+            "enum": [
+              "good",
+              "uncertain",
+              "bad"
+            ]
+          },
+          "reason": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256
+          }
+        },
+        "required": [
+          "value",
+          "unit",
+          "quality"
+        ],
+        "additionalProperties": false,
+        "allOf": [
+          {
+            "if": {
+              "properties": {
+                "value": {
+                  "type": "null"
+                }
+              },
+              "required": [
+                "value"
+              ]
+            },
+            "then": {
+              "properties": {
+                "quality": {
+                  "const": "bad"
+                }
+              },
+              "required": [
+                "reason"
+              ]
+            }
+          }
+        ]
+      }
+    },
+    "extensions": {
+      "$ref": "urn:openump:schema:1.0:common#/$defs/extensions"
+    }
+  },
+  "required": [
+    "schema_version",
+    "message_id",
+    "asset_id",
+    "metadata_revision",
+    "observed_at",
+    "ingested_at",
+    "source",
+    "measurements"
+  ],
+  "additionalProperties": false,
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:openump:schema:1.0:telemetry",
+  "title": "OpenUMP v1.0 telemetry"
+}

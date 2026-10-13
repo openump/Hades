@@ -1,0 +1,1073 @@
+[
+  {
+    "name": "valid-numeric",
+    "valid": true,
+    "payload": {
+      "schema_version": "1.0",
+      "message_id": "019a1234-5678-7000-8000-000000000001",
+      "asset_id": "urn:openump:acme:berlin:press-04",
+      "metadata_revision": 1,
+      "observed_at": "2026-10-13T14:00:00.000Z",
+      "ingested_at": "2026-10-13T14:00:00.120Z",
+      "source": {
+        "gateway_id": "gateway-01",
+        "protocol": "modbus",
+        "boot_id": "019a1234-5678-7000-8000-000000000002",
+        "sequence": 1042,
+        "clock_origin": "gateway",
+        "clock_uncertainty_ms": 5
+      },
+      "measurements": {
+        "motor_temperature": {
+          "value": 67.2,
+          "unit": "Cel",
+          "quality": "good"
+        }
+      }
+    }
+  },
+  {
+    "name": "valid-bad-null",
+    "valid": true,
+    "payload": {
+      "schema_version": "1.0",
+      "message_id": "019a1234-5678-7000-8000-000000000001",
+      "asset_id": "urn:openump:acme:berlin:press-04",
+      "metadata_revision": 1,
+      "observed_at": "2026-10-13T14:00:00.000Z",
+      "ingested_at": "2026-10-13T14:00:00.120Z",
+      "source": {
+        "gateway_id": "gateway-01",
+        "protocol": "modbus",
+        "boot_id": "019a1234-5678-7000-8000-000000000002",
+        "sequence": 1042,
+        "clock_origin": "gateway",
+        "clock_uncertainty_ms": 5
+      },
+      "measurements": {
+        "motor_temperature": {
+          "value": null,
+          "unit": "Cel",
+          "quality": "bad",
+          "reason": "device-timeout"
+        }
+      }
+    }
+  },
+  {
+    "name": "valid-uncertain",
+    "valid": true,
+    "payload": {
+      "schema_version": "1.0",
+      "message_id": "019a1234-5678-7000-8000-000000000001",
+      "asset_id": "urn:openump:acme:berlin:press-04",
+      "metadata_revision": 1,
+      "observed_at": "2026-10-13T14:00:00.000Z",
+      "ingested_at": "2026-10-13T14:00:00.120Z",
+      "source": {
+        "gateway_id": "gateway-01",
+        "protocol": "modbus",
+        "boot_id": "019a1234-5678-7000-8000-000000000002",
+        "sequence": 1042,
+        "clock_origin": "gateway",
+        "clock_uncertainty_ms": 5
+      },
+      "measurements": {
+        "motor_temperature": {
+          "value": 67.2,
+          "unit": "Cel",
+          "quality": "uncertain"
+        }
+      }
+    }
+  },
+  {
+    "name": "valid-boolean",
+    "valid": true,
+    "payload": {
+      "schema_version": "1.0",
+      "message_id": "019a1234-5678-7000-8000-000000000001",
+      "asset_id": "urn:openump:acme:berlin:press-04",
+      "metadata_revision": 1,
+      "observed_at": "2026-10-13T14:00:00.000Z",
+      "ingested_at": "2026-10-13T14:00:00.120Z",
+      "source": {
+        "gateway_id": "gateway-01",
+        "protocol": "modbus",
+        "boot_id": "019a1234-5678-7000-8000-000000000002",
+        "sequence": 1042,
+        "clock_origin": "gateway",
+        "clock_uncertainty_ms": 5
+      },
+      "measurements": {
+        "motor_temperature": {
+          "value": 67.2,
+          "unit": "Cel",
+          "quality": "good"
+        },
+        "running": {
+          "value": true,
+          "unit": "1",
+          "quality": "good"
+        }
+      }
+    }
+  },
+  {
+    "name": "valid-string",
+    "valid": true,
+    "payload": {
+      "schema_version": "1.0",
+      "message_id": "019a1234-5678-7000-8000-000000000001",
+      "asset_id": "urn:openump:acme:berlin:press-04",
+      "metadata_revision": 1,
+      "observed_at": "2026-10-13T14:00:00.000Z",
+      "ingested_at": "2026-10-13T14:00:00.120Z",
+      "source": {
+        "gateway_id": "gateway-01",
+        "protocol": "modbus",
+        "boot_id": "019a1234-5678-7000-8000-000000000002",
+        "sequence": 1042,
+        "clock_origin": "gateway",
+        "clock_uncertainty_ms": 5
+      },
+      "measurements": {
+        "motor_temperature": {
+          "value": 67.2,
+          "unit": "Cel",
+          "quality": "good"
+        },
+        "mode": {
+          "value": "idle",
+          "unit": "1",
+          "quality": "good"
+        }
+      }
+    }
+  },
+  {
+    "name": "valid-extension",
+    "valid": true,
+    "payload": {
+      "schema_version": "1.0",
+      "message_id": "019a1234-5678-7000-8000-000000000001",
+      "asset_id": "urn:openump:acme:berlin:press-04",
+      "metadata_revision": 1,
+      "observed_at": "2026-10-13T14:00:00.000Z",
+      "ingested_at": "2026-10-13T14:00:00.120Z",
+      "source": {
+        "gateway_id": "gateway-01",
+        "protocol": "modbus",
+        "boot_id": "019a1234-5678-7000-8000-000000000002",
+        "sequence": 1042,
+        "clock_origin": "gateway",
+        "clock_uncertainty_ms": 5
+      },
+      "measurements": {
+        "motor_temperature": {
+          "value": 67.2,
+          "unit": "Cel",
+          "quality": "good"
+        }
+      },
+      "extensions": {
+        "acme.batch": "batch-01"
+      }
+    }
+  },
+  {
+    "name": "missing-identity",
+    "valid": false,
+    "payload": {
+      "schema_version": "1.0",
+      "asset_id": "urn:openump:acme:berlin:press-04",
+      "metadata_revision": 1,
+      "observed_at": "2026-10-13T14:00:00.000Z",
+      "ingested_at": "2026-10-13T14:00:00.120Z",
+      "source": {
+        "gateway_id": "gateway-01",
+        "protocol": "modbus",
+        "boot_id": "019a1234-5678-7000-8000-000000000002",
+        "sequence": 1042,
+        "clock_origin": "gateway",
+        "clock_uncertainty_ms": 5
+      },
+      "measurements": {
+        "motor_temperature": {
+          "value": 67.2,
+          "unit": "Cel",
+          "quality": "good"
+        }
+      }
+    }
+  },
+  {
+    "name": "unknown-envelope-field",
+    "valid": false,
+    "payload": {
+      "schema_version": "1.0",
+      "message_id": "019a1234-5678-7000-8000-000000000001",
+      "asset_id": "urn:openump:acme:berlin:press-04",
+      "metadata_revision": 1,
+      "observed_at": "2026-10-13T14:00:00.000Z",
+      "ingested_at": "2026-10-13T14:00:00.120Z",
+      "source": {
+        "gateway_id": "gateway-01",
+        "protocol": "modbus",
+        "boot_id": "019a1234-5678-7000-8000-000000000002",
+        "sequence": 1042,
+        "clock_origin": "gateway",
+        "clock_uncertainty_ms": 5
+      },
+      "measurements": {
+        "motor_temperature": {
+          "value": 67.2,
+          "unit": "Cel",
+          "quality": "good"
+        }
+      },
+      "extra": true
+    }
+  },
+  {
+    "name": "unknown-source-field",
+    "valid": false,
+    "payload": {
+      "schema_version": "1.0",
+      "message_id": "019a1234-5678-7000-8000-000000000001",
+      "asset_id": "urn:openump:acme:berlin:press-04",
+      "metadata_revision": 1,
+      "observed_at": "2026-10-13T14:00:00.000Z",
+      "ingested_at": "2026-10-13T14:00:00.120Z",
+      "source": {
+        "gateway_id": "gateway-01",
+        "protocol": "modbus",
+        "boot_id": "019a1234-5678-7000-8000-000000000002",
+        "sequence": 1042,
+        "clock_origin": "gateway",
+        "clock_uncertainty_ms": 5,
+        "extra": true
+      },
+      "measurements": {
+        "motor_temperature": {
+          "value": 67.2,
+          "unit": "Cel",
+          "quality": "good"
+        }
+      }
+    }
+  },
+  {
+    "name": "missing-boot-id",
+    "valid": false,
+    "payload": {
+      "schema_version": "1.0",
+      "message_id": "019a1234-5678-7000-8000-000000000001",
+      "asset_id": "urn:openump:acme:berlin:press-04",
+      "metadata_revision": 1,
+      "observed_at": "2026-10-13T14:00:00.000Z",
+      "ingested_at": "2026-10-13T14:00:00.120Z",
+      "source": {
+        "gateway_id": "gateway-01",
+        "protocol": "modbus",
+        "sequence": 1042,
+        "clock_origin": "gateway",
+        "clock_uncertainty_ms": 5
+      },
+      "measurements": {
+        "motor_temperature": {
+          "value": 67.2,
+          "unit": "Cel",
+          "quality": "good"
+        }
+      }
+    }
+  },
+  {
+    "name": "negative-sequence",
+    "valid": false,
+    "payload": {
+      "schema_version": "1.0",
+      "message_id": "019a1234-5678-7000-8000-000000000001",
+      "asset_id": "urn:openump:acme:berlin:press-04",
+      "metadata_revision": 1,
+      "observed_at": "2026-10-13T14:00:00.000Z",
+      "ingested_at": "2026-10-13T14:00:00.120Z",
+      "source": {
+        "gateway_id": "gateway-01",
+        "protocol": "modbus",
+        "boot_id": "019a1234-5678-7000-8000-000000000002",
+        "sequence": -1,
+        "clock_origin": "gateway",
+        "clock_uncertainty_ms": 5
+      },
+      "measurements": {
+        "motor_temperature": {
+          "value": 67.2,
+          "unit": "Cel",
+          "quality": "good"
+        }
+      }
+    }
+  },
+  {
+    "name": "unsafe-sequence",
+    "valid": false,
+    "payload": {
+      "schema_version": "1.0",
+      "message_id": "019a1234-5678-7000-8000-000000000001",
+      "asset_id": "urn:openump:acme:berlin:press-04",
+      "metadata_revision": 1,
+      "observed_at": "2026-10-13T14:00:00.000Z",
+      "ingested_at": "2026-10-13T14:00:00.120Z",
+      "source": {
+        "gateway_id": "gateway-01",
+        "protocol": "modbus",
+        "boot_id": "019a1234-5678-7000-8000-000000000002",
+        "sequence": 9007199254740992,
+        "clock_origin": "gateway",
+        "clock_uncertainty_ms": 5
+      },
+      "measurements": {
+        "motor_temperature": {
+          "value": 67.2,
+          "unit": "Cel",
+          "quality": "good"
+        }
+      }
+    }
+  },
+  {
+    "name": "unsupported-version",
+    "valid": false,
+    "payload": {
+      "schema_version": "2.0",
+      "message_id": "019a1234-5678-7000-8000-000000000001",
+      "asset_id": "urn:openump:acme:berlin:press-04",
+      "metadata_revision": 1,
+      "observed_at": "2026-10-13T14:00:00.000Z",
+      "ingested_at": "2026-10-13T14:00:00.120Z",
+      "source": {
+        "gateway_id": "gateway-01",
+        "protocol": "modbus",
+        "boot_id": "019a1234-5678-7000-8000-000000000002",
+        "sequence": 1042,
+        "clock_origin": "gateway",
+        "clock_uncertainty_ms": 5
+      },
+      "measurements": {
+        "motor_temperature": {
+          "value": 67.2,
+          "unit": "Cel",
+          "quality": "good"
+        }
+      }
+    }
+  },
+  {
+    "name": "invalid-calendar-date",
+    "valid": false,
+    "payload": {
+      "schema_version": "1.0",
+      "message_id": "019a1234-5678-7000-8000-000000000001",
+      "asset_id": "urn:openump:acme:berlin:press-04",
+      "metadata_revision": 1,
+      "observed_at": "2026-02-30T14:00:00.000Z",
+      "ingested_at": "2026-10-13T14:00:00.120Z",
+      "source": {
+        "gateway_id": "gateway-01",
+        "protocol": "modbus",
+        "boot_id": "019a1234-5678-7000-8000-000000000002",
+        "sequence": 1042,
+        "clock_origin": "gateway",
+        "clock_uncertainty_ms": 5
+      },
+      "measurements": {
+        "motor_temperature": {
+          "value": 67.2,
+          "unit": "Cel",
+          "quality": "good"
+        }
+      }
+    }
+  },
+  {
+    "name": "non-utc-time",
+    "valid": false,
+    "payload": {
+      "schema_version": "1.0",
+      "message_id": "019a1234-5678-7000-8000-000000000001",
+      "asset_id": "urn:openump:acme:berlin:press-04",
+      "metadata_revision": 1,
+      "observed_at": "2026-10-13T14:00:00.000+02:00",
+      "ingested_at": "2026-10-13T14:00:00.120Z",
+      "source": {
+        "gateway_id": "gateway-01",
+        "protocol": "modbus",
+        "boot_id": "019a1234-5678-7000-8000-000000000002",
+        "sequence": 1042,
+        "clock_origin": "gateway",
+        "clock_uncertainty_ms": 5
+      },
+      "measurements": {
+        "motor_temperature": {
+          "value": 67.2,
+          "unit": "Cel",
+          "quality": "good"
+        }
+      }
+    }
+  },
+  {
+    "name": "invalid-uuid",
+    "valid": false,
+    "payload": {
+      "schema_version": "1.0",
+      "message_id": "not-a-uuid",
+      "asset_id": "urn:openump:acme:berlin:press-04",
+      "metadata_revision": 1,
+      "observed_at": "2026-10-13T14:00:00.000Z",
+      "ingested_at": "2026-10-13T14:00:00.120Z",
+      "source": {
+        "gateway_id": "gateway-01",
+        "protocol": "modbus",
+        "boot_id": "019a1234-5678-7000-8000-000000000002",
+        "sequence": 1042,
+        "clock_origin": "gateway",
+        "clock_uncertainty_ms": 5
+      },
+      "measurements": {
+        "motor_temperature": {
+          "value": 67.2,
+          "unit": "Cel",
+          "quality": "good"
+        }
+      }
+    }
+  },
+  {
+    "name": "null-good",
+    "valid": false,
+    "payload": {
+      "schema_version": "1.0",
+      "message_id": "019a1234-5678-7000-8000-000000000001",
+      "asset_id": "urn:openump:acme:berlin:press-04",
+      "metadata_revision": 1,
+      "observed_at": "2026-10-13T14:00:00.000Z",
+      "ingested_at": "2026-10-13T14:00:00.120Z",
+      "source": {
+        "gateway_id": "gateway-01",
+        "protocol": "modbus",
+        "boot_id": "019a1234-5678-7000-8000-000000000002",
+        "sequence": 1042,
+        "clock_origin": "gateway",
+        "clock_uncertainty_ms": 5
+      },
+      "measurements": {
+        "motor_temperature": {
+          "value": null,
+          "unit": "Cel",
+          "quality": "good"
+        }
+      }
+    }
+  },
+  {
+    "name": "null-without-reason",
+    "valid": false,
+    "payload": {
+      "schema_version": "1.0",
+      "message_id": "019a1234-5678-7000-8000-000000000001",
+      "asset_id": "urn:openump:acme:berlin:press-04",
+      "metadata_revision": 1,
+      "observed_at": "2026-10-13T14:00:00.000Z",
+      "ingested_at": "2026-10-13T14:00:00.120Z",
+      "source": {
+        "gateway_id": "gateway-01",
+        "protocol": "modbus",
+        "boot_id": "019a1234-5678-7000-8000-000000000002",
+        "sequence": 1042,
+        "clock_origin": "gateway",
+        "clock_uncertainty_ms": 5
+      },
+      "measurements": {
+        "motor_temperature": {
+          "value": null,
+          "unit": "Cel",
+          "quality": "bad"
+        }
+      }
+    }
+  },
+  {
+    "name": "unknown-quality",
+    "valid": false,
+    "payload": {
+      "schema_version": "1.0",
+      "message_id": "019a1234-5678-7000-8000-000000000001",
+      "asset_id": "urn:openump:acme:berlin:press-04",
+      "metadata_revision": 1,
+      "observed_at": "2026-10-13T14:00:00.000Z",
+      "ingested_at": "2026-10-13T14:00:00.120Z",
+      "source": {
+        "gateway_id": "gateway-01",
+        "protocol": "modbus",
+        "boot_id": "019a1234-5678-7000-8000-000000000002",
+        "sequence": 1042,
+        "clock_origin": "gateway",
+        "clock_uncertainty_ms": 5
+      },
+      "measurements": {
+        "motor_temperature": {
+          "value": 67.2,
+          "unit": "Cel",
+          "quality": "ok"
+        }
+      }
+    }
+  },
+  {
+    "name": "missing-value",
+    "valid": false,
+    "payload": {
+      "schema_version": "1.0",
+      "message_id": "019a1234-5678-7000-8000-000000000001",
+      "asset_id": "urn:openump:acme:berlin:press-04",
+      "metadata_revision": 1,
+      "observed_at": "2026-10-13T14:00:00.000Z",
+      "ingested_at": "2026-10-13T14:00:00.120Z",
+      "source": {
+        "gateway_id": "gateway-01",
+        "protocol": "modbus",
+        "boot_id": "019a1234-5678-7000-8000-000000000002",
+        "sequence": 1042,
+        "clock_origin": "gateway",
+        "clock_uncertainty_ms": 5
+      },
+      "measurements": {
+        "motor_temperature": {
+          "unit": "Cel",
+          "quality": "good"
+        }
+      }
+    }
+  },
+  {
+    "name": "unsupported-unit",
+    "valid": false,
+    "payload": {
+      "schema_version": "1.0",
+      "message_id": "019a1234-5678-7000-8000-000000000001",
+      "asset_id": "urn:openump:acme:berlin:press-04",
+      "metadata_revision": 1,
+      "observed_at": "2026-10-13T14:00:00.000Z",
+      "ingested_at": "2026-10-13T14:00:00.120Z",
+      "source": {
+        "gateway_id": "gateway-01",
+        "protocol": "modbus",
+        "boot_id": "019a1234-5678-7000-8000-000000000002",
+        "sequence": 1042,
+        "clock_origin": "gateway",
+        "clock_uncertainty_ms": 5
+      },
+      "measurements": {
+        "motor_temperature": {
+          "value": 67.2,
+          "unit": "celsius",
+          "quality": "good"
+        }
+      }
+    }
+  },
+  {
+    "name": "empty-measurements",
+    "valid": false,
+    "payload": {
+      "schema_version": "1.0",
+      "message_id": "019a1234-5678-7000-8000-000000000001",
+      "asset_id": "urn:openump:acme:berlin:press-04",
+      "metadata_revision": 1,
+      "observed_at": "2026-10-13T14:00:00.000Z",
+      "ingested_at": "2026-10-13T14:00:00.120Z",
+      "source": {
+        "gateway_id": "gateway-01",
+        "protocol": "modbus",
+        "boot_id": "019a1234-5678-7000-8000-000000000002",
+        "sequence": 1042,
+        "clock_origin": "gateway",
+        "clock_uncertainty_ms": 5
+      },
+      "measurements": {}
+    }
+  },
+  {
+    "name": "too-many-measurements",
+    "valid": false,
+    "payload": {
+      "schema_version": "1.0",
+      "message_id": "019a1234-5678-7000-8000-000000000001",
+      "asset_id": "urn:openump:acme:berlin:press-04",
+      "metadata_revision": 1,
+      "observed_at": "2026-10-13T14:00:00.000Z",
+      "ingested_at": "2026-10-13T14:00:00.120Z",
+      "source": {
+        "gateway_id": "gateway-01",
+        "protocol": "modbus",
+        "boot_id": "019a1234-5678-7000-8000-000000000002",
+        "sequence": 1042,
+        "clock_origin": "gateway",
+        "clock_uncertainty_ms": 5
+      },
+      "measurements": {
+        "m0": {
+          "value": 0,
+          "unit": "1",
+          "quality": "good"
+        },
+        "m1": {
+          "value": 1,
+          "unit": "1",
+          "quality": "good"
+        },
+        "m2": {
+          "value": 2,
+          "unit": "1",
+          "quality": "good"
+        },
+        "m3": {
+          "value": 3,
+          "unit": "1",
+          "quality": "good"
+        },
+        "m4": {
+          "value": 4,
+          "unit": "1",
+          "quality": "good"
+        },
+        "m5": {
+          "value": 5,
+          "unit": "1",
+          "quality": "good"
+        },
+        "m6": {
+          "value": 6,
+          "unit": "1",
+          "quality": "good"
+        },
+        "m7": {
+          "value": 7,
+          "unit": "1",
+          "quality": "good"
+        },
+        "m8": {
+          "value": 8,
+          "unit": "1",
+          "quality": "good"
+        },
+        "m9": {
+          "value": 9,
+          "unit": "1",
+          "quality": "good"
+        },
+        "m10": {
+          "value": 10,
+          "unit": "1",
+          "quality": "good"
+        },
+        "m11": {
+          "value": 11,
+          "unit": "1",
+          "quality": "good"
+        },
+        "m12": {
+          "value": 12,
+          "unit": "1",
+          "quality": "good"
+        },
+        "m13": {
+          "value": 13,
+          "unit": "1",
+          "quality": "good"
+        },
+        "m14": {
+          "value": 14,
+          "unit": "1",
+          "quality": "good"
+        },
+        "m15": {
+          "value": 15,
+          "unit": "1",
+          "quality": "good"
+        },
+        "m16": {
+          "value": 16,
+          "unit": "1",
+          "quality": "good"
+        },
+        "m17": {
+          "value": 17,
+          "unit": "1",
+          "quality": "good"
+        },
+        "m18": {
+          "value": 18,
+          "unit": "1",
+          "quality": "good"
+        },
+        "m19": {
+          "value": 19,
+          "unit": "1",
+          "quality": "good"
+        },
+        "m20": {
+          "value": 20,
+          "unit": "1",
+          "quality": "good"
+        },
+        "m21": {
+          "value": 21,
+          "unit": "1",
+          "quality": "good"
+        },
+        "m22": {
+          "value": 22,
+          "unit": "1",
+          "quality": "good"
+        },
+        "m23": {
+          "value": 23,
+          "unit": "1",
+          "quality": "good"
+        },
+        "m24": {
+          "value": 24,
+          "unit": "1",
+          "quality": "good"
+        },
+        "m25": {
+          "value": 25,
+          "unit": "1",
+          "quality": "good"
+        },
+        "m26": {
+          "value": 26,
+          "unit": "1",
+          "quality": "good"
+        },
+        "m27": {
+          "value": 27,
+          "unit": "1",
+          "quality": "good"
+        },
+        "m28": {
+          "value": 28,
+          "unit": "1",
+          "quality": "good"
+        },
+        "m29": {
+          "value": 29,
+          "unit": "1",
+          "quality": "good"
+        },
+        "m30": {
+          "value": 30,
+          "unit": "1",
+          "quality": "good"
+        },
+        "m31": {
+          "value": 31,
+          "unit": "1",
+          "quality": "good"
+        },
+        "m32": {
+          "value": 32,
+          "unit": "1",
+          "quality": "good"
+        },
+        "m33": {
+          "value": 33,
+          "unit": "1",
+          "quality": "good"
+        },
+        "m34": {
+          "value": 34,
+          "unit": "1",
+          "quality": "good"
+        },
+        "m35": {
+          "value": 35,
+          "unit": "1",
+          "quality": "good"
+        },
+        "m36": {
+          "value": 36,
+          "unit": "1",
+          "quality": "good"
+        },
+        "m37": {
+          "value": 37,
+          "unit": "1",
+          "quality": "good"
+        },
+        "m38": {
+          "value": 38,
+          "unit": "1",
+          "quality": "good"
+        },
+        "m39": {
+          "value": 39,
+          "unit": "1",
+          "quality": "good"
+        },
+        "m40": {
+          "value": 40,
+          "unit": "1",
+          "quality": "good"
+        },
+        "m41": {
+          "value": 41,
+          "unit": "1",
+          "quality": "good"
+        },
+        "m42": {
+          "value": 42,
+          "unit": "1",
+          "quality": "good"
+        },
+        "m43": {
+          "value": 43,
+          "unit": "1",
+          "quality": "good"
+        },
+        "m44": {
+          "value": 44,
+          "unit": "1",
+          "quality": "good"
+        },
+        "m45": {
+          "value": 45,
+          "unit": "1",
+          "quality": "good"
+        },
+        "m46": {
+          "value": 46,
+          "unit": "1",
+          "quality": "good"
+        },
+        "m47": {
+          "value": 47,
+          "unit": "1",
+          "quality": "good"
+        },
+        "m48": {
+          "value": 48,
+          "unit": "1",
+          "quality": "good"
+        },
+        "m49": {
+          "value": 49,
+          "unit": "1",
+          "quality": "good"
+        },
+        "m50": {
+          "value": 50,
+          "unit": "1",
+          "quality": "good"
+        },
+        "m51": {
+          "value": 51,
+          "unit": "1",
+          "quality": "good"
+        },
+        "m52": {
+          "value": 52,
+          "unit": "1",
+          "quality": "good"
+        },
+        "m53": {
+          "value": 53,
+          "unit": "1",
+          "quality": "good"
+        },
+        "m54": {
+          "value": 54,
+          "unit": "1",
+          "quality": "good"
+        },
+        "m55": {
+          "value": 55,
+          "unit": "1",
+          "quality": "good"
+        },
+        "m56": {
+          "value": 56,
+          "unit": "1",
+          "quality": "good"
+        },
+        "m57": {
+          "value": 57,
+          "unit": "1",
+          "quality": "good"
+        },
+        "m58": {
+          "value": 58,
+          "unit": "1",
+          "quality": "good"
+        },
+        "m59": {
+          "value": 59,
+          "unit": "1",
+          "quality": "good"
+        },
+        "m60": {
+          "value": 60,
+          "unit": "1",
+          "quality": "good"
+        },
+        "m61": {
+          "value": 61,
+          "unit": "1",
+          "quality": "good"
+        },
+        "m62": {
+          "value": 62,
+          "unit": "1",
+          "quality": "good"
+        },
+        "m63": {
+          "value": 63,
+          "unit": "1",
+          "quality": "good"
+        },
+        "m64": {
+          "value": 64,
+          "unit": "1",
+          "quality": "good"
+        }
+      }
+    }
+  },
+  {
+    "name": "long-text",
+    "valid": false,
+    "payload": {
+      "schema_version": "1.0",
+      "message_id": "019a1234-5678-7000-8000-000000000001",
+      "asset_id": "urn:openump:acme:berlin:press-04",
+      "metadata_revision": 1,
+      "observed_at": "2026-10-13T14:00:00.000Z",
+      "ingested_at": "2026-10-13T14:00:00.120Z",
+      "source": {
+        "gateway_id": "gateway-01",
+        "protocol": "modbus",
+        "boot_id": "019a1234-5678-7000-8000-000000000002",
+        "sequence": 1042,
+        "clock_origin": "gateway",
+        "clock_uncertainty_ms": 5
+      },
+      "measurements": {
+        "motor_temperature": {
+          "value": 67.2,
+          "unit": "Cel",
+          "quality": "good"
+        },
+        "mode": {
+          "value": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+          "unit": "1",
+          "quality": "good"
+        }
+      }
+    }
+  },
+  {
+    "name": "invalid-measurement-name",
+    "valid": false,
+    "payload": {
+      "schema_version": "1.0",
+      "message_id": "019a1234-5678-7000-8000-000000000001",
+      "asset_id": "urn:openump:acme:berlin:press-04",
+      "metadata_revision": 1,
+      "observed_at": "2026-10-13T14:00:00.000Z",
+      "ingested_at": "2026-10-13T14:00:00.120Z",
+      "source": {
+        "gateway_id": "gateway-01",
+        "protocol": "modbus",
+        "boot_id": "019a1234-5678-7000-8000-000000000002",
+        "sequence": 1042,
+        "clock_origin": "gateway",
+        "clock_uncertainty_ms": 5
+      },
+      "measurements": {
+        "motor_temperature": {
+          "value": 67.2,
+          "unit": "Cel",
+          "quality": "good"
+        },
+        "Motor Temperature": {
+          "value": 1,
+          "unit": "Cel",
+          "quality": "good"
+        }
+      }
+    }
+  },
+  {
+    "name": "invalid-asset-id",
+    "valid": false,
+    "payload": {
+      "schema_version": "1.0",
+      "message_id": "019a1234-5678-7000-8000-000000000001",
+      "asset_id": "urn:openump:acme:berlin:Press_04",
+      "metadata_revision": 1,
+      "observed_at": "2026-10-13T14:00:00.000Z",
+      "ingested_at": "2026-10-13T14:00:00.120Z",
+      "source": {
+        "gateway_id": "gateway-01",
+        "protocol": "modbus",
+        "boot_id": "019a1234-5678-7000-8000-000000000002",
+        "sequence": 1042,
+        "clock_origin": "gateway",
+        "clock_uncertainty_ms": 5
+      },
+      "measurements": {
+        "motor_temperature": {
+          "value": 67.2,
+          "unit": "Cel",
+          "quality": "good"
+        }
+      }
+    }
+  },
+  {
+    "name": "nested-extension",
+    "valid": false,
+    "payload": {
+      "schema_version": "1.0",
+      "message_id": "019a1234-5678-7000-8000-000000000001",
+      "asset_id": "urn:openump:acme:berlin:press-04",
+      "metadata_revision": 1,
+      "observed_at": "2026-10-13T14:00:00.000Z",
+      "ingested_at": "2026-10-13T14:00:00.120Z",
+      "source": {
+        "gateway_id": "gateway-01",
+        "protocol": "modbus",
+        "boot_id": "019a1234-5678-7000-8000-000000000002",
+        "sequence": 1042,
+        "clock_origin": "gateway",
+        "clock_uncertainty_ms": 5
+      },
+      "measurements": {
+        "motor_temperature": {
+          "value": 67.2,
+          "unit": "Cel",
+          "quality": "good"
+        }
+      },
+      "extensions": {
+        "acme.info": {
+          "nested": true
+        }
+      }
+    }
+  }
+]

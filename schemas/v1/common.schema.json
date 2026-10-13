@@ -1,0 +1,122 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:openump:schema:1.0:common",
+  "$defs": {
+    "segment": {
+      "type": "string",
+      "pattern": "^[a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])?$",
+      "maxLength": 64
+    },
+    "asset_id": {
+      "type": "string",
+      "pattern": "^urn:openump:[a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])?:[a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])?:[a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])?$",
+      "maxLength": 205
+    },
+    "uuid": {
+      "type": "string",
+      "format": "uuid",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+    },
+    "timestamp": {
+      "type": "string",
+      "format": "date-time",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\\.[0-9]{3}Z$"
+    },
+    "revision": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 9007199254740991
+    },
+    "unit": {
+      "type": "string",
+      "enum": [
+        "1",
+        "%",
+        "Cel",
+        "K",
+        "bar",
+        "Pa",
+        "kPa",
+        "m",
+        "s",
+        "Hz",
+        "V",
+        "A",
+        "W"
+      ]
+    },
+    "measurement_name": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_]{0,63}$"
+    },
+    "extensions": {
+      "type": "object",
+      "maxProperties": 16,
+      "propertyNames": {
+        "pattern": "^[a-z][a-z0-9-]{0,31}\\.[a-z][a-z0-9_]{0,31}$"
+      },
+      "additionalProperties": {
+        "oneOf": [
+          {
+            "type": "string",
+            "maxLength": 256
+          },
+          {
+            "type": "number",
+            "minimum": -1e+308,
+            "maximum": 1e+308
+          },
+          {
+            "type": "boolean"
+          },
+          {
+            "type": "null"
+          }
+        ]
+      }
+    },
+    "source": {
+      "type": "object",
+      "properties": {
+        "gateway_id": {
+          "$ref": "urn:openump:schema:1.0:common#/$defs/segment"
+        },
+        "protocol": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9-]{0,31}$"
+        },
+        "boot_id": {
+          "$ref": "urn:openump:schema:1.0:common#/$defs/uuid"
+        },
+        "sequence": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "clock_origin": {
+          "enum": [
+            "device",
+            "gateway"
+          ]
+        },
+        "clock_uncertainty_ms": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "minimum": 0,
+          "maximum": 86400000
+        }
+      },
+      "required": [
+        "gateway_id",
+        "protocol",
+        "boot_id",
+        "sequence",
+        "clock_origin",
+        "clock_uncertainty_ms"
+      ],
+      "additionalProperties": false
+    }
+  }
+}

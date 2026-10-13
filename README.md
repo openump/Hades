@@ -13,9 +13,20 @@ git clone https://github.com/openump/Hades.git
 cd Hades
 cp .env.example .env
 git diff --check
+python3 -m venv .venv
+.venv/bin/python -m pip install -r requirements-dev.txt
+.venv/bin/python -m unittest discover -s tests -v
 ```
 
 The `.env` file is ignored and contains development identifiers only. Never commit device credentials, private keys, site exports, or runtime data.
+
+## Contracts and capability checks
+
+- [Namespace and identity](docs/protocol/namespace.md)
+- [Telemetry contract](docs/protocol/telemetry.md) and [versioning](docs/protocol/versioning.md)
+- [Selected dependency inventory](docs/dependencies.md) and [native probes](examples/component-probes/README.md)
+
+The contract checks are foundation tests; the complete conformance CLI and CI are Hades-006. Probe results cover native loopback capabilities, not a deployed stack.
 
 ## Planning and contributions
 
