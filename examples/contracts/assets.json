@@ -1,0 +1,28 @@
+[
+  {
+    "asset_id": "urn:openump:acme:berlin:press-04",
+    "enterprise": "acme",
+    "identity_site": "berlin",
+    "asset_key": "press-04",
+    "display_name": "Hydraulic Press",
+    "location": {
+      "site": "berlin",
+      "area": "assembly",
+      "line": "line-01",
+      "asset": "press-04"
+    }
+  },
+  {
+    "asset_id": "urn:openump:acme:berlin:pump-02",
+    "enterprise": "acme",
+    "identity_site": "berlin",
+    "asset_key": "pump-02",
+    "display_name": "Supply Pump",
+    "location": {
+      "site": "hamburg",
+      "area": "utilities",
+      "line": "unassigned",
+      "asset": "pump-02"
+    }
+  }
+]
