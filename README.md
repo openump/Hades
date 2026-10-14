@@ -31,6 +31,10 @@ The `.env` file is ignored and contains development identifiers only. Never comm
 
 Start the pinned local broker and run its restart probe using [the development guide](docs/tutorials/mqtt-development.md). This development profile is localhost-only with shared anonymous permissions; production identity and TLS come later.
 
+## Synthetic telemetry
+
+Run the Go simulator and validating consumer using [the sample guide](docs/tutorials/simulated-telemetry.md). The example covers metadata/status, normal and bad readings, null missing readings, and retry/duplicate handling. It does not connect to machines or store history yet.
+
 ## Contracts and capability checks
 
 - [Namespace and identity](docs/protocol/namespace.md)
