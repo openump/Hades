@@ -1,0 +1,128 @@
+#!/usr/bin/env python3
+"""Positive/negative mTLS, MQTT ACL, HTTP role and root-rotation checks."""
+import datetime,json,os,pathlib,ssl,subprocess,tempfile,time,urllib.request,urllib.error
+root=pathlib.Path(__file__).resolve().parents[1];os.chdir(root)
+for tool in ('hades-pki','hades-history-proxy','hades-normalizer','hades-history','hades-consumer'):
+ subprocess.run(['go','build','-o',f'artifacts/{tool}-native',f'./cmd/{tool}'],check=True)
+native=os.environ.get('HADES_MOSQUITTO_BINARY')
+mp=os.environ.get('HADES_SECURE_MQTT_PORT','18884');hp=os.environ.get('HADES_SECURE_HISTORY_PORT','18430')
+compose=['docker','compose','-f','deploy/compose.secure.yaml']
+children=[]
+with tempfile.TemporaryDirectory(prefix='hades-security-') as scratch:
+ logs=open(scratch+'/logs','w');consumerout=open(scratch+'/consumer','w');broker=None;vm=None;proxy=None;normalizer=None;history=None
+ def issue(version):
+  path=pathlib.Path(scratch)/version
+  subprocess.run(['artifacts/hades-pki-native','-out',str(path),'-test-identities'],check=True,stdout=subprocess.DEVNULL)
+  return path
+ v1=issue('v1');v2=issue('v2')
+ def flags(role,pki):return ['-tls-ca',str(pki/'ca.crt'),'-tls-cert',str(pki/(role+'.crt')),'-tls-key',str(pki/(role+'.key'))]
+ def context(role=None,pki=v1):
+  c=ssl.create_default_context(cafile=str(pki/'ca.crt'))
+  if role:c.load_cert_chain(str(pki/(role+'.crt')),str(pki/(role+'.key')))
+  return c
+ def http(path,role,code,data=None,port=hp,pki=v1):
+  request=urllib.request.Request(f'https://127.0.0.1:{port}'+path,data=data)
+  try:response=urllib.request.urlopen(request,context=context(role,pki),timeout=4);actual=response.status
+  except urllib.error.HTTPError as error:actual=error.code
+  assert actual==code,(role,path,actual,code)
+  return response if actual==code and code<400 else None
+ def wait(check,label):
+  last_error=None
+  for _ in range(200):
+   try:
+    if check():return
+   except (OSError,ValueError) as error:last_error=error
+   time.sleep(.1)
+  raise RuntimeError(label+' timed out: '+str(last_error)+'\n'+pathlib.Path(logs.name).read_text()[-8000:])
+ def start_services(pki):
+  global broker,vm,proxy
+  if native:
+   cfg=pathlib.Path('config/broker/security/mosquitto.conf').read_text().replace('8883 0.0.0.0',mp+' 127.0.0.1').replace('/credentials/broker/',str(pki)+'/').replace('/usr/local/lib/mosquitto_dynamic_security.so',os.environ['HADES_DYNSEC_PLUGIN']).replace('/mosquitto/data/',scratch+'/broker-data/')
+   pathlib.Path(scratch+'/broker-data').mkdir(exist_ok=True)
+   if not (pki/'roles.json').exists():(pki/'roles.json').write_bytes(pathlib.Path('config/broker/security/roles.json').read_bytes())
+   pathlib.Path(scratch+'/mosquitto.conf').write_text(cfg)
+   broker=subprocess.Popen([native,'-c',scratch+'/mosquitto.conf'],stdout=logs,stderr=logs);children.append(broker)
+   if vm is None:
+    vm=subprocess.Popen([os.environ['HADES_VM_BINARY'],'-httpListenAddr=127.0.0.1:18431','-storageDataPath='+scratch+'/vm','-inmemoryDataFlushInterval=1s','-retentionPeriod=1d','-dedup.minScrapeInterval=1ms'],stdout=logs,stderr=logs);children.append(vm)
+   proxy=subprocess.Popen(['artifacts/hades-history-proxy-native','-listen','127.0.0.1:'+hp,'-backend','http://127.0.0.1:18431']+flags('history-proxy',pki),stdout=logs,stderr=logs);children.append(proxy)
+  else:
+   os.environ['HADES_SECURITY_DIR']=str(pki);os.environ['HADES_SECURE_MQTT_PORT']=mp;os.environ['HADES_SECURE_HISTORY_PORT']=hp
+   subprocess.run(['env','CGO_ENABLED=0','GOOS=linux','GOARCH=amd64','go','build','-o','artifacts/hades-history-proxy','./cmd/hades-history-proxy'],check=True)
+   subprocess.run(compose+['up','--build','-d','--force-recreate','security-init','broker','historian','history-proxy'],check=True)
+  wait(lambda:http('/health','admin',200,pki=pki) is not None,'secure historian readiness')
+ def command(binary,role,pki,old=None):
+  if native:base=[os.environ['HADES_MQTT_'+binary.upper()],'-h','127.0.0.1','-p',mp]
+  else:base=compose+['exec','-T','broker','mosquitto_'+binary,'-h','127.0.0.1','-p','8883']
+  # Native uses host credentials; Compose executes clients on host through the
+  # built image with a read-only mount, so old/new roots remain testable.
+  if not native:base=['docker','run','--rm','--network','host','-v',scratch+':/test:ro','--entrypoint','mosquitto_'+binary,'--user',str(os.getuid()),'openump/hades-mosquitto:2.1.2-dev','-h','127.0.0.1','-p',mp]
+  prefix=str(pki) if native else '/test/'+pki.name
+  identity=pki if old is None else old;identityprefix=str(identity) if native else '/test/'+identity.name
+  base+=['--cafile',prefix+'/ca.crt']
+  if role:base+=['--cert',identityprefix+'/'+role+'.crt','--key',identityprefix+'/'+role+'.key']
+  return base+['-V','mqttv5','-q','1']
+ def pub(role,topic,allowed=True,pki=v1,old=None):
+  result=subprocess.run(command('pub',role,pki,old)+['-t',topic,'-m','probe'],capture_output=True,timeout=8)
+  text=result.stdout+result.stderr
+  accepted=result.returncode==0 and b'Not authorized' not in text and b'not authorised' not in text
+  assert accepted==allowed,(role,topic,result.returncode,text.decode()[-500:])
+ def denied_sub(role,topic):
+  result=subprocess.run(command('sub',role,v1)+['-t',topic,'-W','2','-d'],capture_output=True,timeout=5)
+  text=result.stdout+result.stderr
+  assert b'135' in text or b'Not authorized' in text or b'not authorised' in text,(role,topic,text)
+ try:
+  start_services(v1)
+  topic='openump/v1/acme/berlin/assembly/line-01/press-04/telemetry'
+  wait(lambda:subprocess.run(command('pub','admin',v1)+['-t','hades/admin/health','-m','ready'],capture_output=True,timeout=2).returncode==0,'secure broker readiness')
+  # Untrusted/no client certificate and trusted but unprivileged identity.
+  pub(None,topic,False);pub('outsider',topic,False);pub('consumer-primary',topic,False);pub('normalizer','openump/v1/other/site/area/line/asset/telemetry',False)
+  pub('normalizer',topic);pub('history-adapter',topic,False)
+  denied_sub('normalizer',topic);denied_sub('consumer-primary','#');denied_sub('history-adapter',topic.rsplit('/',1)[0]+'/metadata')
+  pub('consumer-secondary','$CONTROL/dynamic-security/v1',False)
+  denied_sub('consumer-primary','$CONTROL/dynamic-security/v1/response')
+  http('/api/v1/query_range?query=up','consumer-primary',200)
+  http('/api/v1/admin/tsdb/delete_series','consumer-primary',403);http('/metrics','history-adapter',403)
+  http('/api/v1/import/prometheus','consumer-secondary',403,data=b'test 1\n')
+  http('/health','outsider',403)
+  try:http('/health',None,200);raise AssertionError('anonymous HTTPS accepted')
+  except (OSError,urllib.error.URLError):pass
+  # Actual Go mTLS path: gateway HTTPS -> normalizer TLS MQTT -> consumer/history.
+  history=subprocess.Popen(['artifacts/hades-history-native','-broker','tls://127.0.0.1:'+mp,'-historian','https://127.0.0.1:'+hp,'-intake',scratch+'/intake','-quarantine',scratch+'/history-quarantine']+flags('history-adapter',v1),stdout=logs,stderr=logs);children.append(history)
+  wait(lambda:'"type":"history_ready"' in pathlib.Path(logs.name).read_text(),'TLS history subscription')
+  consumer=subprocess.Popen(['artifacts/hades-consumer-native','-broker','tls://127.0.0.1:'+mp,'-count','1','-timeout','40s']+flags('consumer-primary',v1),stdout=consumerout,stderr=logs);children.append(consumer)
+  wait(lambda:'"type":"ready"' in pathlib.Path(consumerout.name).read_text(),'TLS Go consumer')
+  normalizer=subprocess.Popen(['artifacts/hades-normalizer-native','-broker','tls://127.0.0.1:'+mp,'-listen','127.0.0.1:18083','-quarantine',scratch+'/normalization-quarantine','-ingress-ca',str(v1/'ca.crt'),'-ingress-cert',str(v1/'ingress.crt'),'-ingress-key',str(v1/'ingress.key')]+flags('normalizer',v1),stdout=logs,stderr=logs);children.append(normalizer)
+  wait(lambda:http('/health','admin',200,port='18083') is not None,'mTLS ingress')
+  http('/observations','consumer-primary',403,data=b'{}',port='18083')
+  fixture=json.loads(pathlib.Path('examples/raw-observations/valid.json').read_text())
+  fixture['observed_at']=(datetime.datetime.now(datetime.timezone.utc)-datetime.timedelta(seconds=1)).isoformat(timespec='milliseconds').replace('+00:00','Z');fixture['ingested_at']=fixture['observed_at']
+  http('/observations','gateway-press-04',202,data=json.dumps(fixture).encode(),port='18083')
+  assert consumer.wait(timeout=40)==0,pathlib.Path(logs.name).read_text()[-4000:]
+  def accepted():return any(json.load(open(p))['value']['state']=='api_accepted' for p in pathlib.Path(scratch+'/intake').glob('*.json'))
+  wait(accepted,'TLS synced history and API acceptance')
+  for child in (normalizer,history):child.terminate();child.wait(timeout=10)
+  if native:
+   for child in (broker,proxy):child.terminate();child.wait(timeout=10)
+  else:
+   subprocess.run(compose+['stop','broker','history-proxy'],check=True)
+  start_services(v2)
+  pub('normalizer',topic,False,pki=v2,old=v1);pub('normalizer',topic,True,pki=v2)
+  # Go client must reconnect under the replacement trust/identity bundle.
+  previous=len(pathlib.Path(consumerout.name).read_text())
+  rotated=subprocess.Popen(['artifacts/hades-consumer-native','-broker','tls://127.0.0.1:'+mp,'-count','1','-timeout','2s']+flags('consumer-primary',v2),stdout=consumerout,stderr=logs);children.append(rotated)
+  wait(lambda:'"type":"ready"' in pathlib.Path(consumerout.name).read_text()[previous:],'rotated Go subscription')
+  rotated.terminate();rotated.wait(timeout=5)
+  if not native:
+   config=json.loads(subprocess.check_output(compose+['config','--format','json']))
+   assert not config['services']['historian'].get('ports')
+   assert config['networks']['history-backend']['internal']
+   assert all(p['host_ip']=='127.0.0.1' and p['target'] in (8883,8429) for service in config['services'].values() for p in service.get('ports',[]))
+  print('security: mTLS Go pipeline, publish/SUBACK/management denials, loopback ports and CA rotation/reconnection passed')
+ finally:
+  for child in children:
+   if child.poll() is None:child.terminate()
+  for child in children:
+   try:child.wait(timeout=10)
+   except subprocess.TimeoutExpired:child.kill();child.wait()
+  if not native:subprocess.run(compose+['down','-v'],check=False)
+  logs.close();consumerout.close()

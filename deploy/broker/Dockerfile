@@ -5,7 +5,7 @@ WORKDIR /src
 RUN curl -fsSL https://mosquitto.org/files/source/mosquitto-2.1.2.tar.gz -o source.tar.gz \
     && echo 'fd905380691ac65ea5a93779e8214941829e3d6e038d5edff9eac5fd74cbed02  source.tar.gz' | sha256sum -c - \
     && tar -xzf source.tar.gz \
-    && cmake -S mosquitto-2.1.2 -B build -DWITH_TLS=ON -DWITH_WEBSOCKETS=OFF -DWITH_DOCS=OFF -DWITH_PLUGINS=OFF -DWITH_TESTS=OFF -DCMAKE_INSTALL_PREFIX=/opt/install \
+    && cmake -S mosquitto-2.1.2 -B build -DWITH_TLS=ON -DWITH_WEBSOCKETS=OFF -DWITH_DOCS=OFF -DWITH_PLUGINS=ON -DWITH_PLUGIN_DYNAMIC_SECURITY=ON -DWITH_PLUGIN_ACL_FILE=OFF -DWITH_PLUGIN_PASSWORD_FILE=OFF -DWITH_PLUGIN_PERSIST_SQLITE=OFF -DWITH_PLUGIN_SPARKPLUG_AWARE=OFF -DWITH_PLUGIN_EXAMPLES=OFF -DWITH_TESTS=OFF -DCMAKE_INSTALL_PREFIX=/opt/install \
     && cmake --build build -j 2 && cmake --install build
 FROM alpine:3.24@sha256:294b683cb724975bec92580e1e685676bd4b50bda910ddb8c51d4cabeaec77e6
 RUN apk add --no-cache libssl3=3.5.9-r0 libcrypto3=3.5.9-r0 cjson=1.7.19-r1 \

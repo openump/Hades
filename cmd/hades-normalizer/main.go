@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"github.com/openump/Hades/internal/normalize"
 	"github.com/openump/Hades/internal/sample"
+	"github.com/openump/Hades/internal/transport"
 	"log"
 	"net"
 	"net/http"
@@ -30,6 +31,11 @@ func run() error {
 	quarantine := flag.String("quarantine", "runtime/quarantine", "private bounded quarantine")
 	records := flag.Int("queue-records", 4096, "volatile queue record limit")
 	timeout := flag.Duration("timeout", 0, "optional development run duration")
+	serverCredentials := &transport.Paths{}
+	flag.StringVar(&serverCredentials.CA, "ingress-ca", "", "ingress client CA")
+	flag.StringVar(&serverCredentials.Cert, "ingress-cert", "", "ingress server certificate")
+	flag.StringVar(&serverCredentials.Key, "ingress-key", "", "ingress server key")
+	credentials := transport.Flags()
 	flag.Parse()
 	host, _, err := net.SplitHostPort(*listen)
 	if err != nil || (host != "127.0.0.1" && host != "::1") {
@@ -38,6 +44,13 @@ func run() error {
 	cfg, err := sample.Load(*root, *config)
 	if err != nil {
 		return err
+	}
+	cfg.TLS, err = transport.Client(*credentials)
+	if err != nil {
+		return err
+	}
+	if cfg.TLS != nil && *serverCredentials == (transport.Paths{}) {
+		return fmt.Errorf("secure broker requires mTLS ingress credentials")
 	}
 	raw, err := os.ReadFile(*mapping)
 	if err != nil {
@@ -76,7 +89,18 @@ func run() error {
 	}
 	errors := make(chan error, 2)
 	workerDone := make(chan struct{})
-	go func() { errors <- server.Serve(listener) }()
+	if *serverCredentials != (transport.Paths{}) {
+		tlsConfig, err := transport.Server(*serverCredentials)
+		if err != nil {
+			listener.Close()
+			return err
+		}
+		server.TLSConfig = tlsConfig
+		server.Handler = transport.Ingress(ingress)
+		go func() { errors <- server.ServeTLS(listener, "", "") }()
+	} else {
+		go func() { errors <- server.Serve(listener) }()
+	}
 	go func() {
 		defer close(workerDone)
 		errors <- ingress.Run(ctx, func(c context.Context, p []byte) error { return client.Publish(c, cfg.Prefix+"telemetry", p, false, 0) })

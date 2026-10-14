@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/openump/Hades/internal/sample"
+	"github.com/openump/Hades/internal/transport"
 )
 
 func run() error {
@@ -20,11 +21,16 @@ func run() error {
 	config := flag.String("config", "examples/site/metadata.json", "approved sample metadata snapshot")
 	count := flag.Int("count", 3, "unique telemetry observations before exit (1–10000)")
 	timeout := flag.Duration("timeout", 60*time.Second, "total run deadline")
+	credentials := transport.Flags()
 	flag.Parse()
 	if flag.NArg() != 0 || *count < 1 || *count > 10000 || *timeout <= 0 {
 		return fmt.Errorf("invalid arguments")
 	}
 	cfg, err := sample.Load(*root, *config)
+	if err != nil {
+		return err
+	}
+	cfg.TLS, err = transport.Client(*credentials)
 	if err != nil {
 		return err
 	}

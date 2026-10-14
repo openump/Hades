@@ -13,6 +13,7 @@ import (
 	"github.com/openump/Hades/internal/history"
 	"github.com/openump/Hades/internal/sample"
 	"github.com/openump/Hades/internal/storage"
+	"github.com/openump/Hades/internal/transport"
 )
 
 func main() {
@@ -28,8 +29,13 @@ func run() error {
 	intake := flag.String("intake", "runtime/history-intake", "private synced intake")
 	quarantine := flag.String("quarantine", "runtime/history-quarantine", "private diagnostic store")
 	resume := flag.String("resume-id", "", "resume one suspended immutable message before running")
+	credentials := transport.Flags()
 	flag.Parse()
 	cfg, err := sample.LoadContext(*root, *config)
+	if err != nil {
+		return err
+	}
+	cfg.TLS, err = transport.Client(*credentials)
 	if err != nil {
 		return err
 	}
@@ -49,7 +55,7 @@ func run() error {
 	}
 	defer diagnostic.Close()
 	adapter.Diagnostic = diagnostic.Write
-	sink, err := history.NewSink(*address)
+	sink, err := history.NewSinkTLS(*address, cfg.TLS)
 	if err != nil {
 		return err
 	}

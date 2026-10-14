@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/rand"
+	"crypto/tls"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -21,6 +22,7 @@ import (
 const Timestamp = "2006-01-02T15:04:05.000Z"
 
 type Config struct {
+	TLS           *tls.Config
 	Validator     *contracts.Validator
 	Metadata      map[string]any
 	MetadataBytes []byte
@@ -65,7 +67,7 @@ func LoadContext(root, path string) (*Config, error) {
 		return nil, err
 	}
 	prefix := strings.Join([]string{"openump", "v1", asset.Enterprise, asset.Location.Site, asset.Location.Area, asset.Location.Line, asset.Location.Asset, ""}, "/")
-	return &Config{v, m, raw, registry, prefix, time.Duration(Num(m["acquisition"].(map[string]any)["expected_status_interval_ms"])) * time.Millisecond}, nil
+	return &Config{Validator: v, Metadata: m, MetadataBytes: raw, Registry: registry, Prefix: prefix, Interval: time.Duration(Num(m["acquisition"].(map[string]any)["expected_status_interval_ms"])) * time.Millisecond}, nil
 }
 func Load(root, path string) (*Config, error) {
 	c, err := LoadContext(root, path)

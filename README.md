@@ -56,3 +56,6 @@ The owner has not yet selected a project license. No open-source license grant i
 Raw ingress, scaling and bounded diagnostics: [normalization and quarantine](docs/operations/quarantine.md).
 
 Numeric ingestion, synced intake and outage recovery: [history mapping](docs/protocol/history-mapping.md).
+
+Independent consumer smoke: [local slice](docs/tutorials/local-slice.md).
+Service identities and segmented TLS profile: [identity and networking](docs/operations/identity-networking.md).
