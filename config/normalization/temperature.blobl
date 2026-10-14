@@ -1,0 +1,4 @@
+# Identity, time and provenance are preserved outside this reading-only mapping.
+root.motor_temperature = this.temperature
+root.motor_temperature.unit = "Cel"
+root.motor_temperature.value = if this.temperature.value == null { null } else { this.temperature.value * 0.1 }

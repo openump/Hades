@@ -1,0 +1,23 @@
+{
+  "schema_version": "1.0",
+  "asset_id": "urn:openump:acme:berlin:press-04",
+  "metadata_revision": 1,
+  "message_id": "019a1234-5678-7000-8000-000000000020",
+  "observed_at": "2026-10-14T12:00:00.000Z",
+  "ingested_at": "2026-10-14T12:00:00.001Z",
+  "source": {
+    "gateway_id": "simulator-01",
+    "protocol": "simulator",
+    "boot_id": "019a1234-5678-7000-8000-000000000021",
+    "sequence": 1,
+    "clock_origin": "gateway",
+    "clock_uncertainty_ms": 0
+  },
+  "signals": {
+    "temperature": {
+      "value": 672,
+      "unit": "deciCel",
+      "quality": "good"
+    }
+  }
+}

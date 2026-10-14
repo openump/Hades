@@ -52,3 +52,5 @@ Implementation tickets live in [Hermes](https://github.com/openump/Hermes/blob/m
 ## License status
 
 The owner has not yet selected a project license. No open-source license grant is asserted by this repository until that decision is recorded and a `LICENSE` file is added. See [ADR-0001](docs/decisions/0001-license-policy.md). The intended open-source reference stack requires explicit review of each dependency's exact edition and license.
+
+Raw ingress, scaling and bounded diagnostics: [normalization and quarantine](docs/operations/quarantine.md).
