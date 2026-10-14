@@ -16,7 +16,7 @@ go build -o artifacts/hades-consumer ./cmd/hades-consumer
 go build -o artifacts/hades-simulator ./cmd/hades-simulator
 go build -o artifacts/hades-check ./cmd/hades-check
 broker="mqtt://127.0.0.1:${HADES_MQTT_PORT:-1883}"
-artifacts/hades-consumer -broker "$broker" -count 6 -timeout 60s > "$work/consumer.jsonl" 2> "$work/consumer.err" &
+artifacts/hades-consumer -broker "$broker" -count 15 -timeout 60s > "$work/consumer.jsonl" 2> "$work/consumer.err" &
 consumer=$!
 wait_for() {
   tries=0
@@ -27,7 +27,7 @@ wait_for() {
   done
 }
 wait_for '"type":"ready"' "$work/consumer.jsonl"
-artifacts/hades-simulator -broker "$broker" -scenario cycle -count 6 -timeout 60s > "$work/producer.jsonl" 2> "$work/producer.err" &
+artifacts/hades-simulator -broker "$broker" -scenario cycle -count 15 -timeout 60s > "$work/producer.jsonl" 2> "$work/producer.err" &
 producer=$!
 wait_for '"type":"telemetry"' "$work/consumer.jsonl"
 wait_for '"type":"published"' "$work/producer.jsonl"
@@ -51,7 +51,7 @@ from pathlib import Path
 p=Path(sys.argv[1]);rows=[json.loads(x) for x in p.joinpath('consumer.jsonl').read_text().splitlines()]
 produced=[json.loads(x)['payload'] for x in p.joinpath('producer.jsonl').read_text().splitlines()]
 telemetry=[r for r in rows if r['type']=='telemetry'];unique=[r for r in telemetry if not r['duplicate']]
-assert len(unique)==6 and any(r['duplicate'] for r in telemetry)
+assert len(unique)==15 and any(r['duplicate'] for r in telemetry)
 assert any(r['type']=='ready' and r.get('reconnected') for r in rows)
 assert {r['type'] for r in rows}>={'metadata','status','telemetry'}
 assert {r['quality'] for r in unique}=={'good','bad'}
@@ -65,5 +65,5 @@ for row in rows:
  subprocess.run(['artifacts/hades-check','-kind',row['type'],'-file',str(raw)],check=True,stdout=subprocess.DEVNULL)
  if row['type']=='telemetry':
   assert row['observed_at']==by_id[row['message_id']]['observed_at']
-print('simulator smoke passed: six unique observations, duplicate handling, metadata/status, null bad reading, restart/reconnect, schema validation')
+print('simulator smoke passed: fifteen unique observations, duplicate handling, metadata/status, null bad reading, restart/reconnect, schema validation')
 PY
