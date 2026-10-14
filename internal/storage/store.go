@@ -201,3 +201,14 @@ func (s *Store) Close() error {
 	s.closed = true
 	return s.lock.Close()
 }
+
+// Stats is called under the owning service's lock; free space is sampled live.
+func (s *Store) Stats() map[string]any {
+	var stat syscall.Statfs_t
+	err := syscall.Statfs(s.Dir, &stat)
+	var free uint64
+	if err == nil {
+		free = uint64(stat.Bavail) * uint64(stat.Bsize)
+	}
+	return map[string]any{"records": len(s.Records), "bytes": s.Bytes, "limit_records": s.maxRecords, "limit_bytes": s.maxBytes, "free_bytes": free, "reserve_bytes": s.reserve, "disk_reserve_ok": err == nil && free >= s.reserve, "disk_probe_ok": err == nil}
+}

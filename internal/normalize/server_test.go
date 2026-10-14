@@ -3,6 +3,7 @@ package normalize
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -61,5 +62,32 @@ func TestAdmissionQuarantineAndRetry(t *testing.T) {
 	defer server.mu.Unlock()
 	if len(server.pending) != 0 {
 		t.Fatal("PUBACK did not retire")
+	}
+}
+
+func TestHealthReportsBackpressureAndLatency(t *testing.T) {
+	e, _ := fixture(t)
+	s, err := NewServer(e, t.TempDir()+"/q", 1, 100000)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	raw, _ := os.ReadFile("../../examples/raw-observations/valid.json")
+	for i := 0; i < 2; i++ {
+		w := httptest.NewRecorder()
+		s.ServeHTTP(w, httptest.NewRequest("POST", "/observations", bytes.NewReader(raw)))
+	}
+	w := httptest.NewRecorder()
+	s.ServeHTTP(w, httptest.NewRequest("GET", "/health", nil))
+	var stats map[string]any
+	json.Unmarshal(w.Body.Bytes(), &stats)
+	if stats["capacity_refusals"] != float64(1) || stats["processing_count"] != float64(2) || stats["pending_records"] != float64(1) {
+		t.Fatal(stats)
+	}
+	if _, ok := stats["disk_reserve_ok"].(bool); !ok {
+		t.Fatal(stats)
+	}
+	if stats["stale_readings"] != float64(2) {
+		t.Fatal(stats)
 	}
 }

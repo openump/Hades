@@ -15,6 +15,9 @@ import (
 
 // Submit owns one immutable volatile observation until explicit volatile admission.
 func Submit(ctx context.Context, client *http.Client, endpoint string, raw []byte) error {
+	return SubmitObserved(ctx, client, endpoint, raw, func() {})
+}
+func SubmitObserved(ctx context.Context, client *http.Client, endpoint string, raw []byte, retry func()) error {
 	for attempt := 0; ; attempt++ {
 		hint := time.Duration(0)
 		request, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(raw))
@@ -42,6 +45,7 @@ func Submit(ctx context.Context, client *http.Client, endpoint string, raw []byt
 				return fmt.Errorf("permanent ingress rejection: HTTP %d", response.StatusCode)
 			}
 		}
+		retry()
 		timer := time.NewTimer(max(delivery.Delay(attempt), hint))
 		select {
 		case <-ctx.Done():

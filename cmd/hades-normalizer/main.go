@@ -6,6 +6,7 @@ import (
 	"flag"
 	"fmt"
 	"github.com/openump/Hades/internal/normalize"
+	"github.com/openump/Hades/internal/operations"
 	"github.com/openump/Hades/internal/sample"
 	"github.com/openump/Hades/internal/transport"
 	"log"
@@ -36,7 +37,13 @@ func run() error {
 	flag.StringVar(&serverCredentials.Cert, "ingress-cert", "", "ingress server certificate")
 	flag.StringVar(&serverCredentials.Key, "ingress-key", "", "ingress server key")
 	credentials := transport.Flags()
+	logPath := operations.LogFlag()
 	flag.Parse()
+	closeLog, err := operations.ConfigureLog(*logPath)
+	if err != nil {
+		return err
+	}
+	defer closeLog()
 	host, _, err := net.SplitHostPort(*listen)
 	if err != nil || (host != "127.0.0.1" && host != "::1") {
 		return fmt.Errorf("ingress must bind a loopback IP")

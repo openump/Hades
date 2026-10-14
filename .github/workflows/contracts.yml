@@ -111,3 +111,22 @@ jobs:
         env:
           HADES_SECURITY_DIR: /tmp/hades-security-cleanup
         run: docker compose -f deploy/compose.secure.yaml down -v
+
+  recovery:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      HADES_RECOVERY_STACK: '1'
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Isolated crash, capacity and blocked-consumer matrix
+        run: ./scripts/run-recovery
+      - name: Measured ID ledger
+        if: always()
+        run: |
+          test ! -f artifacts/recovery/report.json || cat artifacts/recovery/report.json
+          test ! -f artifacts/recovery/blocked-consumer.jsonl || cat artifacts/recovery/blocked-consumer.jsonl

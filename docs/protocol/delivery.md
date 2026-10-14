@@ -92,3 +92,7 @@ The proposed receiver deduplication window is seven days from first durable clou
 Measure losses by comparing produced, admitted, synced, retired, and received IDs. Report dropped records/bytes, reason, stage, oldest queued age, occupancy, retry count, and receipt failures. No claim of zero loss, guaranteed outage duration, or real-time deadlines is justified until failure and capacity tickets provide evidence. Sustainable replay also requires destination processing capacity above ongoing acquisition rate.
 
 After a volatile-stage crash, the exact lost count may be unknowable without an external source record. Runtime diagnostics must report that uncertainty rather than fabricate counts. Failure tests use an independently recorded producer-ID set to measure the observed loss window. Durable intake assumes the chosen filesystem/storage honors sync; storage and restart behavior must be verified on the pilot host.
+
+## Reference failure evidence
+
+Hades-017's [recovery matrix](../operations/recovery-evidence.md) records volatile-stage loss, synced intake recovery, replay after unknown sink outcome, queue/quarantine capacity and a measured historian API-acknowledgement crash gap. Results qualify only the tested profile/host; pilot hardware and physical storage failure evidence remain pending.

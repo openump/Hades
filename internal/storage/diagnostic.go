@@ -33,7 +33,7 @@ func (d *Diagnostics) Write(topic string, payload []byte, reason error) error {
 		topic = topic[:1024]
 	}
 	raw, _ := json.Marshal(map[string]any{"received_at": time.Now().UTC(), "topic": topic, "reason": message, "payload_prefix": payload[:min(len(payload), 65536)], "truncated": len(payload) > 65536})
-	for len(d.store.Records) >= 10000 || d.store.Bytes+len(raw)+Overhead+128 > 64*1024*1024 {
+	for len(d.store.Records) >= d.store.maxRecords || d.store.Bytes+len(raw)+Overhead+128 > d.store.maxBytes {
 		keys := make([]string, 0, len(d.store.Records))
 		for k := range d.store.Records {
 			keys = append(keys, k)
@@ -55,5 +55,7 @@ func (d *Diagnostics) Close() error { d.mu.Lock(); defer d.mu.Unlock(); return d
 func (d *Diagnostics) Stats() map[string]any {
 	d.mu.Lock()
 	defer d.mu.Unlock()
-	return map[string]any{"records": len(d.store.Records), "bytes": d.store.Bytes, "evictions": d.Evicted}
+	stats := d.store.Stats()
+	stats["evictions"] = d.Evicted
+	return stats
 }

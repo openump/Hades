@@ -1,0 +1,29 @@
+# Reference host resource boundary. Provision per-role credentials/config first.
+# Copy to /etc/systemd/system and supply /etc/hades/<instance>.env via deployment.
+[Unit]
+Description=Hades reference service %i
+After=network.target
+[Service]
+Type=simple
+User=hades
+Group=hades
+EnvironmentFile=/etc/hades/%i.env
+ExecStart=/usr/local/bin/%i $HADES_ARGS
+Restart=on-failure
+RestartSec=5s
+CPUQuota=50%
+MemoryMax=256M
+TasksMax=64
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ReadWritePaths=/var/lib/hades/%i /var/log/hades/%i
+UMask=0077
+StandardOutput=null
+StandardError=journal
+LogRateLimitIntervalSec=30s
+LogRateLimitBurst=100
+TimeoutStopSec=15s
+[Install]
+WantedBy=multi-user.target

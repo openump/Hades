@@ -43,7 +43,9 @@ services:
     cap_drop: [ALL]
     security_opt: [no-new-privileges:true]
     mem_limit: 128m
+    cpus: 0.5
     stop_grace_period: 15s
+    logging: {driver: json-file, options: {max-size: "5m", max-file: "2"}}
     networks: [edge]
   historian:
     image: openump/hades-victoriametrics:1.154.0-dev
@@ -54,7 +56,9 @@ services:
     cap_drop: [ALL]
     security_opt: [no-new-privileges:true]
     mem_limit: 256m
+    cpus: 1
     stop_grace_period: 30s
+    logging: {driver: json-file, options: {max-size: "5m", max-file: "2"}}
     networks: [history-backend]
   history-proxy:
     image: openump/hades-history-proxy:dev
@@ -69,6 +73,8 @@ services:
     cap_drop: [ALL]
     security_opt: [no-new-privileges:true]
     mem_limit: 64m
+    cpus: 0.5
+    logging: {driver: json-file, options: {max-size: "5m", max-file: "2"}}
     networks: [edge, history-backend]
 volumes:
   secure-credentials:
