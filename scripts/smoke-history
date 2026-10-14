@@ -74,8 +74,12 @@ with tempfile.TemporaryDirectory(prefix='hades-history-') as scratch:
    if native:command=[os.environ['HADES_MQTT_PUB'],'-h','127.0.0.1','-p',port]
    else:command=compose+['exec','-T','broker','mosquitto_pub','-h','127.0.0.1','-p','1883']
    subprocess.run(command+['-V','mqttv5','-q','1','-t',topic,'-s'],input=raw,check=True)
+  def history_stats():
+   events=[json.loads(line) for line in pathlib.Path(stdout.name).read_text().splitlines()]
+   return next((e['stats'] for e in reversed(events) if e.get('type')=='history_stats'),{})
+  baseline_duplicates=history_stats().get('duplicates',0)
   publish(normalized)
-  wait_for(lambda:'"duplicates":1' in pathlib.Path(stdout.name).read_text(),'duplicate replay')
+  wait_for(lambda:history_stats().get('duplicates',0)>baseline_duplicates,'duplicate replay')
   assert len(records())==3
   if interop:
    wait_for(lambda:'"duplicate":true' in pathlib.Path(primary_out.name).read_text(),'primary duplicate')
