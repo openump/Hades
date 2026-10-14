@@ -102,6 +102,7 @@ func run() error {
 			<-workerDone
 			return nil
 		case err := <-subscription.Errors:
+			encoder.Encode(map[string]any{"type": "history_failure", "stats": adapter.Stats(), "quarantine": diagnostic.Stats()})
 			stop()
 			subscription.Close()
 			<-workerDone

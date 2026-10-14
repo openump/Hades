@@ -63,3 +63,5 @@ private disposable state; it emits an ID comparison report. Linux CI repeats
 these plus the existing TLS, independent-consumer and source-to-history checks.
 Real pilot CPU/RAM/log/disk measurements and layer fault drills remain pending
 Hades-014 hardware selection and Hades-022 measurement.
+
+References: [systemd resource controls](https://github.com/systemd/systemd/blob/v259/man/systemd.resource-control.xml), [host execution/log controls](https://github.com/systemd/systemd/blob/v259/man/systemd.exec.xml).

@@ -17,6 +17,7 @@ import (
 )
 
 type Server struct {
+	refusedBytes                                                                        uint64
 	pendingSince                                                                        []time.Time
 	capacityRefusals, storageFailures, processingCount, staleReadings, unknownFreshness uint64
 	processingMS                                                                        float64
@@ -51,7 +52,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		if len(s.pendingSince) > 0 {
 			oldestMS = max(time.Since(s.pendingSince[0]).Milliseconds(), 0)
 		}
-		json.NewEncoder(w).Encode(map[string]any{"pending_records": len(s.pending), "pending_bytes": s.bytes, "admitted": s.admitted, "published": s.published, "rejected": s.rejected, "quarantine_records": len(s.quarantine.Records), "quarantine_bytes": s.quarantine.Bytes, "quarantine_evictions": s.evicted, "retries": s.retries, "publish_failures": s.retries, "capacity_refusals": s.capacityRefusals, "storage_failures": s.storageFailures, "processing_count": s.processingCount, "processing_ms_sum": s.processingMS, "stale_readings": s.staleReadings, "unknown_freshness": s.unknownFreshness, "disk_reserve_ok": s.quarantine.Available(0) == nil, "queue_limit_records": s.maxRecords, "queue_limit_bytes": s.maxBytes, "last_admission": s.lastAdmission, "oldest_pending_ms": oldestMS, "transfer_state": "not_implemented"})
+		json.NewEncoder(w).Encode(map[string]any{"pending_records": len(s.pending), "pending_bytes": s.bytes, "admitted": s.admitted, "published": s.published, "rejected": s.rejected, "quarantine_records": len(s.quarantine.Records), "quarantine_bytes": s.quarantine.Bytes, "quarantine_evictions": s.evicted, "retries": s.retries, "publish_failures": s.retries, "capacity_refusals": s.capacityRefusals, "refused_bytes": s.refusedBytes, "storage_failures": s.storageFailures, "processing_count": s.processingCount, "processing_ms_sum": s.processingMS, "stale_readings": s.staleReadings, "unknown_freshness": s.unknownFreshness, "disk_reserve_ok": s.quarantine.Available(0) == nil, "queue_limit_records": s.maxRecords, "queue_limit_bytes": s.maxBytes, "last_admission": s.lastAdmission, "oldest_pending_ms": oldestMS, "transfer_state": "not_implemented"})
 		return
 	}
 	if r.URL.Path != "/observations" || r.Method != http.MethodPost {
@@ -148,6 +149,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	charge := len(normalized) + storage.Overhead
 	if len(s.pending) >= s.maxRecords || s.bytes+charge > s.maxBytes {
 		s.capacityRefusals++
+		s.refusedBytes += uint64(len(normalized))
 		w.Header().Set("Retry-After", "1")
 		http.Error(w, "volatile queue full", 503)
 		return
