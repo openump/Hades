@@ -31,8 +31,45 @@ services:
         max-size: "5m"
         max-file: "2"
     networks: [edge]
+  historian:
+    profiles: [history]
+    image: openump/hades-victoriametrics:1.154.0-dev
+    build:
+      context: historian
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:${HADES_VM_PORT:-8428}:8428"
+    command:
+      - -storageDataPath=/storage
+      - -retentionPeriod=1d
+      - -dedup.minScrapeInterval=1ms
+      - -inmemoryDataFlushInterval=1s
+      - -memory.allowedPercent=50
+      - -maxInsertRequestSize=1MiB
+    volumes:
+      - historian-data:/storage
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    mem_limit: 256m
+    cpus: 1
+    stop_grace_period: 30s
+    healthcheck:
+      test: [CMD, wget, -q, -O, /dev/null, http://127.0.0.1:8428/health]
+      interval: 5s
+      timeout: 3s
+      retries: 6
+      start_period: 5s
+    logging:
+      driver: json-file
+      options:
+        max-size: "5m"
+        max-file: "2"
+    networks: [edge]
+
 volumes:
   broker-data:
+  historian-data:
 networks:
   edge:
     driver: bridge

@@ -37,7 +37,7 @@ jobs:
           python -m unittest discover -s tests -v
       - name: Build Linux targets without cgo
         run: |
-          for tool in hades-check hades-simulator hades-consumer; do
+          for tool in hades-check hades-simulator hades-consumer hades-normalizer hades-history; do
             CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o "artifacts/$tool-amd64" "./cmd/$tool"
             CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -o "artifacts/$tool-arm64" "./cmd/$tool"
           done
@@ -50,6 +50,7 @@ jobs:
     env:
       COMPOSE_PROJECT_NAME: hades-ci-broker
       HADES_MQTT_PORT: '18883'
+      HADES_VM_PORT: '18428'
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
       - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
@@ -65,9 +66,13 @@ jobs:
           python3 -c 'import os,socket; s=socket.create_connection(("127.0.0.1",int(os.environ["HADES_MQTT_PORT"])),timeout=3); s.close(); print("host-published MQTT port reachable")'
       - name: Simulated observations and validating consumer
         run: ./scripts/smoke-simulator
+      - name: Raw normalization and quarantine
+        run: ./scripts/smoke-normalization
+      - name: Numeric history and outage recovery
+        run: ./scripts/smoke-history
       - name: Broker logs
         if: always()
-        run: docker compose -f deploy/compose.yaml logs broker
+        run: docker compose -f deploy/compose.yaml --profile history logs broker historian
       - name: Remove disposable CI stack
         if: always()
-        run: docker compose -f deploy/compose.yaml down -v
+        run: docker compose -f deploy/compose.yaml --profile history down -v

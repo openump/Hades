@@ -35,3 +35,7 @@ Go 1.27.2 is pinned in go.mod. The runtime validator uses `github.com/santhosh-t
 The development broker builds Mosquitto 2.1.2 from the checked archive hash on an immutable Alpine 3.24 index. Direct APK dependencies are version-pinned in deploy/broker/Dockerfile; repository/transitive packages remain outside a hermetic archive. [Packaging details](tutorials/mqtt-development.md) distinguish the local build tag from a published image.
 
 The Go examples use Eclipse Paho MQTT 5 `github.com/eclipse/paho.golang` 0.23.0 (EPL-2.0 OR BSD-3-Clause/EDL distribution terms), `github.com/gorilla/websocket` 1.5.3 (BSD-2-Clause), `golang.org/x/net` 0.61.0 (BSD-3-Clause), and x/text 0.43.0. The examples accept only loopback MQTT endpoints and do not use WebSocket transport, although the SDK includes that dependency. Preserve applicable notices before distributing binaries. See [Paho source/license](https://github.com/eclipse/paho.golang/tree/v0.23.0) and the Go module inventory.
+
+Hades-010 embeds the MIT-licensed Bento 1.22.0 public Bloblang engine in the Go normalizer. It does not import the full connector registry. Module checksums pin the imported graph; the existing upstream license remains authoritative.
+
+Hades-011 pins VictoriaMetrics 1.154.0 OCI index `sha256:4bd592341587d669b7f57d54bbb82bd21ac8675f4e24234b7703a7c0f85197d8` (verified Linux amd64/arm64 manifests). The local development image copies the upstream binary into the same pinned Alpine base to provide a non-root volume owner and health probe.

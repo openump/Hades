@@ -1,0 +1,96 @@
+#!/usr/bin/env python3
+"""Fixture -> Go/Bento normalizer -> MQTT -> synced Go adapter -> VictoriaMetrics."""
+import datetime, json, os, pathlib, subprocess, tempfile, time, urllib.request, urllib.parse
+root=pathlib.Path(__file__).resolve().parents[1];os.chdir(root)
+for tool in ('hades-normalizer','hades-history'):
+ subprocess.run(['go','build','-o',f'artifacts/{tool}',f'./cmd/{tool}'],check=True)
+port=os.environ.get('HADES_MQTT_PORT','1883');vmport=os.environ.get('HADES_VM_PORT','8428');base=f'http://127.0.0.1:{vmport}'
+compose=['docker','compose','-f','deploy/compose.yaml','--profile','history']
+native=os.environ.get('HADES_VM_BINARY')
+with tempfile.TemporaryDirectory(prefix='hades-history-') as scratch:
+ children=[];history=None;vm=None;logs=open(scratch+'/logs','w');stdout=open(scratch+'/history.jsonl','w')
+ def wait_for(check,label):
+  for _ in range(450):
+   try:
+    if check():return
+   except (OSError,ValueError):pass
+   if history is not None and history.poll() is not None:raise RuntimeError(pathlib.Path(logs.name).read_text())
+   time.sleep(.1)
+  raise RuntimeError(label+' timed out\n'+pathlib.Path(logs.name).read_text())
+ def start_vm():
+  global vm
+  if native:
+   vm=subprocess.Popen([native,'-httpListenAddr=127.0.0.1:'+vmport,'-storageDataPath='+scratch+'/vm','-retentionPeriod=1d','-dedup.minScrapeInterval=1ms','-inmemoryDataFlushInterval=1s'],stdout=logs,stderr=logs)
+  else:subprocess.run(compose+['up','--build','-d','--wait','historian'],check=True)
+  wait_for(lambda:urllib.request.urlopen(base+'/health',timeout=1).status==200,'historian readiness')
+ def stop_vm():
+  global vm
+  if native:vm.terminate();vm.wait(timeout=15);vm=None
+  else:subprocess.run(compose+['stop','historian'],check=True)
+ def start_history():
+  global history
+  stdout.seek(0);stdout.truncate()
+  history=subprocess.Popen(['artifacts/hades-history','-broker',f'mqtt://127.0.0.1:{port}','-historian',base,'-intake',scratch+'/intake','-quarantine',scratch+'/quarantine'],stdout=stdout,stderr=logs);children.append(history)
+  wait_for(lambda:'"type":"history_ready"' in pathlib.Path(stdout.name).read_text(),'history subscription')
+ def records():
+  return [json.load(open(p))['value'] for p in pathlib.Path(scratch+'/intake').glob('*.json')]
+ try:
+  start_vm();start_history()
+  normalizer=subprocess.Popen(['artifacts/hades-normalizer','-broker',f'mqtt://127.0.0.1:{port}','-listen','127.0.0.1:18082','-quarantine',scratch+'/normalization-quarantine'],stdout=logs,stderr=logs);children.append(normalizer)
+  wait_for(lambda:urllib.request.urlopen('http://127.0.0.1:18082/health',timeout=1).status==200,'normalizer readiness')
+  stop_vm()
+  fixture=json.loads(pathlib.Path('examples/raw-observations/valid.json').read_text());fixture['message_id']='019a1234-5678-7000-8000-000000000030'
+  stamp=datetime.datetime.now(datetime.timezone.utc)-datetime.timedelta(seconds=3)
+  fixture['observed_at']=stamp.isoformat(timespec='milliseconds').replace('+00:00','Z');fixture['ingested_at']=fixture['observed_at']
+  payloads=[]
+  for index,quality in enumerate(('good','uncertain','bad')):
+   p=json.loads(json.dumps(fixture));p['message_id']=p['message_id'][:-1]+str(index);p['source']['sequence']=index+1
+   p['observed_at']=(stamp+datetime.timedelta(milliseconds=100*index)).isoformat(timespec='milliseconds').replace('+00:00','Z');p['ingested_at']=p['observed_at']
+   p['signals']['temperature']['quality']=quality
+   if quality=='bad':p['signals']['temperature'].update(value=None,reason='timeout')
+   request=urllib.request.Request('http://127.0.0.1:18082/observations',data=json.dumps(p).encode())
+   response=urllib.request.urlopen(request);assert response.status==202;payloads.append(p)
+  wait_for(lambda:len(records())==3,'synced intake during outage')
+  assert all(r['state']=='pending' for r in records())
+  history.terminate();assert history.wait(timeout=15)==0
+  start_history();assert all(r['state']=='pending' for r in records())
+  start_vm();wait_for(lambda:len(records())==3 and all(r['state']=='api_accepted' for r in records()),'recovery retirement')
+  # Replay immutable normalized bytes, including identity and original timestamps.
+  owned=records()[0]
+  topic=owned['topic'];import base64
+  normalized=base64.b64decode(owned['payload'])
+  def publish(raw):
+   if native:command=[os.environ['HADES_MQTT_PUB'],'-h','127.0.0.1','-p',port]
+   else:command=compose+['exec','-T','broker','mosquitto_pub','-h','127.0.0.1','-p','1883']
+   subprocess.run(command+['-V','mqttv5','-q','1','-t',topic,'-s'],input=raw,check=True)
+  publish(normalized)
+  wait_for(lambda:'"duplicates":1' in pathlib.Path(stdout.name).read_text(),'duplicate replay')
+  assert len(records())==3
+  conflict=json.loads(normalized);conflict['ingested_at']='2026-10-14T12:00:01.000Z';publish(json.dumps(conflict).encode())
+  wait_for(lambda:len(list(pathlib.Path(scratch+'/quarantine').glob('*.json')))==1,'conflict quarantine')
+  assert len(records())==3
+  selector='hades_observation_value{asset_id="urn:openump:acme:berlin:press-04",measurement="motor_temperature",unit="Cel",metadata_revision="1"}'
+  expected_ms=int(datetime.datetime.fromisoformat(payloads[0]['observed_at'].replace('Z','+00:00')).timestamp()*1000)
+  def export():
+   return [json.loads(line) for line in urllib.request.urlopen(base+'/api/v1/export?'+urllib.parse.urlencode({'match[]':selector,'reduce_mem_usage':'0'})).read().splitlines()]
+  wait_for(lambda:bool(export()),'visible numeric sample')
+  data=export();assert len(data)==1,data
+  assert data[0]['timestamps']==[expected_ms] and data[0]['values']==[67.2],data
+  query=urllib.parse.urlencode({'query':selector,'start':expected_ms/1000,'end':expected_ms/1000+1,'step':'0.1s','nocache':'1'})
+  def range_result():return json.load(urllib.request.urlopen(base+'/api/v1/query_range?'+query))['data']['result']
+  wait_for(lambda:bool(range_result()),'range query visibility')
+  result=range_result()
+  assert len(result)==1 and float(result[0]['values'][0][1])==67.2,result
+  quality_selector=selector.replace('hades_observation_value','hades_observation_quality')
+  def quality_export():return [json.loads(line) for line in urllib.request.urlopen(base+'/api/v1/export?'+urllib.parse.urlencode({'match[]':quality_selector})).read().splitlines()]
+  wait_for(lambda:bool(quality_export()) and quality_export()[0]['values']==[0,1,2],'quality visibility')
+  data=quality_export();assert data[0]['values']==[0,1,2],data
+  print('history: synced outage/restart recovery, duplicate/conflict handling, exact value/time + range query passed')
+ finally:
+  for child in children:
+   if child.poll() is None:child.terminate()
+  for child in children:
+   try:child.wait(timeout=15)
+   except subprocess.TimeoutExpired:child.kill();child.wait()
+  if vm is not None:vm.terminate();vm.wait(timeout=15)
+  stdout.close();logs.close()
