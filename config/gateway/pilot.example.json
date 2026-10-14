@@ -1,0 +1,20 @@
+{
+  "status": "unapproved-template",
+  "site": null,
+  "operator": null,
+  "authorization_reference": null,
+  "access_window": null,
+  "device": {"manufacturer": null, "model": null, "firmware": null, "manual_url": null, "manual_revision": null},
+  "host": {"name": null, "os": null, "cpu": null, "ram_bytes": null, "storage_bytes": null, "service_account": null},
+  "endpoint": null,
+  "driver_candidate": "Telegraf 1.40.2 / Modbus TCP",
+  "unit_id": null,
+  "signals": [],
+  "poll_interval_ms": null,
+  "request_timeout_ms": null,
+  "max_connections": null,
+  "clock_uncertainty_ms": null,
+  "read_only_enforcement": null,
+  "reference_readings": [],
+  "approval": null
+}
