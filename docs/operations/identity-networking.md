@@ -89,7 +89,7 @@ TLS tunnel or reviewed site-specific bind/firewall policy, not an open dev port.
 Keep PLC/OT networks isolated from enterprise and management networks. Permit
 only the selected read-only gateway path from OT, then gateway-to-ingress and
 service-to-broker flows. Administrative certificates and Dynamic Security control
-access belong on a separate managed workstation/VPN route. No container receives
+access belong on a separate managed workstation/VPN route. No deployed service receives
 host networking, Docker socket or OT access. Actual site routes/device permissions
 are Hades-014/015 prerequisites; this ticket contacts no industrial device.
 
