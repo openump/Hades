@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/openump/Hades/internal/history"
+	"github.com/openump/Hades/internal/operations"
 	"github.com/openump/Hades/internal/sample"
 	"github.com/openump/Hades/internal/storage"
 	"github.com/openump/Hades/internal/transport"
@@ -30,7 +31,13 @@ func run() error {
 	quarantine := flag.String("quarantine", "runtime/history-quarantine", "private diagnostic store")
 	resume := flag.String("resume-id", "", "resume one suspended immutable message before running")
 	credentials := transport.Flags()
+	logPath := operations.LogFlag()
 	flag.Parse()
+	closeLog, err := operations.ConfigureLog(*logPath)
+	if err != nil {
+		return err
+	}
+	defer closeLog()
 	cfg, err := sample.LoadContext(*root, *config)
 	if err != nil {
 		return err

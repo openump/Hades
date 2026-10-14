@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/openump/Hades/internal/historyproxy"
+	"github.com/openump/Hades/internal/operations"
 	"github.com/openump/Hades/internal/transport"
 )
 
@@ -26,7 +27,13 @@ func run() error {
 	listen := flag.String("listen", "127.0.0.1:8429", "HTTPS listener")
 	backend := flag.String("backend", "http://127.0.0.1:8428", "trusted historian on isolated network")
 	credentials := transport.Flags()
+	logPath := operations.LogFlag()
 	flag.Parse()
+	closeLog, err := operations.ConfigureLog(*logPath)
+	if err != nil {
+		return err
+	}
+	defer closeLog()
 	tlsConfig, err := transport.Server(*credentials)
 	if err != nil {
 		return err

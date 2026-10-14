@@ -37,6 +37,9 @@ type Record struct {
 	Skips    int       `json:"skips"`
 }
 type Adapter struct {
+	validationFailures, storageFailures, capacityRefusals       uint64
+	writeCount                                                  uint64
+	writeMS                                                     float64
 	Diagnostic                                                  func(string, []byte, error) error
 	pending                                                     map[string]bool
 	nextCleanup                                                 time.Time
@@ -122,6 +125,9 @@ func (a *Adapter) validate(topic string, raw []byte) (map[string]any, error) {
 func (a *Adapter) Intake(topic string, raw []byte) (string, error) {
 	p, err := a.validate(topic, raw)
 	if err != nil {
+		a.mu.Lock()
+		a.validationFailures++
+		a.mu.Unlock()
 		return "", err
 	}
 	lines, keys, skips, err := Map(a.cfg, p)
@@ -170,6 +176,10 @@ func (a *Adapter) Intake(topic string, raw []byte) (string, error) {
 	r := Record{Topic: topic, Payload: append([]byte(nil), raw...), Digest: hash, State: "pending", Accepted: now, Lines: lines, Keys: keys, Skips: skips}
 	encoded, _ := json.Marshal(r)
 	if err = a.store.Put(key, encoded); err != nil {
+		a.storageFailures++
+		if errors.Is(err, storage.ErrFull) {
+			a.capacityRefusals++
+		}
 		return "", &StorageError{err}
 	}
 	a.records[key] = r
@@ -214,7 +224,12 @@ func (a *Adapter) Drain(ctx context.Context, write func(context.Context, []byte)
 			}
 			err := WindowCheck(r.Payload, time.Now())
 			if err == nil {
+				started := time.Now()
 				err = write(ctx, append([]byte(nil), r.Lines...))
+				a.mu.Lock()
+				a.writeCount++
+				a.writeMS += float64(time.Since(started)) / float64(time.Millisecond)
+				a.mu.Unlock()
 			}
 			if err == nil {
 				r.State = "api_accepted"
@@ -272,7 +287,7 @@ func (a *Adapter) Stats() map[string]any {
 			suspended++
 		}
 	}
-	return map[string]any{"records": len(a.records), "bytes": a.store.Bytes, "pending": pending, "suspended": suspended, "admitted": a.admitted, "api_accepted": a.accepted, "duplicates": a.duplicates, "conflicts": a.conflicts, "skipped_values": a.skipped, "retries": a.retries}
+	return map[string]any{"records": len(a.records), "bytes": a.store.Bytes, "pending": pending, "suspended": suspended, "admitted": a.admitted, "api_accepted": a.accepted, "duplicates": a.duplicates, "conflicts": a.conflicts, "skipped_values": a.skipped, "retries": a.retries, "validation_failures": a.validationFailures, "storage_failures": a.storageFailures, "capacity_refusals": a.capacityRefusals, "write_count": a.writeCount, "write_ms_sum": a.writeMS, "storage": a.store.Stats(), "transfer_state": "not_implemented"}
 }
 func (a *Adapter) Close() error {
 	a.mu.Lock()

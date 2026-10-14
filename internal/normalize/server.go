@@ -17,14 +17,17 @@ import (
 )
 
 type Server struct {
-	engine                                          *Engine
-	mu                                              sync.Mutex
-	pending                                         [][]byte
-	bytes, maxRecords, maxBytes                     int
-	quarantine                                      *storage.Store
-	admitted, published, rejected, evicted, retries uint64
-	wake                                            chan struct{}
-	slots                                           chan struct{}
+	capacityRefusals, storageFailures, processingCount, staleReadings, unknownFreshness uint64
+	processingMS                                                                        float64
+	lastAdmission                                                                       time.Time
+	engine                                                                              *Engine
+	mu                                                                                  sync.Mutex
+	pending                                                                             [][]byte
+	bytes, maxRecords, maxBytes                                                         int
+	quarantine                                                                          *storage.Store
+	admitted, published, rejected, evicted, retries                                     uint64
+	wake                                                                                chan struct{}
+	slots                                                                               chan struct{}
 }
 
 func NewServer(engine *Engine, dir string, maxRecords, maxBytes int) (*Server, error) {
@@ -43,7 +46,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		s.mu.Lock()
 		defer s.mu.Unlock()
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]any{"pending_records": len(s.pending), "pending_bytes": s.bytes, "admitted": s.admitted, "published": s.published, "rejected": s.rejected, "quarantine_records": len(s.quarantine.Records), "quarantine_bytes": s.quarantine.Bytes, "quarantine_evictions": s.evicted, "retries": s.retries})
+		json.NewEncoder(w).Encode(map[string]any{"pending_records": len(s.pending), "pending_bytes": s.bytes, "admitted": s.admitted, "published": s.published, "rejected": s.rejected, "quarantine_records": len(s.quarantine.Records), "quarantine_bytes": s.quarantine.Bytes, "quarantine_evictions": s.evicted, "retries": s.retries, "publish_failures": s.retries, "capacity_refusals": s.capacityRefusals, "storage_failures": s.storageFailures, "processing_count": s.processingCount, "processing_ms_sum": s.processingMS, "stale_readings": s.staleReadings, "unknown_freshness": s.unknownFreshness, "disk_reserve_ok": s.quarantine.Available(0) == nil, "queue_limit_records": s.maxRecords, "queue_limit_bytes": s.maxBytes, "last_admission": s.lastAdmission, "transfer_state": "not_implemented"})
 		return
 	}
 	if r.URL.Path != "/observations" || r.Method != http.MethodPost {
@@ -54,10 +57,14 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	case s.slots <- struct{}{}:
 		defer func() { <-s.slots }()
 	default:
+		s.mu.Lock()
+		s.capacityRefusals++
+		s.mu.Unlock()
 		w.Header().Set("Retry-After", "1")
 		http.Error(w, "busy", 503)
 		return
 	}
+	started := time.Now()
 	raw, err := io.ReadAll(io.LimitReader(r.Body, contracts.MaxPayloadBytes+1))
 	if err != nil {
 		http.Error(w, "body read failed", 400)
@@ -65,6 +72,10 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	defer func() {
+		s.processingCount++
+		s.processingMS += float64(time.Since(started)) / float64(time.Millisecond)
+	}()
 	status := 422
 	if len(raw) > contracts.MaxPayloadBytes {
 		status = 413
@@ -97,12 +108,14 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 				break
 			}
 			if qerr := s.quarantine.Delete(keys[0]); qerr != nil {
+				s.storageFailures++
 				http.Error(w, "quarantine storage failed", 503)
 				return
 			}
 			s.evicted++
 		}
 		if qerr := s.quarantine.Put(key, record); qerr != nil {
+			s.storageFailures++
 			log.Printf("quarantine unavailable: %v", qerr)
 			http.Error(w, "quarantine unavailable", 503)
 			return
@@ -110,8 +123,26 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, reason, status)
 		return
 	}
+	obj, _ := s.engine.Config.Validator.Validate("telemetry", normalized)
+	observed, _ := time.Parse(time.RFC3339Nano, obj["observed_at"].(string))
+	source := obj["source"].(map[string]any)
+	var uncertainty *float64
+	if source["clock_uncertainty_ms"] != nil {
+		u := sample.Num(source["clock_uncertainty_ms"])
+		uncertainty = &u
+	}
+	for name := range obj["measurements"].(map[string]any) {
+		definition := s.engine.Config.Metadata["measurements"].(map[string]any)[name].(map[string]any)
+		switch contracts.Freshness(observed, time.Now(), sample.Num(definition["expected_interval_ms"]), uncertainty) {
+		case "stale":
+			s.staleReadings++
+		case "unknown":
+			s.unknownFreshness++
+		}
+	}
 	charge := len(normalized) + storage.Overhead
 	if len(s.pending) >= s.maxRecords || s.bytes+charge > s.maxBytes {
+		s.capacityRefusals++
 		w.Header().Set("Retry-After", "1")
 		http.Error(w, "volatile queue full", 503)
 		return
@@ -119,6 +150,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	s.pending = append(s.pending, normalized)
 	s.bytes += charge
 	s.admitted++
+	s.lastAdmission = time.Now().UTC()
 	select {
 	case s.wake <- struct{}{}:
 	default:

@@ -55,5 +55,7 @@ func (d *Diagnostics) Close() error { d.mu.Lock(); defer d.mu.Unlock(); return d
 func (d *Diagnostics) Stats() map[string]any {
 	d.mu.Lock()
 	defer d.mu.Unlock()
-	return map[string]any{"records": len(d.store.Records), "bytes": d.store.Bytes, "evictions": d.Evicted}
+	stats := d.store.Stats()
+	stats["evictions"] = d.Evicted
+	return stats
 }

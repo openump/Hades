@@ -11,10 +11,12 @@ import (
 	"net/url"
 	"os"
 	"os/signal"
+	"sync/atomic"
 	"syscall"
 	"time"
 
 	"github.com/openump/Hades/internal/gateway"
+	"github.com/openump/Hades/internal/operations"
 	"github.com/openump/Hades/internal/sample"
 	"github.com/openump/Hades/internal/transport"
 )
@@ -33,7 +35,13 @@ func run() error {
 	root := flag.String("root", ".", "repository root")
 	count := flag.Int("count", 3, "observations before exit, 1..10000")
 	credentials := transport.Flags()
+	logPath := operations.LogFlag()
 	flag.Parse()
+	closeLog, err := operations.ConfigureLog(*logPath)
+	if err != nil {
+		return err
+	}
+	defer closeLog()
 	if !*lab || *count < 1 || *count > 10000 {
 		return fmt.Errorf("explicit -lab and bounded count required; site approval is pending")
 	}
@@ -69,11 +77,32 @@ func run() error {
 	defer driver.Close()
 	client := &http.Client{Timeout: 5 * time.Second, Transport: &http.Transport{TLSClientConfig: tlsConfig, Proxy: nil, ResponseHeaderTimeout: 3 * time.Second}, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
 	defer client.CloseIdleConnections()
+	var acquired, failures, admitted, retries, pending, latencyUS atomic.Uint64
+	healthDone := make(chan struct{})
+	defer close(healthDone)
+	go func() {
+		ticker := time.NewTicker(time.Second)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-healthDone:
+				return
+			case <-ticker.C:
+				event, _ := json.Marshal(map[string]any{"type": "gateway_health", "acquired": acquired.Load(), "acquisition_failures": failures.Load(), "admitted": admitted.Load(), "ingress_retries": retries.Load(), "pending_records": pending.Load(), "pending_limit_records": 1, "acquisition_us_sum": latencyUS.Load(), "clock_freshness": "unknown", "restart_loss_count": "unknown"})
+				log.Print(string(event))
+			}
+		}
+	}()
 	boot := sample.UUID()
 	encoder := json.NewEncoder(os.Stdout)
 	for sequence := 0; sequence < *count; sequence++ {
 		started := time.Now()
 		value, observed, reason := driver.Read(ctx)
+		acquired.Add(1)
+		latencyUS.Add(uint64(time.Since(started).Microseconds()))
+		if value == nil {
+			failures.Add(1)
+		}
 		if ctx.Err() != nil {
 			return nil
 		}
@@ -83,12 +112,15 @@ func run() error {
 		}
 		// Bound the acquisition copy to exactly one pending envelope. No new device
 		// read occurs until admission; a restart loses this unsaved observation.
-		if err = gateway.Submit(ctx, client, *ingress, raw); err != nil {
+		pending.Store(1)
+		if err = gateway.SubmitObserved(ctx, client, *ingress, raw, func() { retries.Add(1) }); err != nil {
 			if ctx.Err() != nil {
 				return nil
 			}
 			return err
 		}
+		pending.Store(0)
+		admitted.Add(1)
 		encoder.Encode(map[string]any{"type": "gateway_admitted", "payload": json.RawMessage(raw), "boundary": "accepted_volatile"})
 		if sequence+1 < *count {
 			timer := time.NewTimer(max(time.Until(started.Add(interval)), 0))
