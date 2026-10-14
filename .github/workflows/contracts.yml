@@ -37,7 +37,7 @@ jobs:
           python -m unittest discover -s tests -v
       - name: Build Linux targets without cgo
         run: |
-          for tool in hades-check hades-simulator hades-consumer hades-normalizer hades-history hades-pki hades-history-proxy; do
+          for tool in hades-check hades-simulator hades-consumer hades-normalizer hades-history hades-pki hades-history-proxy hades-gateway; do
             CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o "artifacts/$tool-amd64" "./cmd/$tool"
             CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -o "artifacts/$tool-arm64" "./cmd/$tool"
           done
@@ -99,6 +99,13 @@ jobs:
           cache: true
       - name: mTLS identities, ACL denials, management isolation and rotation
         run: ./scripts/smoke-security
+      - name: Pinned Telegraf lab gateway through TLS to history
+        run: |
+          curl -fsSL https://dl.influxdata.com/telegraf/releases/telegraf-1.40.2_linux_amd64.tar.gz -o "$RUNNER_TEMP/telegraf.tar.gz"
+          echo 'fcdc579a09227fa3e2e3e208d3cf75cfd03d42ae141a4b23b18659a94428bfa3  '"$RUNNER_TEMP/telegraf.tar.gz" | sha256sum -c -
+          mkdir -p "$RUNNER_TEMP/telegraf"
+          tar -xzf "$RUNNER_TEMP/telegraf.tar.gz" -C "$RUNNER_TEMP/telegraf"
+          HADES_TELEGRAF_BINARY="$RUNNER_TEMP/telegraf/telegraf-1.40.2/usr/bin/telegraf" ./scripts/smoke-ot-gateway
       - name: Remove disposable security stack
         if: always()
         env:
