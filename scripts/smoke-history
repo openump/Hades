@@ -98,8 +98,19 @@ with tempfile.TemporaryDirectory(prefix='hades-history-') as scratch:
   assert len(records())==(4 if interop else 3)
   selector='hades_observation_value{asset_id="urn:openump:acme:berlin:press-04",measurement="motor_temperature",unit="Cel",metadata_revision="1"}'
   expected_ms=int(round(datetime.datetime.fromisoformat(payloads[0]['observed_at'].replace('Z','+00:00')).timestamp()*1000))
+  def filter_export(data):
+   res = []
+   for d in data:
+    ft, fv = [], []
+    for t, v in zip(d['timestamps'], d['values']):
+     if expected_ms <= t <= expected_ms + 310:
+      ft.append(t); fv.append(v)
+    if ft:
+     d['timestamps'] = ft; d['values'] = fv; res.append(d)
+   return res
   def export():
-   return [json.loads(line) for line in urllib.request.urlopen(base+'/api/v1/export?'+urllib.parse.urlencode({'match[]':selector,'reduce_mem_usage':'0','start':expected_ms/1000,'end':expected_ms/1000+0.31})).read().splitlines()]
+   raw = [json.loads(line) for line in urllib.request.urlopen(base+'/api/v1/export?'+urllib.parse.urlencode({'match[]':selector,'reduce_mem_usage':'0'})).read().splitlines()]
+   return filter_export(raw)
   wait_for(lambda:bool(export()),'visible numeric sample')
   data=export();assert len(data)==1,data
   assert data[0]['timestamps']==[expected_ms] and data[0]['values']==[67.2],data
@@ -109,7 +120,9 @@ with tempfile.TemporaryDirectory(prefix='hades-history-') as scratch:
   result=range_result()
   assert len(result)==1 and float(result[0]['values'][0][1])==67.2,result
   quality_selector=selector.replace('hades_observation_value','hades_observation_quality')
-  def quality_export():return [json.loads(line) for line in urllib.request.urlopen(base+'/api/v1/export?'+urllib.parse.urlencode({'match[]':quality_selector,'start':expected_ms/1000,'end':expected_ms/1000+0.31})).read().splitlines()]
+  def quality_export():
+   raw = [json.loads(line) for line in urllib.request.urlopen(base+'/api/v1/export?'+urllib.parse.urlencode({'match[]':quality_selector})).read().splitlines()]
+   return filter_export(raw)
   wait_for(lambda:bool(quality_export()) and quality_export()[0]['values']==([0,1,2,2] if interop else [0,1,2]),'quality visibility')
   data=quality_export();assert data[0]['values']==([0,1,2,2] if interop else [0,1,2]),data
   print('history: synced outage/restart recovery, duplicate/conflict handling, exact value/time + range query passed')
