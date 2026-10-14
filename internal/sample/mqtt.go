@@ -3,6 +3,7 @@ package sample
 import (
 	"context"
 	"fmt"
+	"log"
 	"net/url"
 	"sync"
 	"time"
@@ -53,6 +54,7 @@ func Connect(ctx context.Context, address string, cfg *Config, producer bool) (*
 		}
 	}
 	options := autopaho.ClientConfig{ServerUrls: []*url.URL{u}, KeepAlive: 5, CleanStartOnInitialConnection: true, SessionExpiryInterval: 60, ConnectTimeout: 5 * time.Second, ReconnectBackoff: func(attempt int) time.Duration { return time.Duration(1<<min(attempt, 3)) * 100 * time.Millisecond }, ClientConfig: paho.ClientConfig{ClientID: "hades-sample-" + c.BootID, PacketTimeout: 5 * time.Second}}
+	options.OnConnectError = func(err error) { log.Printf("local MQTT connection failed: %v", err) }
 	options.ConnectPacketBuilder = func(packet *paho.Connect, _ *url.URL) (*paho.Connect, error) {
 		c.mu.Lock()
 		c.session = UUID()

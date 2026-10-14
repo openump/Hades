@@ -22,7 +22,7 @@ wait_for() {
   tries=0
   until grep -q "$1" "$2"; do
     tries=$((tries+1))
-    if [ "$tries" -ge 100 ]; then cat "$work/consumer.err"; cat "$work/producer.err" 2>/dev/null || true; return 1; fi
+    if [ "$tries" -ge 100 ]; then printf 'readiness timeout waiting for %s\n' "$1"; cat "$work/consumer.err"; cat "$work/producer.err" 2>/dev/null || true; return 1; fi
     sleep 0.1
   done
 }

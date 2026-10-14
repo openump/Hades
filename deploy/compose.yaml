@@ -35,4 +35,4 @@ volumes:
   broker-data:
 networks:
   edge:
-    internal: true
+    driver: bridge
