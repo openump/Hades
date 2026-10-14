@@ -18,6 +18,7 @@ services:
       - -ec
       - |
         mkdir -p /prepared/broker /prepared/proxy
+        chown -R 0:0 /prepared/broker /prepared/proxy
         cp /source/ca.crt /source/broker.crt /source/broker.key /prepared/broker/
         test -f /prepared/broker/roles.json || cp /policy.json /prepared/broker/roles.json
         cp /source/ca.crt /source/history-proxy.crt /source/history-proxy.key /prepared/proxy/

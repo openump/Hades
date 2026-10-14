@@ -99,3 +99,8 @@ jobs:
           cache: true
       - name: mTLS identities, ACL denials, management isolation and rotation
         run: ./scripts/smoke-security
+      - name: Remove disposable security stack
+        if: always()
+        env:
+          HADES_SECURITY_DIR: /tmp/hades-security-cleanup
+        run: docker compose -f deploy/compose.secure.yaml down -v
