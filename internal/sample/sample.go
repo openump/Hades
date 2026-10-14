@@ -39,7 +39,7 @@ func UUID() string {
 	return fmt.Sprintf("%x-%x-%x-%x-%x", b[:4], b[4:6], b[6:8], b[8:10], b[10:])
 }
 func Num(v any) float64 { n, _ := v.(json.Number).Float64(); return n }
-func Load(root, path string) (*Config, error) {
+func LoadContext(root, path string) (*Config, error) {
 	v, err := contracts.New(os.DirFS(filepath.Join(root, "schemas")))
 	if err != nil {
 		return nil, err
@@ -57,6 +57,22 @@ func Load(root, path string) (*Config, error) {
 	if err != nil {
 		return nil, err
 	}
+	id := strings.Split(m["asset_id"].(string), ":")
+	h := m["hierarchy"].(map[string]any)
+	asset := contracts.Asset{AssetID: m["asset_id"].(string), Enterprise: id[2], IdentitySite: id[3], AssetKey: id[4], Location: contracts.Location{Site: h["site"].(string), Area: h["area"].(string), Line: h["line"].(string), Asset: h["asset"].(string)}}
+	registry, err := contracts.NewRegistry([]contracts.Asset{asset})
+	if err != nil {
+		return nil, err
+	}
+	prefix := strings.Join([]string{"openump", "v1", asset.Enterprise, asset.Location.Site, asset.Location.Area, asset.Location.Line, asset.Location.Asset, ""}, "/")
+	return &Config{v, m, raw, registry, prefix, time.Duration(Num(m["acquisition"].(map[string]any)["expected_status_interval_ms"])) * time.Millisecond}, nil
+}
+func Load(root, path string) (*Config, error) {
+	c, err := LoadContext(root, path)
+	if err != nil {
+		return nil, err
+	}
+	m := c.Metadata
 	defs := m["measurements"].(map[string]any)
 	d, ok := defs["motor_temperature"].(map[string]any)
 	if !ok || len(defs) != 1 || d["type"] != "number" || (d["unit"] != "Cel" && d["unit"] != "K") {
@@ -68,15 +84,7 @@ func Load(root, path string) (*Config, error) {
 	if Num(m["acquisition"].(map[string]any)["expected_status_interval_ms"]) != Num(d["expected_interval_ms"]) || Num(d["expected_interval_ms"]) > 28800000 {
 		return nil, fmt.Errorf("sample measurement/status intervals must agree and be at most eight hours")
 	}
-	id := strings.Split(m["asset_id"].(string), ":")
-	h := m["hierarchy"].(map[string]any)
-	asset := contracts.Asset{AssetID: m["asset_id"].(string), Enterprise: id[2], IdentitySite: id[3], AssetKey: id[4], Location: contracts.Location{Site: h["site"].(string), Area: h["area"].(string), Line: h["line"].(string), Asset: h["asset"].(string)}}
-	registry, err := contracts.NewRegistry([]contracts.Asset{asset})
-	if err != nil {
-		return nil, err
-	}
-	prefix := strings.Join([]string{"openump", "v1", asset.Enterprise, asset.Location.Site, asset.Location.Area, asset.Location.Line, asset.Location.Asset, ""}, "/")
-	return &Config{v, m, raw, registry, prefix, time.Duration(Num(d["expected_interval_ms"])) * time.Millisecond}, nil
+	return c, nil
 }
 func (c *Config) Observation(scenario string, sequence int, boot string, now time.Time) ([]byte, error) {
 	if scenario != "normal" && scenario != "bad-quality" && scenario != "missing-reading" {

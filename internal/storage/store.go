@@ -21,6 +21,7 @@ type record struct {
 	Value json.RawMessage `json:"value"`
 }
 type Store struct {
+	closed               bool
 	Dir                  string
 	Records              map[string]json.RawMessage
 	Bytes                int
@@ -49,7 +50,7 @@ func Open(dir string, maxRecords, maxBytes int, reserve uint64) (s *Store, err e
 		lock.Close()
 		return nil, fmt.Errorf("store already owned: %w", err)
 	}
-	s = &Store{dir, map[string]json.RawMessage{}, 0, maxRecords, maxBytes, reserve, lock}
+	s = &Store{Dir: dir, Records: map[string]json.RawMessage{}, maxRecords: maxRecords, maxBytes: maxBytes, reserve: reserve, lock: lock}
 	defer func() {
 		if err != nil {
 			lock.Close()
@@ -121,6 +122,9 @@ func syncDir(dir string) error {
 	return f.Sync()
 }
 func (s *Store) Put(key string, value json.RawMessage) error {
+	if s.closed {
+		return fmt.Errorf("store is closed")
+	}
 	if key == "" || !json.Valid(value) {
 		return fmt.Errorf("invalid store record")
 	}
@@ -172,6 +176,9 @@ func (s *Store) Put(key string, value json.RawMessage) error {
 	return nil
 }
 func (s *Store) Delete(key string) error {
+	if s.closed {
+		return fmt.Errorf("store is closed")
+	}
 	old, exists := s.Records[key]
 	if !exists {
 		return nil
@@ -187,4 +194,10 @@ func (s *Store) Delete(key string) error {
 	delete(s.Records, key)
 	return nil
 }
-func (s *Store) Close() error { return s.lock.Close() }
+func (s *Store) Close() error {
+	if s.closed {
+		return nil
+	}
+	s.closed = true
+	return s.lock.Close()
+}
