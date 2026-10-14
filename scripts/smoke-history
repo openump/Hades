@@ -2,11 +2,12 @@
 """Fixture -> Go/Bento normalizer -> MQTT -> synced Go adapter -> VictoriaMetrics."""
 import datetime, json, os, pathlib, subprocess, tempfile, time, urllib.request, urllib.parse
 root=pathlib.Path(__file__).resolve().parents[1];os.chdir(root)
-for tool in ('hades-normalizer','hades-history'):
+for tool in ('hades-normalizer','hades-history','hades-consumer'):
  subprocess.run(['go','build','-o',f'artifacts/{tool}',f'./cmd/{tool}'],check=True)
 port=os.environ.get('HADES_MQTT_PORT','1883');vmport=os.environ.get('HADES_VM_PORT','8428');base=f'http://127.0.0.1:{vmport}'
 compose=['docker','compose','-f','deploy/compose.yaml','--profile','history']
 native=os.environ.get('HADES_VM_BINARY')
+interop=os.environ.get('HADES_INTEROPERABILITY')=='1'
 with tempfile.TemporaryDirectory(prefix='hades-history-') as scratch:
  children=[];history=None;vm=None;logs=open(scratch+'/logs','w');stdout=open(scratch+'/history.jsonl','w')
  def wait_for(check,label):
@@ -36,11 +37,21 @@ with tempfile.TemporaryDirectory(prefix='hades-history-') as scratch:
   return [json.load(open(p))['value'] for p in pathlib.Path(scratch+'/intake').glob('*.json')]
  try:
   start_vm();start_history()
+  if interop:
+   primary_out=open(scratch+'/primary.jsonl','w');secondary_out=open(scratch+'/secondary.jsonl','w')
+   primary=subprocess.Popen(['artifacts/hades-consumer','-broker',f'mqtt://127.0.0.1:{port}','-count','4','-timeout','120s'],stdout=primary_out,stderr=logs);children.append(primary)
+   if native:command=[os.environ['HADES_MQTT_SUB'],'-h','127.0.0.1','-p',port]
+   else:command=compose+['exec','-T','broker','mosquitto_sub','-h','127.0.0.1','-p','1883']
+   transport=subprocess.Popen(command+['-V','mqttv5','-q','1','-t','openump/v1/acme/berlin/assembly/line-01/press-04/+','-F','%j','-d'],stdout=subprocess.PIPE,stderr=logs);children.append(transport)
+   secondary=subprocess.Popen([os.environ.get('HADES_PYTHON','python3'),'examples/consumer-secondary/consumer.py','--count','4'],stdin=transport.stdout,stdout=secondary_out,stderr=logs);children.append(secondary);transport.stdout.close()
+   wait_for(lambda:'"type":"ready"' in pathlib.Path(primary_out.name).read_text(),'primary subscription')
+
   normalizer=subprocess.Popen(['artifacts/hades-normalizer','-broker',f'mqtt://127.0.0.1:{port}','-listen','127.0.0.1:18082','-quarantine',scratch+'/normalization-quarantine'],stdout=logs,stderr=logs);children.append(normalizer)
   wait_for(lambda:urllib.request.urlopen('http://127.0.0.1:18082/health',timeout=1).status==200,'normalizer readiness')
+  if interop:wait_for(lambda:'"type":"ready"' in pathlib.Path(secondary_out.name).read_text(),'secondary subscription')
   stop_vm()
   fixture=json.loads(pathlib.Path('examples/raw-observations/valid.json').read_text());fixture['message_id']='019a1234-5678-7000-8000-000000000030'
-  stamp=datetime.datetime.now(datetime.timezone.utc)-datetime.timedelta(seconds=3)
+  stamp=datetime.datetime.now(datetime.timezone.utc)-datetime.timedelta(seconds=15)
   fixture['observed_at']=stamp.isoformat(timespec='milliseconds').replace('+00:00','Z');fixture['ingested_at']=fixture['observed_at']
   payloads=[]
   for index,quality in enumerate(('good','uncertain','bad')):
@@ -66,9 +77,25 @@ with tempfile.TemporaryDirectory(prefix='hades-history-') as scratch:
   publish(normalized)
   wait_for(lambda:'"duplicates":1' in pathlib.Path(stdout.name).read_text(),'duplicate replay')
   assert len(records())==3
+  if interop:
+   wait_for(lambda:'"duplicate":true' in pathlib.Path(primary_out.name).read_text(),'primary duplicate')
+   wait_for(lambda:'"duplicate":true' in pathlib.Path(secondary_out.name).read_text(),'secondary duplicate')
+   # End both consumers only after the duplicate fixture has been observed.
+   final=json.loads(json.dumps(payloads[0]));final['message_id']='019a1234-5678-7000-8000-000000000039'
+   final['observed_at']=(stamp+datetime.timedelta(milliseconds=300)).isoformat(timespec='milliseconds').replace('+00:00','Z');final['ingested_at']=final['observed_at'];final['source']['sequence']=4
+   final['signals']['temperature']={'value':None,'unit':'deciCel','quality':'bad','reason':'timeout'}
+   response=urllib.request.urlopen(urllib.request.Request('http://127.0.0.1:18082/observations',data=json.dumps(final).encode()));assert response.status==202
+   assert primary.wait(timeout=30)==0 and secondary.wait(timeout=30)==0,pathlib.Path(logs.name).read_text()
+   left=[json.loads(line) for line in pathlib.Path(primary_out.name).read_text().splitlines() if json.loads(line)['type']=='telemetry']
+   right=[json.loads(line) for line in pathlib.Path(secondary_out.name).read_text().splitlines() if json.loads(line)['type']=='telemetry']
+   fields=('asset_id','message_id','value','unit','observed_at','quality','freshness','duplicate')
+   assert [[x[k] for k in fields] for x in left]==[[x[k] for k in fields] for x in right],(left,right)
+   assert len(left)==5 and all(x['freshness']=='stale' for x in left)
+   assert {x['quality'] for x in left}=={'good','uncertain','bad'}
+   print('interoperability: independent Go/Paho and Python/Mosquitto agree on identity/value/unit/time/quality, duplicate and stale fixtures')
   conflict=json.loads(normalized);conflict['ingested_at']='2026-10-14T12:00:01.000Z';publish(json.dumps(conflict).encode())
   wait_for(lambda:len(list(pathlib.Path(scratch+'/quarantine').glob('*.json')))==1,'conflict quarantine')
-  assert len(records())==3
+  assert len(records())==(4 if interop else 3)
   selector='hades_observation_value{asset_id="urn:openump:acme:berlin:press-04",measurement="motor_temperature",unit="Cel",metadata_revision="1"}'
   expected_ms=int(datetime.datetime.fromisoformat(payloads[0]['observed_at'].replace('Z','+00:00')).timestamp()*1000)
   def export():
@@ -83,8 +110,8 @@ with tempfile.TemporaryDirectory(prefix='hades-history-') as scratch:
   assert len(result)==1 and float(result[0]['values'][0][1])==67.2,result
   quality_selector=selector.replace('hades_observation_value','hades_observation_quality')
   def quality_export():return [json.loads(line) for line in urllib.request.urlopen(base+'/api/v1/export?'+urllib.parse.urlencode({'match[]':quality_selector})).read().splitlines()]
-  wait_for(lambda:bool(quality_export()) and quality_export()[0]['values']==[0,1,2],'quality visibility')
-  data=quality_export();assert data[0]['values']==[0,1,2],data
+  wait_for(lambda:bool(quality_export()) and quality_export()[0]['values']==([0,1,2,2] if interop else [0,1,2]),'quality visibility')
+  data=quality_export();assert data[0]['values']==([0,1,2,2] if interop else [0,1,2]),data
   print('history: synced outage/restart recovery, duplicate/conflict handling, exact value/time + range query passed')
  finally:
   for child in children:
