@@ -37,7 +37,37 @@ jobs:
           python -m unittest discover -s tests -v
       - name: Build Linux targets without cgo
         run: |
-          CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o artifacts/hades-check-amd64 ./cmd/hades-check
-          CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -o artifacts/hades-check-arm64 ./cmd/hades-check
+          for tool in hades-check hades-simulator hades-consumer; do
+            CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o "artifacts/$tool-amd64" "./cmd/$tool"
+            CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -o "artifacts/$tool-arm64" "./cmd/$tool"
+          done
       - name: Reachable Go vulnerability check
         run: go run golang.org/x/vuln/cmd/govulncheck@v1.9.0 ./...
+
+  broker:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      COMPOSE_PROJECT_NAME: hades-ci-broker
+      HADES_MQTT_PORT: '18883'
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Start pinned broker and verify restart
+        run: |
+          docker compose -f deploy/compose.yaml config --quiet
+          docker compose -f deploy/compose.yaml up --build -d --wait --wait-timeout 60
+          ./scripts/smoke-broker
+          docker compose -f deploy/compose.yaml port broker 1883
+          python3 -c 'import os,socket; s=socket.create_connection(("127.0.0.1",int(os.environ["HADES_MQTT_PORT"])),timeout=3); s.close(); print("host-published MQTT port reachable")'
+      - name: Simulated observations and validating consumer
+        run: ./scripts/smoke-simulator
+      - name: Broker logs
+        if: always()
+        run: docker compose -f deploy/compose.yaml logs broker
+      - name: Remove disposable CI stack
+        if: always()
+        run: docker compose -f deploy/compose.yaml down -v

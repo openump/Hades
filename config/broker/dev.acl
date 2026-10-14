@@ -1,0 +1,3 @@
+# All local development clients share this limited anonymous namespace.
+topic readwrite openump/v1/acme/#
+topic readwrite hades/dev/#

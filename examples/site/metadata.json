@@ -1,0 +1,34 @@
+{
+  "schema_version": "1.0",
+  "message_id": "019a1234-5678-7000-8000-000000000010",
+  "asset_id": "urn:openump:acme:berlin:press-04",
+  "metadata_revision": 1,
+  "published_at": "2026-10-13T13:00:00.000Z",
+  "display_name": "Hydraulic Press",
+  "asset_type": "hydraulic-press",
+  "hierarchy": {
+    "enterprise": "acme",
+    "site": "berlin",
+    "area": "assembly",
+    "line": "line-01",
+    "asset": "press-04"
+  },
+  "acquisition": {
+    "gateway_id": "simulator-01",
+    "protocol": "simulator",
+    "expected_status_interval_ms": 1000
+  },
+  "measurements": {
+    "motor_temperature": {
+      "display_name": "Motor temperature",
+      "type": "number",
+      "unit": "Cel",
+      "expected_interval_ms": 1000,
+      "valid_range": {
+        "minimum": -40,
+        "maximum": 150
+      }
+    }
+  },
+  "relationships": []
+}
