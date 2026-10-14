@@ -27,6 +27,10 @@ python3 -m venv .venv
 
 The `.env` file is ignored and contains development identifiers only. Never commit device credentials, private keys, site exports, or runtime data.
 
+## MQTT development deployment
+
+Start the pinned local broker and run its restart probe using [the development guide](docs/tutorials/mqtt-development.md). This development profile is localhost-only with shared anonymous permissions; production identity and TLS come later.
+
 ## Contracts and capability checks
 
 - [Namespace and identity](docs/protocol/namespace.md)

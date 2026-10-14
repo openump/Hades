@@ -1,0 +1,38 @@
+name: hades-dev
+services:
+  broker:
+    image: openump/hades-mosquitto:2.1.2-dev
+    build:
+      context: broker
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:${HADES_MQTT_PORT:-1883}:1883"
+    volumes:
+      - ../config/broker/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
+      - ../config/broker/dev.acl:/mosquitto/config/dev.acl:ro
+      - broker-data:/mosquitto/data
+    read_only: true
+    tmpfs:
+      - /tmp:size=16m,uid=1883,gid=1883
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    mem_limit: 128m
+    cpus: 0.5
+    stop_grace_period: 15s
+    healthcheck:
+      test: [CMD, mosquitto_pub, -h, 127.0.0.1, -p, "1883", -V, mqttv5, -t, hades/dev/health, -m, ready, -q, "1"]
+      interval: 5s
+      timeout: 3s
+      retries: 6
+      start_period: 5s
+    logging:
+      driver: json-file
+      options:
+        max-size: "5m"
+        max-file: "2"
+    networks: [edge]
+volumes:
+  broker-data:
+networks:
+  edge:
+    internal: true

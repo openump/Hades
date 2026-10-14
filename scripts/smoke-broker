@@ -1,0 +1,19 @@
+#!/bin/sh
+set -eu
+cd "$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)"
+compose() { docker compose -f deploy/compose.yaml "$@"; }
+compose config --quiet
+expected='hades-008-restart-probe'
+compose exec -T broker mosquitto_pub -h 127.0.0.1 -V mqttv5 -q 1 -t hades/dev/restart-probe -r -m "$expected"
+actual=$(compose exec -T broker mosquitto_sub -h 127.0.0.1 -V mqttv5 -q 1 -t hades/dev/restart-probe -C 1 -W 5)
+[ "$actual" = "$expected" ]
+compose restart broker
+compose up -d --wait --wait-timeout 60
+actual=$(compose exec -T broker mosquitto_sub -h 127.0.0.1 -V mqttv5 -q 1 -t hades/dev/restart-probe -C 1 -W 5)
+[ "$actual" = "$expected" ]
+compose exec -T broker mosquitto_pub -h 127.0.0.1 -V mqttv5 -q 1 -t hades/dev/restart-probe -r -n
+compose exec -T broker mosquitto_pub -h 127.0.0.1 -V mqttv5 -q 1 -t hades/dev/post-restart -r -m reconnected
+actual=$(compose exec -T broker mosquitto_sub -h 127.0.0.1 -V mqttv5 -q 1 -t hades/dev/post-restart -C 1 -W 5)
+[ "$actual" = reconnected ]
+compose exec -T broker mosquitto_pub -h 127.0.0.1 -V mqttv5 -q 1 -t hades/dev/post-restart -r -n
+printf '%s\n' 'broker smoke passed: MQTT 5 QoS 1, graceful retained-state recovery, fresh publication after restart'
