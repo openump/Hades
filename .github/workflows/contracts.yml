@@ -37,7 +37,7 @@ jobs:
           python -m unittest discover -s tests -v
       - name: Build Linux targets without cgo
         run: |
-          for tool in hades-check hades-simulator hades-consumer hades-normalizer hades-history; do
+          for tool in hades-check hades-simulator hades-consumer hades-normalizer hades-history hades-pki hades-history-proxy; do
             CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o "artifacts/$tool-amd64" "./cmd/$tool"
             CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -o "artifacts/$tool-arm64" "./cmd/$tool"
           done
@@ -57,6 +57,11 @@ jobs:
         with:
           go-version-file: go.mod
           cache: true
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: '3.14.6'
+      - name: Install independent development validator
+        run: python -m pip install -r requirements-dev.txt
       - name: Start pinned broker and verify restart
         run: |
           docker compose -f deploy/compose.yaml config --quiet
@@ -70,9 +75,32 @@ jobs:
         run: ./scripts/smoke-normalization
       - name: Numeric history and outage recovery
         run: ./scripts/smoke-history
+      - name: Independent consumer stack
+        run: ./scripts/smoke-stack
       - name: Broker logs
         if: always()
         run: docker compose -f deploy/compose.yaml --profile history logs broker historian
       - name: Remove disposable CI stack
         if: always()
         run: docker compose -f deploy/compose.yaml --profile history down -v
+
+  security:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      COMPOSE_PROJECT_NAME: hades-ci-security
+      HADES_SECURE_MQTT_PORT: '18884'
+      HADES_SECURE_HISTORY_PORT: '18430'
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: mTLS identities, ACL denials, management isolation and rotation
+        run: ./scripts/smoke-security
+      - name: Remove disposable security stack
+        if: always()
+        env:
+          HADES_SECURITY_DIR: /tmp/hades-security-cleanup
+        run: docker compose -f deploy/compose.secure.yaml down -v

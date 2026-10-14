@@ -1,0 +1,165 @@
+{
+  "clients": [
+    {
+      "username": "normalizer",
+      "roles": [
+        {
+          "rolename": "normalizer"
+        }
+      ]
+    },
+    {
+      "username": "consumer-primary",
+      "roles": [
+        {
+          "rolename": "consumer-primary"
+        }
+      ]
+    },
+    {
+      "username": "consumer-secondary",
+      "roles": [
+        {
+          "rolename": "consumer-secondary"
+        }
+      ]
+    },
+    {
+      "username": "history-adapter",
+      "roles": [
+        {
+          "rolename": "history-adapter"
+        }
+      ]
+    },
+    {
+      "username": "gateway-press-04",
+      "roles": [
+        {
+          "rolename": "gateway-press-04"
+        }
+      ]
+    },
+    {
+      "username": "admin",
+      "roles": [
+        {
+          "rolename": "admin"
+        }
+      ]
+    }
+  ],
+  "roles": [
+    {
+      "rolename": "normalizer",
+      "acls": [
+        {
+          "acltype": "publishClientSend",
+          "topic": "openump/v1/acme/berlin/assembly/line-01/press-04/telemetry",
+          "allow": true
+        },
+        {
+          "acltype": "publishClientSend",
+          "topic": "openump/v1/acme/berlin/assembly/line-01/press-04/metadata",
+          "allow": true
+        },
+        {
+          "acltype": "publishClientSend",
+          "topic": "openump/v1/acme/berlin/assembly/line-01/press-04/status",
+          "allow": true
+        }
+      ]
+    },
+    {
+      "rolename": "consumer-primary",
+      "acls": [
+        {
+          "acltype": "publishClientReceive",
+          "topic": "openump/v1/acme/berlin/assembly/line-01/press-04/+",
+          "allow": true
+        },
+        {
+          "acltype": "subscribeLiteral",
+          "topic": "openump/v1/acme/berlin/assembly/line-01/press-04/+",
+          "allow": true
+        }
+      ]
+    },
+    {
+      "rolename": "consumer-secondary",
+      "acls": [
+        {
+          "acltype": "publishClientReceive",
+          "topic": "openump/v1/acme/berlin/assembly/line-01/press-04/+",
+          "allow": true
+        },
+        {
+          "acltype": "subscribeLiteral",
+          "topic": "openump/v1/acme/berlin/assembly/line-01/press-04/+",
+          "allow": true
+        }
+      ]
+    },
+    {
+      "rolename": "history-adapter",
+      "acls": [
+        {
+          "acltype": "publishClientReceive",
+          "topic": "openump/v1/acme/berlin/assembly/line-01/press-04/telemetry",
+          "allow": true
+        },
+        {
+          "acltype": "subscribeLiteral",
+          "topic": "openump/v1/acme/berlin/assembly/line-01/press-04/telemetry",
+          "allow": true
+        }
+      ]
+    },
+    {
+      "rolename": "gateway-press-04",
+      "acls": []
+    },
+    {
+      "rolename": "admin",
+      "acls": [
+        {
+          "acltype": "publishClientSend",
+          "topic": "hades/admin/health",
+          "allow": true
+        },
+        {
+          "acltype": "publishClientSend",
+          "topic": "$CONTROL/dynamic-security/v1",
+          "allow": true
+        },
+        {
+          "acltype": "publishClientReceive",
+          "topic": "hades/admin/health",
+          "allow": true
+        },
+        {
+          "acltype": "publishClientReceive",
+          "topic": "$CONTROL/dynamic-security/v1/response",
+          "allow": true
+        },
+        {
+          "acltype": "subscribeLiteral",
+          "topic": "hades/admin/health",
+          "allow": true
+        },
+        {
+          "acltype": "subscribeLiteral",
+          "topic": "$CONTROL/dynamic-security/v1/response",
+          "allow": true
+        }
+      ]
+    }
+  ],
+  "groups": [],
+  "defaultACLAccess": {
+    "publishClientSend": false,
+    "publishClientReceive": false,
+    "subscribe": false,
+    "unsubscribe": false
+  }
+}

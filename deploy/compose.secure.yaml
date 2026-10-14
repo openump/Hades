@@ -1,0 +1,79 @@
+# Standalone hardened reference. Never combine with the anonymous dev Compose file.
+name: hades-secure
+services:
+  security-init:
+    image: alpine:3.24@sha256:294b683cb724975bec92580e1e685676bd4b50bda910ddb8c51d4cabeaec77e6
+    user: "0:0"
+    read_only: true
+    cap_drop: [ALL]
+    cap_add: [CHOWN, DAC_OVERRIDE]
+    security_opt: [no-new-privileges:true]
+    network_mode: none
+    volumes:
+      - ${HADES_SECURITY_DIR:?Set an absolute path to private issued credentials}:/source:ro
+      - ../config/broker/security/roles.json:/policy.json:ro
+      - secure-credentials:/prepared
+    command:
+      - /bin/sh
+      - -ec
+      - |
+        mkdir -p /prepared/broker /prepared/proxy
+        chown -R 0:0 /prepared/broker /prepared/proxy
+        cp /source/ca.crt /source/broker.crt /source/broker.key /prepared/broker/
+        test -f /prepared/broker/roles.json || cp /policy.json /prepared/broker/roles.json
+        cp /source/ca.crt /source/history-proxy.crt /source/history-proxy.key /prepared/proxy/
+        chmod 700 /prepared/broker /prepared/proxy
+        chmod 600 /prepared/broker/* /prepared/proxy/*
+        chown -R 1883:1883 /prepared/broker
+        chown -R 10001:10001 /prepared/proxy
+  broker:
+    image: openump/hades-mosquitto:2.1.2-dev
+    build: {context: broker}
+    depends_on:
+      security-init: {condition: service_completed_successfully}
+    ports: ["127.0.0.1:${HADES_SECURE_MQTT_PORT:-8883}:8883"]
+    volumes:
+      - ../config/broker/security/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
+      - secure-credentials:/credentials
+      - secure-broker-data:/mosquitto/data
+    # The security directory remains writable for synced Dynamic Security policy.
+    command: [-c, /mosquitto/config/mosquitto.conf]
+    read_only: true
+    tmpfs: ["/tmp:size=16m,uid=1883,gid=1883"]
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    mem_limit: 128m
+    stop_grace_period: 15s
+    networks: [edge]
+  historian:
+    image: openump/hades-victoriametrics:1.154.0-dev
+    build: {context: historian}
+    command: [-storageDataPath=/storage, -retentionPeriod=1d, -dedup.minScrapeInterval=1ms, -inmemoryDataFlushInterval=1s, -memory.allowedPercent=50, -maxInsertRequestSize=1MiB]
+    volumes: [secure-historian-data:/storage]
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    mem_limit: 256m
+    stop_grace_period: 30s
+    networks: [history-backend]
+  history-proxy:
+    image: openump/hades-history-proxy:dev
+    build: {context: .., dockerfile: deploy/historian/Proxy.Dockerfile}
+    depends_on:
+      security-init: {condition: service_completed_successfully}
+      historian: {condition: service_started}
+    ports: ["127.0.0.1:${HADES_SECURE_HISTORY_PORT:-8429}:8429"]
+    command: [-listen, "0.0.0.0:8429", -backend, "http://historian:8428", -tls-ca, /credentials/proxy/ca.crt, -tls-cert, /credentials/proxy/history-proxy.crt, -tls-key, /credentials/proxy/history-proxy.key]
+    volumes: [secure-credentials:/credentials:ro]
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    mem_limit: 64m
+    networks: [edge, history-backend]
+volumes:
+  secure-credentials:
+  secure-broker-data:
+  secure-historian-data:
+networks:
+  edge: {driver: bridge}
+  history-backend: {driver: bridge, internal: true}

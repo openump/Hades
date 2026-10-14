@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/openump/Hades/internal/sample"
+	"github.com/openump/Hades/internal/transport"
 )
 
 func run() error {
@@ -20,6 +21,7 @@ func run() error {
 	count := flag.Int("count", 3, "number of synthetic observations (1–10000)")
 	scenario := flag.String("scenario", "cycle", "normal, bad-quality, missing-reading, or cycle")
 	timeout := flag.Duration("timeout", 60*time.Second, "total run deadline")
+	credentials := transport.Flags()
 	flag.Parse()
 	if flag.NArg() != 0 || *count < 1 || *count > 10000 || *timeout <= 0 {
 		return fmt.Errorf("invalid arguments")
@@ -28,6 +30,10 @@ func run() error {
 		return fmt.Errorf("unknown scenario")
 	}
 	cfg, err := sample.Load(*root, *config)
+	if err != nil {
+		return err
+	}
+	cfg.TLS, err = transport.Client(*credentials)
 	if err != nil {
 		return err
 	}

@@ -11,6 +11,7 @@ import (
 	"github.com/eclipse/paho.golang/autopaho"
 	"github.com/eclipse/paho.golang/paho"
 	"github.com/openump/Hades/internal/contracts"
+	"github.com/openump/Hades/internal/transport"
 )
 
 type Received struct {
@@ -29,19 +30,10 @@ type Client struct {
 	cancel   context.CancelFunc
 }
 
-func (c *Client) Session() string { c.mu.Lock(); defer c.mu.Unlock(); return c.session }
-func LocalBroker(address string) (*url.URL, error) {
-	u, err := url.Parse(address)
-	if err != nil {
-		return nil, err
-	}
-	if u.Scheme != "mqtt" || u.User != nil || u.Path != "" || u.RawQuery != "" || u.Fragment != "" || (u.Hostname() != "127.0.0.1" && u.Hostname() != "localhost" && u.Hostname() != "::1") {
-		return nil, fmt.Errorf("development examples require mqtt://localhost:<port> without credentials")
-	}
-	return u, nil
-}
+func (c *Client) Session() string                  { c.mu.Lock(); defer c.mu.Unlock(); return c.session }
+func LocalBroker(address string) (*url.URL, error) { return transport.BrokerURL(address, nil) }
 func Connect(ctx context.Context, address string, cfg *Config, producer bool) (*Client, error) {
-	u, err := LocalBroker(address)
+	u, err := transport.BrokerURL(address, cfg.TLS)
 	if err != nil {
 		return nil, err
 	}
@@ -53,7 +45,7 @@ func Connect(ctx context.Context, address string, cfg *Config, producer bool) (*
 		default:
 		}
 	}
-	options := autopaho.ClientConfig{ServerUrls: []*url.URL{u}, KeepAlive: 5, CleanStartOnInitialConnection: true, SessionExpiryInterval: 60, ConnectTimeout: 5 * time.Second, ReconnectBackoff: func(attempt int) time.Duration { return time.Duration(1<<min(attempt, 3)) * 100 * time.Millisecond }, ClientConfig: paho.ClientConfig{ClientID: "hades-sample-" + c.BootID, PacketTimeout: 5 * time.Second}}
+	options := autopaho.ClientConfig{TlsCfg: cfg.TLS, ServerUrls: []*url.URL{u}, KeepAlive: 5, CleanStartOnInitialConnection: true, SessionExpiryInterval: 60, ConnectTimeout: 5 * time.Second, ReconnectBackoff: func(attempt int) time.Duration { return time.Duration(1<<min(attempt, 3)) * 100 * time.Millisecond }, ClientConfig: paho.ClientConfig{ClientID: "hades-sample-" + c.BootID, PacketTimeout: 5 * time.Second}}
 	options.OnConnectError = func(err error) { log.Printf("local MQTT connection failed: %v", err) }
 	options.ConnectPacketBuilder = func(packet *paho.Connect, _ *url.URL) (*paho.Connect, error) {
 		c.mu.Lock()

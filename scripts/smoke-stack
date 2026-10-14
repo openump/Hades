@@ -1,0 +1,5 @@
+#!/bin/sh
+# Development-only independent consumer oracle; custom deployed services are Go.
+set -eu
+cd "$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)"
+HADES_INTEROPERABILITY=1 exec ./scripts/smoke-history

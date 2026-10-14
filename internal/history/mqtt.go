@@ -12,7 +12,7 @@ import (
 	"github.com/eclipse/paho.golang/autopaho"
 	"github.com/eclipse/paho.golang/paho"
 	"github.com/openump/Hades/internal/delivery"
-	"github.com/openump/Hades/internal/sample"
+	"github.com/openump/Hades/internal/transport"
 )
 
 type Subscription struct {
@@ -25,7 +25,7 @@ type Subscription struct {
 // Subscribe establishes stable MQTT ownership. Manual PUBACK follows synced
 // intake or a synced diagnostic. Failure leaves the packet unacknowledged.
 func (a *Adapter) Subscribe(ctx context.Context, address string, diagnostic func(string, []byte, error) error) (*Subscription, error) {
-	u, err := sample.LocalBroker(address)
+	u, err := transport.BrokerURL(address, a.cfg.TLS)
 	if err != nil {
 		return nil, err
 	}
@@ -47,7 +47,7 @@ func (a *Adapter) Subscribe(ctx context.Context, address string, diagnostic func
 	topic := a.cfg.Prefix + "telemetry"
 	hash := sha256.Sum256([]byte(topic))
 	id := fmt.Sprintf("hades-history-%x", hash[:12])
-	options := autopaho.ClientConfig{ServerUrls: []*url.URL{u}, KeepAlive: 10, SessionExpiryInterval: 86400, CleanStartOnInitialConnection: false, ConnectTimeout: 5 * time.Second, ReconnectBackoff: func(attempt int) time.Duration {
+	options := autopaho.ClientConfig{TlsCfg: a.cfg.TLS, ServerUrls: []*url.URL{u}, KeepAlive: 10, SessionExpiryInterval: 86400, CleanStartOnInitialConnection: false, ConnectTimeout: 5 * time.Second, ReconnectBackoff: func(attempt int) time.Duration {
 		return delivery.Delay(attempt)
 	}, ClientConfig: paho.ClientConfig{ClientID: id, PacketTimeout: 5 * time.Second, EnableManualAcknowledgment: true, SendAcksInterval: 10 * time.Millisecond}}
 	options.ConnectPacketBuilder = func(packet *paho.Connect, _ *url.URL) (*paho.Connect, error) {
