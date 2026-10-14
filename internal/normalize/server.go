@@ -17,6 +17,7 @@ import (
 )
 
 type Server struct {
+	pendingSince                                                                        []time.Time
 	capacityRefusals, storageFailures, processingCount, staleReadings, unknownFreshness uint64
 	processingMS                                                                        float64
 	lastAdmission                                                                       time.Time
@@ -46,7 +47,11 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		s.mu.Lock()
 		defer s.mu.Unlock()
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]any{"pending_records": len(s.pending), "pending_bytes": s.bytes, "admitted": s.admitted, "published": s.published, "rejected": s.rejected, "quarantine_records": len(s.quarantine.Records), "quarantine_bytes": s.quarantine.Bytes, "quarantine_evictions": s.evicted, "retries": s.retries, "publish_failures": s.retries, "capacity_refusals": s.capacityRefusals, "storage_failures": s.storageFailures, "processing_count": s.processingCount, "processing_ms_sum": s.processingMS, "stale_readings": s.staleReadings, "unknown_freshness": s.unknownFreshness, "disk_reserve_ok": s.quarantine.Available(0) == nil, "queue_limit_records": s.maxRecords, "queue_limit_bytes": s.maxBytes, "last_admission": s.lastAdmission, "transfer_state": "not_implemented"})
+		oldestMS := int64(0)
+		if len(s.pendingSince) > 0 {
+			oldestMS = max(time.Since(s.pendingSince[0]).Milliseconds(), 0)
+		}
+		json.NewEncoder(w).Encode(map[string]any{"pending_records": len(s.pending), "pending_bytes": s.bytes, "admitted": s.admitted, "published": s.published, "rejected": s.rejected, "quarantine_records": len(s.quarantine.Records), "quarantine_bytes": s.quarantine.Bytes, "quarantine_evictions": s.evicted, "retries": s.retries, "publish_failures": s.retries, "capacity_refusals": s.capacityRefusals, "storage_failures": s.storageFailures, "processing_count": s.processingCount, "processing_ms_sum": s.processingMS, "stale_readings": s.staleReadings, "unknown_freshness": s.unknownFreshness, "disk_reserve_ok": s.quarantine.Available(0) == nil, "queue_limit_records": s.maxRecords, "queue_limit_bytes": s.maxBytes, "last_admission": s.lastAdmission, "oldest_pending_ms": oldestMS, "transfer_state": "not_implemented"})
 		return
 	}
 	if r.URL.Path != "/observations" || r.Method != http.MethodPost {
@@ -148,6 +153,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.pending = append(s.pending, normalized)
+	s.pendingSince = append(s.pendingSince, time.Now())
 	s.bytes += charge
 	s.admitted++
 	s.lastAdmission = time.Now().UTC()
@@ -194,6 +200,7 @@ func (s *Server) Run(ctx context.Context, publish func(context.Context, []byte) 
 		s.mu.Lock()
 		s.pending[0] = nil // Release the retired payload even while backing storage is reused.
 		s.pending = s.pending[1:]
+		s.pendingSince = s.pendingSince[1:]
 		s.bytes -= len(raw) + storage.Overhead
 		s.published++
 		s.mu.Unlock()

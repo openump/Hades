@@ -1,0 +1,132 @@
+#!/usr/bin/env python3
+"""Isolated recovery matrix; output is measured evidence, never a zero-loss claim."""
+import json,os,pathlib,subprocess,sys,datetime,time,tempfile,urllib.request,urllib.parse,atexit,socket
+root=pathlib.Path(__file__).resolve().parents[1];os.chdir(root)
+output=pathlib.Path('artifacts/recovery');output.mkdir(parents=True,exist_ok=True)
+native=os.environ.get('HADES_VM_BINARY')
+if not native:
+ # Always create our own disposable project, regardless of caller's dev project.
+ os.environ['COMPOSE_PROJECT_NAME']='hades-recovery-'+str(os.getpid())
+ os.environ['HADES_MQTT_PORT']=os.environ.get('HADES_RECOVERY_MQTT_PORT','18885')
+ os.environ['HADES_VM_PORT']=os.environ.get('HADES_RECOVERY_VM_PORT','18432')
+ atexit.register(lambda:subprocess.run(['docker','compose','-f','deploy/compose.yaml','--profile','history','down','-v'],check=False))
+result=subprocess.run(['go','test','-race','-json','./internal/gateway','./internal/normalize','./internal/history','./internal/storage','-run','Recovery'],capture_output=True,text=True)
+(output/'go-tests.jsonl').write_text(result.stdout)
+if result.returncode:print(result.stdout,result.stderr);sys.exit(result.returncode)
+report=[]
+for line in result.stdout.splitlines():
+ event=json.loads(line);text=event.get('Output','')
+ if 'RECOVERY ' in text:report.append(json.loads(text.split('RECOVERY ',1)[1]))
+# Measure the actual VictoriaMetrics acknowledgement-before-disk-crash window.
+# Fixed test series, IDs in the external ledger; no per-event production labels.
+native=os.environ.get('HADES_VM_BINARY');port=os.environ.get('HADES_RECOVERY_VM_PORT','18432');base='http://127.0.0.1:'+port
+compose=['docker','compose','-f','deploy/compose.yaml','--profile','history'];process=None
+with tempfile.TemporaryDirectory(prefix='hades-recovery-vm-') as scratch:
+ logs=open(scratch+'/vm.log','w')
+ def start():
+  global process
+  if native:
+   process=subprocess.Popen([native,'-httpListenAddr=127.0.0.1:'+port,'-storageDataPath='+scratch+'/vm','-retentionPeriod=1d','-inmemoryDataFlushInterval=30s','-dedup.minScrapeInterval=1ms'],stdout=logs,stderr=logs)
+  else:
+   os.environ['HADES_VM_PORT']=port
+   subprocess.run(compose+['up','--build','-d','--wait','historian'],check=True)
+  for _ in range(100):
+   try:
+    if urllib.request.urlopen(base+'/health',timeout=1).status==200:return
+   except OSError:pass
+   time.sleep(.1)
+  raise RuntimeError('historian readiness timeout')
+ def kill():
+  global process
+  if native:process.kill();process.wait();process=None
+  else:subprocess.run(compose+['kill','-s','SIGKILL','historian'],check=True)
+ try:
+  start();stamp=int((time.time()-60)*1000)
+  ids=[f'vm-ack-{i}' for i in range(20)]
+  ledger={str(stamp+i):ids[i] for i in range(20)}
+  (output/'historian-source-ids.json').write_text(json.dumps(ledger,indent=2))
+  body=''.join(f'hades_recovery_window{{source="ack-window"}} {i} {stamp+i}\n' for i in range(20)).encode()
+  before=time.monotonic();response=urllib.request.urlopen(urllib.request.Request(base+'/api/v1/import/prometheus',data=body),timeout=5)
+  assert response.status==204
+  acknowledged=time.monotonic();kill();elapsed=time.monotonic()-acknowledged;start()
+  selector='hades_recovery_window{source="ack-window"}'
+  url=base+'/api/v1/export?'+urllib.parse.urlencode({'match[]':selector,'start':stamp/1000,'end':(stamp+20)/1000})
+  data=urllib.request.urlopen(url,timeout=5).read().splitlines();recovered=[]
+  for line in data:
+   for ts in json.loads(line)['timestamps']:
+    if str(ts) in ledger:recovered.append(ledger[str(ts)])
+  recovered=sorted(set(recovered));lost=sorted(set(ids)-set(recovered))
+  report.append(dict(scenario='historian-api-ack-sigkill',produced=ids,api_accepted=ids,recovered=recovered,lost=lost,ack_to_kill_seconds=elapsed,profile='best_effort_api_acceptance',durable_receipt=False))
+ finally:
+  if process is not None:process.terminate();process.wait(timeout=15)
+  if not native:subprocess.run(compose+['stop','historian'],check=False)
+  logs.close()
+# A dedicated two-record broker proves overflow with a non-acknowledging client.
+with tempfile.TemporaryDirectory(prefix='hades-recovery-broker-') as scratch:
+ config=pathlib.Path(scratch)/'broker.conf'
+ config.write_text('listener 1883 0.0.0.0\nallow_anonymous true\nmax_queued_messages 2\nmax_queued_bytes 65536\nmax_inflight_messages 1\npersistence true\nautosave_interval 3600\npersistence_location /testdata/\nlog_dest stdout\n')
+ native_broker=os.environ.get('HADES_MOSQUITTO_BINARY');blocked_port=os.environ.get('HADES_RECOVERY_BLOCKED_PORT','18886');broker=None;name='hades-blocked-'+str(os.getpid())
+ log=open(pathlib.Path(scratch)/'broker.log','w')
+ try:
+  if native_broker:
+   config.write_text(config.read_text().replace('1883 0.0.0.0',blocked_port+' 127.0.0.1').replace('/testdata/',scratch+'/data/'))
+   pathlib.Path(scratch+'/data').mkdir()
+   broker=subprocess.Popen([native_broker,'-c',str(config)],stdout=log,stderr=log)
+  else:
+   pathlib.Path(scratch+'/data').mkdir()
+   subprocess.run(['docker','compose','-f','deploy/compose.yaml','build','broker'],check=True)
+   subprocess.run(['docker','run','-d','--name',name,'--user',str(os.getuid()),'-p','127.0.0.1:'+blocked_port+':1883','-v',str(config)+':/test.conf:ro','-v',scratch+'/data:/testdata','openump/hades-mosquitto:2.1.2-dev','-c','/test.conf'],check=True)
+  for _ in range(50):
+   try:connection=socket.create_connection(('127.0.0.1',int(blocked_port)),timeout=1);connection.close();break
+   except OSError:time.sleep(.1)
+  else:raise RuntimeError('blocked broker readiness timeout')
+  env=dict(os.environ,HADES_RECOVERY_BLOCKED_BROKER='mqtt://127.0.0.1:'+blocked_port)
+  result=subprocess.run(['go','test','-race','-json','./internal/sample','-run','TestRecoveryBlockedBrokerConsumer'],env=env,capture_output=True,text=True)
+  (output/'blocked-consumer.jsonl').write_text(result.stdout)
+  if result.returncode:raise RuntimeError(result.stdout+result.stderr)
+  for line in result.stdout.splitlines():
+   text=json.loads(line).get('Output','')
+   if 'RECOVERY ' in text:report.append(json.loads(text.split('RECOVERY ',1)[1]))
+  # After the first overflow check, restart from saved state, then interrupt
+  # the next accepted offline queue before the deliberately long autosave.
+  marker=str(pathlib.Path(scratch)/'crash-ready.json')
+  env['HADES_RECOVERY_CRASH_MARKER']=marker
+  capture=open(output/'broker-crash.jsonl','w')
+  helper=subprocess.Popen(['go','test','-race','-json','./internal/sample','-run','TestRecoveryBlockedBrokerConsumer'],env=env,stdout=capture,stderr=log)
+  try:
+   for _ in range(200):
+    if pathlib.Path(marker).exists():break
+    if helper.poll() is not None:raise RuntimeError('broker crash helper failed before boundary')
+    time.sleep(.05)
+   else:raise RuntimeError('broker crash marker timeout')
+   if native_broker:
+    broker.kill();broker.wait();broker=subprocess.Popen([native_broker,'-c',str(config)],stdout=log,stderr=log)
+   else:
+    subprocess.run(['docker','kill','-s','SIGKILL',name],check=True);subprocess.run(['docker','start',name],check=True)
+   for _ in range(50):
+    try:connection=socket.create_connection(('127.0.0.1',int(blocked_port)),timeout=1);connection.close();break
+    except OSError:time.sleep(.1)
+   pathlib.Path(marker+'.restarted').write_text('ready')
+   if helper.wait(timeout=20)!=0:raise RuntimeError((output/'broker-crash.jsonl').read_text())
+  finally:
+   if helper.poll() is None:helper.kill();helper.wait()
+   capture.close()
+  for line in (output/'broker-crash.jsonl').read_text().splitlines():
+   text=json.loads(line).get('Output','')
+   if 'RECOVERY ' in text:report.append(json.loads(text.split('RECOVERY ',1)[1]))
+ finally:
+  if broker is not None:broker.terminate();broker.wait(timeout=5)
+  if not native_broker:subprocess.run(['docker','rm','-f',name],check=False)
+  log.close()
+# Existing actual MQTT restart/duplicate and sink-outage tests complement the
+# process-boundary helpers; skips are explicit rather than silently green.
+if os.environ.get('HADES_RECOVERY_STACK')=='1':
+ if native:raise RuntimeError('HADES_RECOVERY_STACK=1 requires disposable Compose stack')
+ subprocess.run(compose+['up','--build','-d','--wait','broker'],check=True)
+ subprocess.run(['./scripts/smoke-simulator'],check=True)
+ subprocess.run(['./scripts/smoke-history'],check=True)
+ report.append(dict(scenario='compose-broker-restart-and-sink-outage',status='passed',evidence='smoke-simulator and smoke-history validated exact identities/duplicates and synced outage restart'))
+else:report.append(dict(scenario='compose-broker-restart-and-sink-outage',status='not_run',reason='set HADES_RECOVERY_STACK=1 against disposable Compose stack'))
+(output/'report.json').write_text(json.dumps(report,indent=2)+'\n')
+print(json.dumps(report,indent=2))
+print('Recovery evidence saved to artifacts/recovery/report.json; pilot-host qualification remains pending.')
