@@ -1,14 +1,33 @@
 #!/usr/bin/env python3
 """Positive/negative mTLS, MQTT ACL, HTTP role and root-rotation checks."""
-import datetime,json,os,pathlib,ssl,subprocess,tempfile,time,urllib.request,urllib.error
+import datetime,json,os,pathlib,ssl,subprocess,tempfile,time,urllib.request,urllib.error,urllib.parse
+import socketserver,struct,threading
 root=pathlib.Path(__file__).resolve().parents[1];os.chdir(root)
-for tool in ('hades-pki','hades-history-proxy','hades-normalizer','hades-history','hades-consumer'):
+ot_lab=os.environ.get('HADES_TEST_OT_GATEWAY')=='1'
+for tool in ('hades-gateway','hades-pki','hades-history-proxy','hades-normalizer','hades-history','hades-consumer'):
  subprocess.run(['go','build','-o',f'artifacts/{tool}-native',f'./cmd/{tool}'],check=True)
 native=os.environ.get('HADES_MOSQUITTO_BINARY')
 mp=os.environ.get('HADES_SECURE_MQTT_PORT','18884');hp=os.environ.get('HADES_SECURE_HISTORY_PORT','18430')
 compose=['docker','compose','-f','deploy/compose.secure.yaml']
 children=[]
+class ModbusLab(socketserver.StreamRequestHandler):
+ def handle(self):
+  self.request.settimeout(3)
+  header=self.rfile.read(7)
+  if len(header)!=7:return
+  tx,proto,length,unit=struct.unpack('>HHHB',header)
+  request=self.rfile.read(length-1)
+  if proto!=0 or length!=6 or unit!=1 or request!=bytes([3,0,0,0,1]):
+   self.server.rejected.append(request.hex());return
+  with self.server.guard:
+   index=len(self.server.reads);self.server.reads.append(time.monotonic())
+  if index==1:time.sleep(.4);return
+  response=bytes([0x83,2]) if index==2 else bytes([3,2])+struct.pack('>H',672)
+  try:self.wfile.write(struct.pack('>HHHB',tx,0,len(response)+1,unit)+response);self.wfile.flush()
+  except OSError:pass
+
 with tempfile.TemporaryDirectory(prefix='hades-security-') as scratch:
+ metadata_args=['-config','examples/site/modbus-lab.metadata.json'] if ot_lab else []
  logs=open(scratch+'/logs','w');consumerout=open(scratch+'/consumer','w');broker=None;vm=None;proxy=None;normalizer=None;history=None
  def issue(version):
   path=pathlib.Path(scratch)/version
@@ -87,19 +106,54 @@ with tempfile.TemporaryDirectory(prefix='hades-security-') as scratch:
   try:http('/health',None,200);raise AssertionError('anonymous HTTPS accepted')
   except (OSError,urllib.error.URLError):pass
   # Actual Go mTLS path: gateway HTTPS -> normalizer TLS MQTT -> consumer/history.
-  history=subprocess.Popen(['artifacts/hades-history-native','-broker','tls://127.0.0.1:'+mp,'-historian','https://127.0.0.1:'+hp,'-intake',scratch+'/intake','-quarantine',scratch+'/history-quarantine']+flags('history-adapter',v1),stdout=logs,stderr=logs);children.append(history)
+  history=subprocess.Popen(['artifacts/hades-history-native','-broker','tls://127.0.0.1:'+mp,'-historian','https://127.0.0.1:'+hp,'-intake',scratch+'/intake','-quarantine',scratch+'/history-quarantine']+flags('history-adapter',v1)+metadata_args,stdout=logs,stderr=logs);children.append(history)
   wait(lambda:'"type":"history_ready"' in pathlib.Path(logs.name).read_text(),'TLS history subscription')
-  consumer=subprocess.Popen(['artifacts/hades-consumer-native','-broker','tls://127.0.0.1:'+mp,'-count','1','-timeout','40s']+flags('consumer-primary',v1),stdout=consumerout,stderr=logs);children.append(consumer)
+  consumer=subprocess.Popen(['artifacts/hades-consumer-native','-broker','tls://127.0.0.1:'+mp,'-count',('4' if ot_lab else '1'),'-timeout','40s']+flags('consumer-primary',v1)+metadata_args,stdout=consumerout,stderr=logs);children.append(consumer)
   wait(lambda:'"type":"ready"' in pathlib.Path(consumerout.name).read_text(),'TLS Go consumer')
-  normalizer=subprocess.Popen(['artifacts/hades-normalizer-native','-broker','tls://127.0.0.1:'+mp,'-listen','127.0.0.1:18083','-quarantine',scratch+'/normalization-quarantine','-ingress-ca',str(v1/'ca.crt'),'-ingress-cert',str(v1/'ingress.crt'),'-ingress-key',str(v1/'ingress.key')]+flags('normalizer',v1),stdout=logs,stderr=logs);children.append(normalizer)
+  normalizer=subprocess.Popen(['artifacts/hades-normalizer-native','-broker','tls://127.0.0.1:'+mp,'-listen','127.0.0.1:18083','-quarantine',scratch+'/normalization-quarantine','-ingress-ca',str(v1/'ca.crt'),'-ingress-cert',str(v1/'ingress.crt'),'-ingress-key',str(v1/'ingress.key')]+flags('normalizer',v1)+metadata_args,stdout=logs,stderr=logs);children.append(normalizer)
   wait(lambda:http('/health','admin',200,port='18083') is not None,'mTLS ingress')
   http('/observations','consumer-primary',403,data=b'{}',port='18083')
-  fixture=json.loads(pathlib.Path('examples/raw-observations/valid.json').read_text())
-  fixture['observed_at']=(datetime.datetime.now(datetime.timezone.utc)-datetime.timedelta(seconds=1)).isoformat(timespec='milliseconds').replace('+00:00','Z');fixture['ingested_at']=fixture['observed_at']
-  http('/observations','gateway-press-04',202,data=json.dumps(fixture).encode(),port='18083')
+  if ot_lab:
+   with socketserver.ThreadingTCPServer(('127.0.0.1',0),ModbusLab) as source:
+    source.daemon_threads=True;source.reads=[];source.rejected=[];source.guard=threading.Lock()
+    thread=threading.Thread(target=source.serve_forever,daemon=True);thread.start()
+    try:
+     acquisition=open(scratch+'/gateway.jsonl','w')
+     gateway_command=['artifacts/hades-gateway-native','-lab','-telegraf',os.environ['HADES_TELEGRAF_BINARY'],'-source','tcp://127.0.0.1:'+str(source.server_address[1]),'-ingress','https://127.0.0.1:18083/observations','-count','4']+flags('gateway-press-04',v1)
+     subprocess.run(gateway_command,stdout=acquisition,stderr=logs,check=True,timeout=30);acquisition.close()
+    finally:source.shutdown();thread.join(timeout=5)
+    assert not source.rejected and len(source.reads)==4,(source.rejected,source.reads,pathlib.Path(logs.name).read_text()[-3000:])
+    assert all(b-a>=.95 for a,b in zip(source.reads,source.reads[1:])),source.reads
+   events=[json.loads(line)['payload'] for line in pathlib.Path(scratch+'/gateway.jsonl').read_text().splitlines()]
+   readings=[e['signals']['temperature'] for e in events]
+   assert [r['value'] for r in readings]==[672,None,None,672],readings
+   assert [r['quality'] for r in readings]==['good','bad','bad','good'],readings
+   assert len({e['message_id'] for e in events})==4 and all(e['source']['clock_uncertainty_ms'] is None for e in events)
+  else:
+   fixture=json.loads(pathlib.Path('examples/raw-observations/valid.json').read_text())
+   fixture['observed_at']=(datetime.datetime.now(datetime.timezone.utc)-datetime.timedelta(seconds=1)).isoformat(timespec='milliseconds').replace('+00:00','Z');fixture['ingested_at']=fixture['observed_at']
+   http('/observations','gateway-press-04',202,data=json.dumps(fixture).encode(),port='18083')
   assert consumer.wait(timeout=40)==0,pathlib.Path(logs.name).read_text()[-4000:]
   def accepted():return any(json.load(open(p))['value']['state']=='api_accepted' for p in pathlib.Path(scratch+'/intake').glob('*.json'))
   wait(accepted,'TLS synced history and API acceptance')
+  if ot_lab:
+   wait(lambda:len(list(pathlib.Path(scratch+'/intake').glob('*.json')))==4 and all(json.load(open(p))['value']['state']=='api_accepted' for p in pathlib.Path(scratch+'/intake').glob('*.json')),'lab history retirement')
+   received=[json.loads(line) for line in pathlib.Path(consumerout.name).read_text().splitlines() if json.loads(line)['type']=='telemetry']
+   assert [e['value'] for e in received]==[67.2,None,None,67.2],received
+   assert [e['message_id'] for e in received]==[e['message_id'] for e in events]
+   assert [e['observed_at'] for e in received]==[e['observed_at'] for e in events]
+   assert all(e['freshness']=='unknown' for e in received)
+   start=datetime.datetime.fromisoformat(events[0]['observed_at'].replace('Z','+00:00')).timestamp()
+   end=datetime.datetime.fromisoformat(events[-1]['observed_at'].replace('Z','+00:00')).timestamp()
+   query=urllib.parse.urlencode({'match[]':'hades_observation_value{asset_id="urn:openump:acme:berlin:press-04",metadata_revision="2",unit="Cel"}','start':start,'end':end+.01})
+   def lab_values():
+    return [json.loads(line) for line in http('/api/v1/export?'+query,'consumer-primary',200).read().splitlines()]
+   wait(lambda:bool(lab_values()) and lab_values()[0]['values']==[67.2,67.2],'lab numeric history')
+   exported=lab_values()[0]
+   expected=[int(round(datetime.datetime.fromisoformat(e['observed_at'].replace('Z','+00:00')).timestamp()*1000)) for e in (events[0],events[-1])]
+   assert exported['timestamps']==expected,exported
+   print('OT lab: four FC3-only bounded polls, timeout/exception/null quality/reconnect, preserved ID/time, TLS source-to-history passed; real device acceptance pending')
+
   for child in (normalizer,history):child.terminate();child.wait(timeout=10)
   if native:
    for child in (broker,proxy):child.terminate();child.wait(timeout=10)
@@ -109,7 +163,7 @@ with tempfile.TemporaryDirectory(prefix='hades-security-') as scratch:
   pub('normalizer',topic,False,pki=v2,old=v1);pub('normalizer',topic,True,pki=v2)
   # Go client must reconnect under the replacement trust/identity bundle.
   previous=len(pathlib.Path(consumerout.name).read_text())
-  rotated=subprocess.Popen(['artifacts/hades-consumer-native','-broker','tls://127.0.0.1:'+mp,'-count','1','-timeout','2s']+flags('consumer-primary',v2),stdout=consumerout,stderr=logs);children.append(rotated)
+  rotated=subprocess.Popen(['artifacts/hades-consumer-native','-broker','tls://127.0.0.1:'+mp,'-count','1','-timeout','2s']+flags('consumer-primary',v2)+metadata_args,stdout=consumerout,stderr=logs);children.append(rotated)
   wait(lambda:'"type":"ready"' in pathlib.Path(consumerout.name).read_text()[previous:],'rotated Go subscription')
   rotated.terminate();rotated.wait(timeout=5)
   if not native:

@@ -69,7 +69,7 @@ func LoadContext(root, path string) (*Config, error) {
 	prefix := strings.Join([]string{"openump", "v1", asset.Enterprise, asset.Location.Site, asset.Location.Area, asset.Location.Line, asset.Location.Asset, ""}, "/")
 	return &Config{Validator: v, Metadata: m, MetadataBytes: raw, Registry: registry, Prefix: prefix, Interval: time.Duration(Num(m["acquisition"].(map[string]any)["expected_status_interval_ms"])) * time.Millisecond}, nil
 }
-func Load(root, path string) (*Config, error) {
+func LoadReadingContext(root, path string) (*Config, error) {
 	c, err := LoadContext(root, path)
 	if err != nil {
 		return nil, err
@@ -80,11 +80,22 @@ func Load(root, path string) (*Config, error) {
 	if !ok || len(defs) != 1 || d["type"] != "number" || (d["unit"] != "Cel" && d["unit"] != "K") {
 		return nil, fmt.Errorf("sample requires one numeric motor_temperature measurement in Cel or K")
 	}
-	if m["acquisition"].(map[string]any)["protocol"] != "simulator" {
-		return nil, fmt.Errorf("sample protocol must be simulator")
+	protocol := m["acquisition"].(map[string]any)["protocol"]
+	if protocol != "simulator" && protocol != "modbus-tcp" {
+		return nil, fmt.Errorf("unsupported reading example protocol")
 	}
 	if Num(m["acquisition"].(map[string]any)["expected_status_interval_ms"]) != Num(d["expected_interval_ms"]) || Num(d["expected_interval_ms"]) > 28800000 {
 		return nil, fmt.Errorf("sample measurement/status intervals must agree and be at most eight hours")
+	}
+	return c, nil
+}
+func Load(root, path string) (*Config, error) {
+	c, err := LoadReadingContext(root, path)
+	if err != nil {
+		return nil, err
+	}
+	if c.Metadata["acquisition"].(map[string]any)["protocol"] != "simulator" {
+		return nil, fmt.Errorf("simulator requires simulator protocol")
 	}
 	return c, nil
 }

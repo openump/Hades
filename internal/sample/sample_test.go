@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"os"
 	"testing"
 	"time"
 )
@@ -81,5 +82,26 @@ func TestRetryPreservesIdentityAndBody(t *testing.T) {
 	cancel()
 	if err := Send(ctx, raw, func(context.Context, []byte) error { t.Fatal("published after cancellation"); return nil }); err == nil {
 		t.Fatal("ignored cancellation")
+	}
+}
+
+func TestReadingContextSupportsLabWithoutAllowingUnknownMeasurement(t *testing.T) {
+	if _, err := LoadReadingContext("../..", "../../examples/site/modbus-lab.metadata.json"); err != nil {
+		t.Fatal(err)
+	}
+	raw, err := os.ReadFile("../../examples/site/modbus-lab.metadata.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var m map[string]any
+	json.Unmarshal(raw, &m)
+	defs := m["measurements"].(map[string]any)
+	defs["unsupported"] = defs["motor_temperature"]
+	delete(defs, "motor_temperature")
+	raw, _ = json.Marshal(m)
+	path := t.TempDir() + "/metadata.json"
+	os.WriteFile(path, raw, 0600)
+	if _, err = LoadReadingContext("../..", path); err == nil {
+		t.Fatal("unsupported context accepted by reading examples")
 	}
 }

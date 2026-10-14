@@ -59,3 +59,5 @@ Numeric ingestion, synced intake and outage recovery: [history mapping](docs/pro
 
 Independent consumer smoke: [local slice](docs/tutorials/local-slice.md).
 Service identities and segmented TLS profile: [identity and networking](docs/operations/identity-networking.md).
+
+Read-only OT lab preparation and outstanding site approval: [pilot evidence](docs/pilot/integration-evidence.md).

@@ -1,0 +1,5 @@
+#!/bin/sh
+set -eu
+cd "$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)"
+: "${HADES_TELEGRAF_BINARY:?Provide the pinned Telegraf 1.40.2 binary}"
+HADES_TEST_OT_GATEWAY=1 exec ./scripts/smoke-security

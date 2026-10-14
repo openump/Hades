@@ -41,7 +41,7 @@ func run() error {
 	if err != nil || (host != "127.0.0.1" && host != "::1") {
 		return fmt.Errorf("ingress must bind a loopback IP")
 	}
-	cfg, err := sample.Load(*root, *config)
+	cfg, err := sample.LoadReadingContext(*root, *config)
 	if err != nil {
 		return err
 	}
