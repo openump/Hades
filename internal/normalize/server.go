@@ -160,6 +160,7 @@ func (s *Server) Run(ctx context.Context, publish func(context.Context, []byte) 
 			}
 		}
 		s.mu.Lock()
+		s.pending[0] = nil // Release the retired payload even while backing storage is reused.
 		s.pending = s.pending[1:]
 		s.bytes -= len(raw) + storage.Overhead
 		s.published++
