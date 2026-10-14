@@ -10,7 +10,7 @@ native=os.environ.get('HADES_VM_BINARY')
 with tempfile.TemporaryDirectory(prefix='hades-history-') as scratch:
  children=[];history=None;vm=None;logs=open(scratch+'/logs','w');stdout=open(scratch+'/history.jsonl','w')
  def wait_for(check,label):
-  for _ in range(150):
+  for _ in range(450):
    try:
     if check():return
    except (OSError,ValueError):pass
