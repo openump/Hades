@@ -303,5 +303,5 @@ func lockHostStores(manifest Manifest) (locks []*os.File, err error) {
 
 func within(root, path string) bool {
 	relative, err := filepath.Rel(root, path)
-	return err == nil && (relative == "." || (!strings.HasPrefix(relative, "../") && !filepath.IsAbs(relative)))
+	return err == nil && (relative == "." || (relative != ".." && !strings.HasPrefix(relative, "../") && !filepath.IsAbs(relative)))
 }

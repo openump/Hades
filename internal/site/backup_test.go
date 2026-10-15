@@ -95,3 +95,17 @@ func TestBackupCannotRecurseIntoItsOwnDestination(t *testing.T) {
 		t.Fatal("recursive archive target accepted")
 	}
 }
+
+func TestBackupMayUseSourceParentWithoutRecursing(t *testing.T) {
+	parent := t.TempDir()
+	source := parent + "/source"
+	if err := os.Mkdir(source, 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(source+"/record.json", []byte(`{"owned":true}`), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Archive(source, parent+"/backup.tar"); err != nil {
+		t.Fatal("parent is outside source, not recursive", err)
+	}
+}

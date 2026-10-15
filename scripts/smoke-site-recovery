@@ -8,7 +8,10 @@ native=bool(os.environ.get('HADES_VM_BINARY'))
 if not native:
  subprocess.run(['go','build','-o','artifacts/hades-history-proxy','./cmd/hades-history-proxy'],env=dict(os.environ,CGO_ENABLED='0',GOOS='linux',GOARCH='amd64'),check=True)
 site=str(root/'artifacts/hades-site');fixture=str(root/'artifacts/hades-restore-fixture')
-def run(args,**kwargs):return subprocess.check_output([str(x) for x in args],stderr=subprocess.STDOUT,**kwargs).decode()
+def run(args,**kwargs):
+ try:return subprocess.check_output([str(x) for x in args],stderr=subprocess.STDOUT,**kwargs).decode()
+ except subprocess.CalledProcessError as error:
+  print(error.output.decode(),flush=True);raise
 def freeport():
  with socket.socket() as s:s.bind(('127.0.0.1',0));return s.getsockname()[1]
 def wait(check,label):
