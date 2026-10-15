@@ -37,10 +37,14 @@ jobs:
           python -m unittest discover -s tests -v
       - name: Build Linux targets without cgo
         run: |
-          for tool in hades-check hades-simulator hades-consumer hades-normalizer hades-history hades-pki hades-history-proxy hades-gateway hades-transfer hades-site; do
+          for tool in hades-check hades-simulator hades-consumer hades-normalizer hades-history hades-pki hades-history-proxy hades-gateway hades-transfer hades-site hades-capacity; do
             CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o "artifacts/$tool-amd64" "./cmd/$tool"
             CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -o "artifacts/$tool-arm64" "./cmd/$tool"
           done
+      - name: Reference capacity workload (not pilot qualification)
+        run: |
+          go run ./cmd/hades-capacity -host-label github-ubuntu-24.04 -count 30 -rate 50
+          go run ./cmd/hades-capacity -host-label github-ubuntu-24.04 -count 30 -rate 0
       - name: Reachable Go vulnerability check
         run: go run golang.org/x/vuln/cmd/govulncheck@v1.9.0 ./...
 
