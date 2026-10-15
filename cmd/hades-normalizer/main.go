@@ -3,6 +3,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"flag"
 	"fmt"
 	"github.com/openump/Hades/internal/normalize"
@@ -28,6 +29,7 @@ func run() error {
 	listen := flag.String("listen", "127.0.0.1:8081", "loopback HTTP ingress")
 	root := flag.String("root", ".", "repository root")
 	config := flag.String("config", "examples/site/metadata.json", "approved development metadata")
+	profile := flag.String("signal-profile", "temperature", "temperature or approved-numeric (simulator only)")
 	mapping := flag.String("mapping", "config/normalization/temperature.blobl", "trusted reading mapping")
 	quarantine := flag.String("quarantine", "runtime/quarantine", "private bounded quarantine")
 	records := flag.Int("queue-records", 4096, "volatile queue record limit")
@@ -48,7 +50,10 @@ func run() error {
 	if err != nil || (host != "127.0.0.1" && host != "::1") {
 		return fmt.Errorf("ingress must bind a loopback IP")
 	}
-	cfg, err := sample.LoadReadingContext(*root, *config)
+	cfg, err := sample.LoadContext(*root, *config)
+	if err == nil && *profile == "temperature" {
+		cfg, err = sample.LoadReadingContext(*root, *config)
+	}
 	if err != nil {
 		return err
 	}
@@ -59,14 +64,22 @@ func run() error {
 	if cfg.TLS != nil && *serverCredentials == (transport.Paths{}) {
 		return fmt.Errorf("secure broker requires mTLS ingress credentials")
 	}
-	raw, err := os.ReadFile(*mapping)
-	if err != nil {
-		return err
+	var engine *normalize.Engine
+	switch *profile {
+	case "temperature":
+		raw, readErr := os.ReadFile(*mapping)
+		if readErr != nil {
+			return readErr
+		}
+		if len(raw) > 65536 {
+			return fmt.Errorf("mapping too large")
+		}
+		engine, err = normalize.New(cfg, string(raw))
+	case "approved-numeric":
+		engine, err = normalize.NewApprovedNumeric(cfg)
+	default:
+		return fmt.Errorf("unknown signal profile")
 	}
-	if len(raw) > 65536 {
-		return fmt.Errorf("mapping too large")
-	}
-	engine, err := normalize.New(cfg, string(raw))
 	if err != nil {
 		return err
 	}
@@ -113,10 +126,23 @@ func run() error {
 		errors <- ingress.Run(ctx, func(c context.Context, p []byte) error { return client.Publish(c, cfg.Prefix+"telemetry", p, false, 0) })
 	}()
 	log.Printf("normalizer ready on %s; accepted work is volatile", *listen)
-	select {
-	case <-ctx.Done():
-	case err = <-errors:
-		stop()
+	ticker := time.NewTicker(time.Second)
+	defer ticker.Stop()
+	output := json.NewEncoder(os.Stdout)
+runLoop:
+	for {
+		select {
+		case <-ctx.Done():
+			break runLoop
+		case err = <-errors:
+			stop()
+			break runLoop
+		case <-ticker.C:
+			if err = output.Encode(map[string]any{"type": "normalizer_stats", "stats": ingress.Stats()}); err != nil {
+				stop()
+				break runLoop
+			}
+		}
 	}
 	// Wait for handlers and the worker before releasing the store lock.
 	shutdownctx, done := context.WithTimeout(context.Background(), 6*time.Second)

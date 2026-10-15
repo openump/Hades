@@ -26,7 +26,7 @@ func run() error {
 	if flag.NArg() != 0 || *count < 1 || *count > 10000 || *timeout <= 0 {
 		return fmt.Errorf("invalid arguments")
 	}
-	cfg, err := sample.LoadReadingContext(*root, *config)
+	cfg, err := sample.LoadContext(*root, *config)
 	if err != nil {
 		return err
 	}

@@ -69,6 +69,6 @@ Hades-025's development harness now exercises actual normalizers, MQTT, historia
 adapters/database, Go and C/Python consumers and optional durable receipt transfer.
 See [workload commands and measurement limits](../../benchmarks/stack/README.md).
 The serial transfer-intake results above retain their original narrow scope.
-The new harness currently supports one measurement per asset and is not complete
-against every Hades-025 acceptance criterion. Its report lists omitted components
-and missing measurements explicitly. Neither report qualifies the OPC UA pilot.
+The harness supports bounded multi-measurement simulator contexts, declared
+bursts and fixture outages. Its report lists omitted components, sampled timing
+precision, illustrative sizing assumptions and missing physical metrics explicitly. Neither report qualifies the OPC UA pilot.

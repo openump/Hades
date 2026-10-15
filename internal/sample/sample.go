@@ -219,13 +219,20 @@ func (c *Config) Inspect(topic string, raw []byte, now time.Time) (map[string]an
 			u := Num(value)
 			uncertainty = &u
 		}
-		definition := c.Metadata["measurements"].(map[string]any)["motor_temperature"].(map[string]any)
-		reading := p["measurements"].(map[string]any)["motor_temperature"].(map[string]any)
 		result["observed_at"] = p["observed_at"]
-		result["unit"] = reading["unit"]
-		result["quality"] = reading["quality"]
-		result["value"] = reading["value"]
-		result["freshness"] = contracts.Freshness(observed, now, Num(definition["expected_interval_ms"]), uncertainty)
+		summaries := map[string]any{}
+		for name, value := range p["measurements"].(map[string]any) {
+			reading := value.(map[string]any)
+			definition := c.Metadata["measurements"].(map[string]any)[name].(map[string]any)
+			summary := map[string]any{"unit": reading["unit"], "quality": reading["quality"], "value": reading["value"], "freshness": contracts.Freshness(observed, now, Num(definition["expected_interval_ms"]), uncertainty)}
+			summaries[name] = summary
+			if name == "motor_temperature" {
+				for key, v := range summary {
+					result[key] = v
+				}
+			}
+		}
+		result["measurements"] = summaries
 	}
 	return result, nil
 }

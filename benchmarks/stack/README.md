@@ -4,8 +4,8 @@ Run from the repository with Go, Python dependencies from requirements-dev.txt,
 and a working Docker daemon:
 
 ```sh
-./scripts/benchmark-stack --assets 2 --count 8 --host-label my-disposable-host --output artifacts/stack-capacity/two-assets
-./scripts/benchmark-stack --assets 4 --count 8 --rate 8 --burst-rate 24 --envelope-bytes 4096 --host-label my-disposable-host --output artifacts/stack-capacity/four-assets
+./scripts/benchmark-stack --assets 2 --measurements 2 --count 8 --burst-seconds 1 --host-label my-disposable-host --output artifacts/stack-capacity/two-assets
+./scripts/benchmark-stack --assets 4 --measurements 4 --count 8 --burst-seconds 1 --rate 8 --burst-rate 24 --envelope-bytes 4096 --host-label my-disposable-host --output artifacts/stack-capacity/four-assets
 ./scripts/benchmark-stack --assets 2 --count 4 --no-transfer --host-label my-disposable-host --output artifacts/stack-capacity/disabled
 ```
 
@@ -31,16 +31,25 @@ export HADES_PYTHON=/absolute/path/venv/bin/python
 The harness creates one approved metadata context and normalizer/history/transfer
 instance per asset. Both Go and independent C/Python consumers validate each
 context; schema/topic validation remains enabled. This measures the reference
-per-context deployment cost, not a multiplexed future runtime. Asset count also
-controls numeric label-set cardinality. Currently each context has exactly one
-motor-temperature measurement. Arbitrary measurement names/counts are **not yet
-supported**. Envelope size is valid JSON whitespace padding at raw ingress; the
-normalized MQTT envelope remains compact. Do not interpret raw padding as a test
-of large multi-measurement MQTT envelopes.
+per-context deployment cost, not a multiplexed future runtime. Asset and measurement
+counts control numeric label-set cardinality (`assets * measurements`). The opt-in
+`approved-numeric` normalizer profile accepts simulator provenance and 1–64 reviewed
+numeric definitions; raw names/units must match the metadata. It runs the pure
+Bento identity mapping on canonical numeric signals, validates the resulting
+telemetry/context/topic, and preserves numeric precision, IDs, timestamps and
+provenance. The existing temperature/deci-Celsius and Modbus behavior remains the
+default. The workload bounds measurement count to 1–32 per asset. Go and Python
+consumers validate and summarize all measurements.
+
+`--envelope-bytes` sets a minimum raw envelope size using valid JSON whitespace;
+adding measurements also increases the actual normalized MQTT envelope. Reports
+include actual raw bytes, measurement count and label-set count. No unsupported
+padding fields are smuggled into the shared telemetry contract.
 
 Half of `--count` observations per asset run at `--rate` total observations/sec,
-the remainder at `--burst-rate` while the fixture receiver returns 503. Duration
-is derived from count/rate; it is not an independent input. The driver is serial,
+the remainder at `--burst-rate` while the fixture receiver returns 503. `--burst-seconds` independently overrides the burst length, rounding up to whole
+per-asset observation cycles; total count and consumer expectations are adjusted.
+Without it, duration is derived from count/rate. The driver is serial,
 so slower HTTP admission lowers achieved throughput and increases schedule lag.
 Local history and both consumers must finish during the cloud outage. Transfer
 is stopped, upgraded, rolled back and retried without dropping owned IDs. Exact
@@ -48,7 +57,7 @@ normalized payload bytes and source IDs/timestamps are compared against local
 and durable remote records. Numeric historian timestamps/values are also queried.
 Malformed JSON and an unapproved context must fail at the actual ingress.
 
-Bounds: 2–8 assets, 4–1000 observations per asset, steady rate ≤100/s, burst ≤200/s,
+Bounds: 2–8 assets, 1–32 measurements per asset, 4–1000 observations per asset, steady rate ≤100/s, burst ≤200/s,
 512–60000 raw bytes, 60–900 seconds, and 64–2048 MiB private run logical file
 budget (default 512 MiB). Scheduling must fit half the wall-clock budget. Sampling
 reports a bound violation; a current HTTP/readiness operation may finish before
@@ -63,10 +72,10 @@ periodic file/consumer scan **upper bound** with missing counts and overhead,
 not an in-process latency histogram. CPU deltas omit a process's unsampled final
 interval; short-lived consumers may lack samples. RSS includes shared pages.
 Docker host PID sampling works on Linux, not the hidden Docker VM on macOS.
-Docker historian file growth is currently unknown; native mode measures its
-logical files. Sparse/allocation/write amplification and media endurance remain
-unknown. Version labels in native reports are expected pins: verify installed
-binaries yourself; binary digests are retained.
+Docker historian apparent bytes are measured with container `du -sb`; native mode
+sums logical file lengths. Directory overhead differs between these methods. Sparse/allocation/write amplification and media endurance remain
+unknown. Native component version output must match the expected pins, and binary digests
+and normalizer Go build/dependency information are retained.
 
 Use the sizing worksheet's actual bytes/record, pending occupancy, replay rate
 and reserve/headroom as inputs to [retention sizing](../../docs/operations/retention-sizing.md).
@@ -74,8 +83,17 @@ Short-run startup/segment overhead makes extrapolated retention uncertain. These
 runs establish functional reference coverage only. Hades-022 target-host capacity,
 OPC UA acquisition and Hades-023 operator sign-off remain separate gates.
 
-Outstanding Hades-025 scope: configurable multi-measurement contexts and payload
-cardinality, explicit burst duration, internal processing latency distributions,
-container historian disk accounting, and a fuller measured retention projection.
-The report deliberately lists these missing measurements. The existing
-`hades-capacity` intake-only microbenchmark keeps its separate scope.
+The existing `hades-capacity` intake-only microbenchmark keeps its separate scope.
+Processing distributions use fixed disjoint millisecond buckets in normalizer
+health and historian write stats, with an unbounded >1000 ms final bucket. These
+are process-lifetime counters (including the two negative setup probes on the
+first normalizer). Admission/visibility distributions use the measurement window;
+visibility includes sampling delay. Transfer worker restarts reset its counters;
+source/local/remote ledgers, not process counter sums, establish delivery totals.
+
+Installed Linux runs also exercise a CPU-bound fixture under the 50% CPU quota,
+force a disposable memory fixture through the 512 MiB cgroup limit and automatic
+restart, and assert actual private log rotation stays within two 64 KiB files.
+Resource fixtures finish before the workload measurement window. Their journals
+and limits are recorded as lifecycle evidence. These fixture failures are
+intentional and do not involve production services.

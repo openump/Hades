@@ -89,8 +89,8 @@ Each supervisor retains at most two files of `log_bytes` (256 B–5 MiB each),
 0600, plus a lock and 0600 Unix socket in a 0700 directory. Both child streams are
 collected. Rotation can split/truncate individual large writes, so these are
 bounded diagnostics, not an immutable audit ledger. Periodic history/transfer
-stats remain visible; normalizer periodic health is obtained from its protected
-`/health` API. Failure of the wrapper is captured by rate-limited journald; set
+stats remain visible; normalizer also emits periodic JSON stats, with the same service-local snapshot
+available from its protected `/health` API. Failure of the wrapper is captured by rate-limited journald; set
 host-wide journald disk/retention limits separately. The rendered unit uses
 CPUQuota=50%, MemoryMax=512M, TasksMax=64, a 12-second shutdown deadline and up to
 five starts per minute. The wrapper sends TERM to the child process group, waits
@@ -115,6 +115,7 @@ runbook and must not broaden asset authorization.
 
 Verification: `go test -race ./internal/supervisor`, `scripts/smoke-ot-gateway`
 (actual supervised Modbus regression), and `scripts/benchmark-stack --systemd`
-(installed Linux workers, process kill/restart, live revision mismatch, failed
+(installed Linux workers, actual CPU/memory enforcement and bounded log rotation,
+process kill/restart, live revision mismatch, failed
 start, queued-ID preservation, compatible upgrade/rollback). Inspect CI results
 before claiming installed Linux acceptance; a macOS native run is not that proof.
