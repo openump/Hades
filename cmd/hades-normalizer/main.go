@@ -29,7 +29,7 @@ func run() error {
 	listen := flag.String("listen", "127.0.0.1:8081", "loopback HTTP ingress")
 	root := flag.String("root", ".", "repository root")
 	config := flag.String("config", "examples/site/metadata.json", "approved development metadata")
-	profile := flag.String("signal-profile", "temperature", "temperature or approved-numeric (simulator only)")
+	profile := flag.String("signal-profile", "temperature", "temperature, approved-numeric (simulator) or opcua-mock")
 	mapping := flag.String("mapping", "config/normalization/temperature.blobl", "trusted reading mapping")
 	quarantine := flag.String("quarantine", "runtime/quarantine", "private bounded quarantine")
 	records := flag.Int("queue-records", 4096, "volatile queue record limit")
@@ -75,6 +75,8 @@ func run() error {
 			return fmt.Errorf("mapping too large")
 		}
 		engine, err = normalize.New(cfg, string(raw))
+	case "opcua-mock":
+		engine, err = normalize.NewOPCUAMock(cfg)
 	case "approved-numeric":
 		engine, err = normalize.NewApprovedNumeric(cfg)
 	default:

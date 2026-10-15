@@ -3,6 +3,7 @@ module github.com/openump/Hades
 go 1.27.2
 
 require (
+	github.com/awcullen/opcua v1.4.0
 	github.com/eclipse/paho.golang v0.23.0
 	github.com/santhosh-tekuri/jsonschema/v6 v6.0.3
 	github.com/warpstreamlabs/bento v1.22.0
@@ -13,6 +14,9 @@ require (
 	github.com/OneOfOne/xxhash v1.2.8 // indirect
 	github.com/aymerick/douceur v0.2.0 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
+	github.com/djherbis/buffer v1.2.0 // indirect
+	github.com/gammazero/deque v1.0.0 // indirect
+	github.com/gammazero/workerpool v1.1.3 // indirect
 	github.com/go-logr/logr v1.4.4 // indirect
 	github.com/go-logr/stdr v1.2.2 // indirect
 	github.com/gofrs/uuid v4.4.0+incompatible // indirect
@@ -21,6 +25,7 @@ require (
 	github.com/gorilla/websocket v1.5.4-0.20250319132907-e064f32e3674 // indirect
 	github.com/matoous/go-nanoid/v2 v2.0.0 // indirect
 	github.com/microcosm-cc/bluemonday v1.0.27 // indirect
+	github.com/pkg/errors v0.9.1 // indirect
 	github.com/segmentio/ksuid v1.0.4 // indirect
 	github.com/tilinna/z85 v1.0.0 // indirect
 	github.com/xeipuuv/gojsonpointer v0.0.0-20190905194746-02993c407bfb // indirect

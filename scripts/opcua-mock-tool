@@ -1,0 +1,29 @@
+#!/usr/bin/env python3
+"""Build/test only the OPC UA fixture with a checked loopback/security source patch."""
+import hashlib,json,pathlib,subprocess,sys,tempfile,shutil
+root=pathlib.Path(__file__).resolve().parents[1]
+subprocess.run(['go','mod','verify'],cwd=root,check=True)
+module=json.loads(subprocess.check_output(['go','list','-m','-json','github.com/awcullen/opcua'],cwd=root))
+if module['Version']!='v1.4.0':raise SystemExit('review the fixture overlay before changing SDK version')
+source=pathlib.Path(module['Dir'])/'server/server.go'
+raw=source.read_text()
+# Exact source hash is filled from the pinned module; no module-cache mutation.
+if hashlib.sha256(source.read_bytes()).hexdigest()!='e8dcd706d6aba0956ee99a2a1745360ff3b83c28f31510a299e9a3e85c0223b1':raise SystemExit('unexpected upstream server source')
+assert raw.count('net.Listen("tcp", ":"+baseURL.Port())')==1
+raw=raw.replace('net.Listen("tcp", ":"+baseURL.Port())','net.Listen("tcp", baseURL.Host)')
+start=raw.index('\turis := []string{');end=raw.index('\n\tfor _, uri := range uris {',start)
+raw=raw[:start]+'\turis := []string{ua.SecurityPolicyURIAes256Sha256RsaPss}'+raw[end:]
+first=raw.index('\tfor _, uri := range uris {');second=raw.index('\tfor _, uri := range uris {',first+1)
+raw=raw[:first]+raw[second:] # advertise only SignAndEncrypt, never Sign-only
+raw=raw.replace('func (srv *Server) ListenAndServe() error {','const OpenUMPLoopbackOnly = true\n\nfunc (srv *Server) ListenAndServe() error {')
+with tempfile.TemporaryDirectory(prefix='hades-ua-build-') as directory:
+ checkout=pathlib.Path(directory)/'sdk';shutil.copytree(module['Dir'],checkout)
+ patched=checkout/'server/server.go';patched.chmod(0o600);patched.write_text(raw)
+ modfile=pathlib.Path(directory)/'mock.mod';modfile.write_bytes((root/'go.mod').read_bytes())
+ modfile.with_suffix('.sum').write_bytes((root/'go.sum').read_bytes())
+ subprocess.run(['go','mod','edit','-modfile',str(modfile),'-replace=github.com/awcullen/opcua='+str(checkout)],cwd=root,check=True)
+ action=sys.argv[1] if len(sys.argv)>1 else 'build'
+ if action=='build':args=['go','build','-modfile',str(modfile),'-tags','opcua_mock','-o',str(root/'artifacts/hades-opcua-mock-native'),'./cmd/hades-opcua-mock']
+ elif action=='test':args=['go','test','-race','-modfile',str(modfile),'-tags','opcua_mock','./internal/opcuamock']
+ else:raise SystemExit('usage: opcua-mock-tool build|test')
+ subprocess.run(args,cwd=root,check=True)
