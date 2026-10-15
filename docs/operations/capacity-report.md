@@ -33,8 +33,8 @@ from the actual pilot inventory; do not guess them from this reference run.
 Committed JSON under `benchmarks/reference-{steady,burst}.json` records a macOS
 arm64 development host with 12 logical CPUs, Go 1.27.2, one asset, one numeric
 measurement, one numeric label set, 200 unique identities and mean payload
-483.26 bytes. The base source revision is recorded; the JSON also embeds Go build
-information for the capacity tool. These short runs are illustrative evidence.
+483.26 bytes. The base source revision is recorded; subsequent runs also embed Go build
+information for the capacity tool (added after this initial measurement). These short runs are illustrative evidence.
 
 | Measurement | Paced 50/s | Unpaced serial |
 | --- | --- | --- |
