@@ -98,6 +98,9 @@ func run() error {
 	for sequence := 0; sequence < *count; sequence++ {
 		started := time.Now()
 		value, observed, reason := driver.Read(ctx)
+		// Driver startup varies. Space reads from completion so a fast subsequent
+		// launch cannot exceed the approved maximum device polling frequency.
+		nextPoll := time.Now().Add(interval)
 		acquired.Add(1)
 		latencyUS.Add(uint64(time.Since(started).Microseconds()))
 		if value == nil {
@@ -123,7 +126,7 @@ func run() error {
 		admitted.Add(1)
 		encoder.Encode(map[string]any{"type": "gateway_admitted", "payload": json.RawMessage(raw), "boundary": "accepted_volatile"})
 		if sequence+1 < *count {
-			timer := time.NewTimer(max(time.Until(started.Add(interval)), 0))
+			timer := time.NewTimer(max(time.Until(nextPoll), 0))
 			select {
 			case <-ctx.Done():
 				timer.Stop()

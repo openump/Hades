@@ -15,7 +15,10 @@ writable paths. Keep leaf credentials private to their role. Do not give a worke
 access to the CA private key. Use absolute paths and private, nonsymlink regular
 service definitions (0600). Every configuration, mapping and credential referenced
 by the command must appear in `files` with its SHA256; include the metadata,
-normalization mapping, CA and role certificate/key. Do not include mutable intake
+normalization mapping, runtime schema files, CA and role certificate/key, and
+auxiliary executables such as the selected Telegraf binary. Each artifact is
+bounded to 512 MiB and hashed by streaming; large binary checks add probe CPU
+and latency, so live revision probes should not be used as high-frequency metrics. Do not include mutable intake
 records or active logs. Hashing identifies reviewed content, not a signature or a
 replacement for administrator ownership. Updating executable files in place while
 a process is running is unsupported: stop, replace and restart instead.
@@ -92,7 +95,7 @@ bounded diagnostics, not an immutable audit ledger. Periodic history/transfer
 stats remain visible; normalizer also emits periodic JSON stats, with the same service-local snapshot
 available from its protected `/health` API. Failure of the wrapper is captured by rate-limited journald; set
 host-wide journald disk/retention limits separately. The rendered unit uses
-CPUQuota=50%, MemoryMax=512M, TasksMax=64, a 12-second shutdown deadline and up to
+CPUQuota=50%, MemoryMax=512M, MemorySwapMax=0, TasksMax=64, a 12-second shutdown deadline and up to
 five starts per minute. The wrapper sends TERM to the child process group, waits
 eight seconds then kills it; systemd owns automatic restart and cgroup cleanup.
 

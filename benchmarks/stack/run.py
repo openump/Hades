@@ -34,7 +34,11 @@ def command(args, **kw):
 
 
 def sha(path):
-    return hashlib.sha256(pathlib.Path(path).read_bytes()).hexdigest()
+    digest = hashlib.sha256()
+    with open(path,'rb') as stream:
+        for chunk in iter(lambda:stream.read(1024*1024),b''):
+            digest.update(chunk)
+    return digest.hexdigest()
 
 
 def private_json(path, value):
@@ -199,7 +203,7 @@ class Run:
         binary = BIN/(tool+'-native')
         cfg = {'revision': 'reference-a', 'binary': str(binary), 'binary_sha256': sha(binary),
                'args': [str(v) for v in argv], 'directory': str(ROOT), 'state': str(self.scratch/(name+'-svc')),
-               'ready_pattern': ready, 'files': {str(f): sha(f) for f in files},
+               'ready_pattern': ready, 'files': {str(f): sha(f) for f in list(files)+list((ROOT/'schemas/v1').glob('*.json'))},
                'writable_paths': [str(self.scratch)], 'log_bytes': 65536}
         return cfg
 
@@ -388,8 +392,8 @@ class Run:
             command(['sudo', 'systemctl', 'kill', '--kill-whom=all', '--signal=SIGKILL', unit])
             state = wait(lambda: (v if (v := self.status(name)) and v['child_pid'] != old else None), 'systemd automatic restart')
             self.pids[name] = state['child_pid']
-            limits = subprocess.check_output(['systemctl', 'show', unit, '-p', 'CPUQuotaPerSecUSec', '-p', 'MemoryMax', '-p', 'TasksMax', '-p', 'NRestarts'], text=True)
-            assert 'MemoryMax=536870912' in limits and 'TasksMax=64' in limits
+            limits = subprocess.check_output(['systemctl', 'show', unit, '-p', 'CPUQuotaPerSecUSec', '-p', 'MemoryMax', '-p', 'MemorySwapMax', '-p', 'TasksMax', '-p', 'NRestarts'], text=True)
+            assert 'MemoryMax=536870912' in limits and 'MemorySwapMax=0' in limits and 'TasksMax=64' in limits
             self.lifecycle.append({'action': 'systemd_kill_restart', 'old_pid': old, 'status': state, 'limits': limits})
         thread = threading.Thread(target=self.monitor); thread.start()
         self.measurement_start = time.monotonic()
@@ -513,7 +517,7 @@ class Run:
             pass
         return {'format': 'openump-stack-capacity/1', 'scope': 'disposable_synthetic_multi_context_stack', 'pilot_qualified': False,
                 'source_revision': subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=ROOT, text=True).strip(),
-                'working_tree_dirty': bool(subprocess.check_output(['git', 'diff', '--name-only'], cwd=ROOT)),
+                'working_tree_dirty': bool(subprocess.check_output(['git', 'status', '--porcelain'], cwd=ROOT)),
                 'binaries_sha256': {t: sha(BIN/(t+'-native')) for t in TOOLS}, 'go_version': subprocess.check_output(['go', 'version'], text=True).strip(), 'normalizer_build_info': subprocess.check_output(['go','version','-m',BIN/'hades-normalizer-native'],text=True),
                 'component_version_output_native': self.component_versions, 'components_pinned': {'mosquitto': '2.1.2', 'victoriametrics': '1.154.0'}, 'inventory': inventory,
                 'workload': {**vars(self.args), 'output': str(self.args.output)}, 'measurement_seconds': elapsed, 'warmup': 'all services live and both consumers subscribed; no warmup observations',

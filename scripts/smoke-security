@@ -129,9 +129,15 @@ with tempfile.TemporaryDirectory(prefix='hades-security-') as scratch:
     thread=threading.Thread(target=source.serve_forever,daemon=True);thread.start()
     try:
      acquisition=open(scratch+'/gateway.jsonl','w')
-     gateway_command=['artifacts/hades-gateway-native','-lab','-telegraf',os.environ['HADES_TELEGRAF_BINARY'],'-source','tcp://127.0.0.1:'+str(source.server_address[1]),'-ingress','https://127.0.0.1:18083/observations','-count','4']+flags('gateway-press-04',v1)
+     gateway_command=['artifacts/hades-gateway-native','-lab','-telegraf',str(pathlib.Path(os.environ['HADES_TELEGRAF_BINARY']).resolve()),'-source','tcp://127.0.0.1:'+str(source.server_address[1]),'-ingress','https://127.0.0.1:18083/observations','-count','4']+flags('gateway-press-04',v1)
      executable=str(pathlib.Path(gateway_command[0]).resolve())
      service_config={'revision':'ot-lab','binary':executable,'binary_sha256':hashlib.sha256(pathlib.Path(executable).read_bytes()).hexdigest(),'args':gateway_command[1:],'directory':str(root),'state':scratch+'/gs','ready_pattern':'gateway_health','files':{str(pathlib.Path('examples/site/modbus-lab.metadata.json').resolve()):hashlib.sha256(pathlib.Path('examples/site/modbus-lab.metadata.json').read_bytes()).hexdigest()},'log_bytes':65536,'finite':True}
+     reviewed_files=list(pathlib.Path('schemas/v1').glob('*.json'))+[v1/'ca.crt',v1/'gateway-press-04.crt',v1/'gateway-press-04.key',pathlib.Path(os.environ['HADES_TELEGRAF_BINARY']).resolve()]
+     for artifact in reviewed_files:
+      digest=hashlib.sha256()
+      with artifact.open('rb') as stream:
+       for chunk in iter(lambda:stream.read(1024*1024),b''):digest.update(chunk)
+      service_config['files'][str(artifact.resolve())]=digest.hexdigest()
      config_path=scratch+'/gateway-service.json';pathlib.Path(config_path).write_text(json.dumps(service_config));os.chmod(config_path,0o600)
      definition=subprocess.check_output(['artifacts/hades-service-native','-action','digest','-config',config_path]).decode().strip()
      if os.environ.get('HADES_TEST_SYSTEMD')=='1':

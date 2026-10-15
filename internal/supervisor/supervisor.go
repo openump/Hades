@@ -82,7 +82,7 @@ func hashFile(path string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	if !filepath.IsAbs(path) || !st.Mode().IsRegular() || st.Size() > 256*1024*1024 {
+	if !filepath.IsAbs(path) || !st.Mode().IsRegular() || st.Size() > 512*1024*1024 {
 		return "", fmt.Errorf("artifact must be absolute bounded regular file")
 	}
 	file, err := os.Open(path)
@@ -91,7 +91,7 @@ func hashFile(path string) (string, error) {
 	}
 	defer file.Close()
 	hasher := sha256.New()
-	if _, err = io.Copy(hasher, io.LimitReader(file, 256*1024*1024+1)); err != nil {
+	if _, err = io.Copy(hasher, io.LimitReader(file, 512*1024*1024+1)); err != nil {
 		return "", err
 	}
 	return fmt.Sprintf("%x", hasher.Sum(nil)), nil
@@ -320,6 +320,7 @@ Restart=on-failure
 RestartSec=2
 CPUQuota=50%%
 MemoryMax=512M
+MemorySwapMax=0
 TasksMax=64
 NoNewPrivileges=true
 ProtectSystem=strict
