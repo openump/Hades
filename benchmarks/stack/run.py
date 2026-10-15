@@ -522,6 +522,7 @@ class Run:
                 'component_version_output_native': self.component_versions, 'components_pinned': {'mosquitto': '2.1.2', 'victoriametrics': '1.154.0'}, 'inventory': inventory,
                 'workload': {**vars(self.args), 'output': str(self.args.output)}, 'measurement_seconds': elapsed, 'warmup': 'all services live and both consumers subscribed; no warmup observations',
                 'numeric_label_sets': self.args.assets*self.args.measurements, 'measurements_per_asset': self.args.measurements,
+                'achieved_phase_admission_per_second': {phase: len(items)/(max(v['finished'] for v in items)-min(v['started'] for v in items)) for phase in ('steady','burst_outage') if (items := [v for v in self.source if v['phase']==phase])},
                 'scheduled_phases': {'steady_per_second_total': self.args.rate, 'burst_per_second_total': self.args.burst_rate},
                 'admitted': len(self.source), 'refused': sum(s['status'] != 202 for s in self.source),
                 'achieved_admission_per_second': len(self.source)/(max(s['finished'] for s in self.source)-min(s['started'] for s in self.source)),
@@ -542,7 +543,7 @@ class Run:
                                      'uncertainty': 'Short run includes startup/metadata/segment overhead. Logical file length is not physical allocation or media wear. No sustainable retention/outage target inferred.'},
                 'sampling': {'interval_seconds': self.args.sample_interval, 'total_overhead_seconds': sum(s['sampling_seconds'] for s in self.samples), 'rss_aggregate_caveat': 'Per-process RSS includes shared pages; summing overcounts memory.'},
                 'lifecycle': self.lifecycle, 'negative_ingress_status': self.rejections, 'transfer_state': 'disabled' if self.args.no_transfer else 'independently_verified_fixture_receipts',
-                'omitted': ['OPC UA acquisition', 'physical PLC', 'deployed Zeus', 'production network', 'history TLS proxy (separately covered by smoke-security)'],
+                'omitted': (['transfer and receipt receiver'] if self.args.no_transfer else [])+['OPC UA acquisition', 'physical PLC', 'deployed Zeus', 'production network', 'history TLS proxy (separately covered by smoke-security)'],
                 'not_measured': ['physical writes/endurance', 'sub-sample latency'],
                 'id_comparison': self.comparison}
 
@@ -590,6 +591,8 @@ def main():
     args = parser.parse_args()
     if not 1 <= args.measurements <= 32 or (args.burst_seconds is not None and not .1 <= args.burst_seconds <= 120):
         parser.error('measurement count or burst duration exceeds bounds')
+    if not 4 <= args.count <= 1000 or not 1 <= len(args.host_label.strip()) <= 128:
+        parser.error('count or named host label exceeds bounds')
     args.steady_count = args.count//2
     if args.burst_seconds is not None and args.assets > 0:
         args.count = args.steady_count + math.ceil(args.burst_seconds*args.burst_rate/args.assets)
@@ -618,7 +621,12 @@ def main():
             for name, data in [('source.jsonl', run.source), ('samples.jsonl', run.samples)]:
                 (args.output/name).write_text(''.join(json.dumps(v)+'\n' for v in data))
             print(json.dumps({'report': str(args.output/'report.json'), 'admitted': report['admitted'], 'assets': args.assets, 'pilot_qualified': False}))
-        except Exception:
+        except Exception as error:
+            if not args.output.exists():
+                args.output.mkdir(parents=True)
+                private_json(args.output/'report.json', {'format':'openump-stack-capacity/1','status':'failed', 'pilot_qualified':False, 'error':str(error), 'attempted':len(run.source), 'admitted':sum(v['status']==202 for v in run.source), 'refused':sum(v['status']!=202 for v in run.source), 'id_comparison':'incomplete; no loss claim'})
+                for name,data in [('source.jsonl',run.source),('samples.jsonl',run.samples)]:
+                    (args.output/name).write_text(''.join(json.dumps(v)+'\n' for v in data))
             print(run.scratch, file=sys.stderr)
             print((run.scratch/'infrastructure.log').read_text()[-6000:], file=sys.stderr)
             for cfg, _, _ in run.services.values():
