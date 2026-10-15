@@ -37,7 +37,7 @@ func Dial(ctx context.Context, endpoint, pki, identity string) (*Reader, error) 
 	if _, err = Certificate(filepath.Join(pki, identity+".crt"), uri); err != nil {
 		return nil, err
 	}
-	c, err := client.Dial(ctx, endpoint, client.WithSecurityPolicyURI(Policy, ua.MessageSecurityModeSignAndEncrypt), client.WithClientCertificatePaths(filepath.Join(pki, identity+".crt"), filepath.Join(pki, identity+".key")), client.WithX509IdentityPaths(filepath.Join(pki, identity+".crt"), filepath.Join(pki, identity+".key")), client.WithTrustedCertificatesPaths(filepath.Join(pki, "server.crt"), ""), client.WithConnectTimeout(1500), client.WithTimeoutHint(500), client.WithSessionTimeout(10000))
+	c, err := client.Dial(ctx, endpoint, client.WithSecurityPolicyURI(Policy, ua.MessageSecurityModeSignAndEncrypt), client.WithClientCertificatePaths(filepath.Join(pki, identity+".crt"), filepath.Join(pki, identity+".key")), client.WithX509IdentityPaths(filepath.Join(pki, identity+".crt"), filepath.Join(pki, identity+".key")), client.WithTrustedCertificatesPaths(filepath.Join(pki, "server.crt"), ""), client.WithConnectTimeout(3000), client.WithTimeoutHint(2000), client.WithSessionTimeout(10000))
 	if err != nil {
 		return nil, err
 	}
@@ -78,5 +78,7 @@ func (r *Reader) Read(ctx context.Context) ([]ua.DataValue, error) {
 func (r *Reader) Close() {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
-	r.Client.Abort(ctx)
+	if err := r.Client.Close(ctx); err != nil {
+		r.Client.Abort(ctx)
+	}
 }
