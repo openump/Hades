@@ -92,6 +92,23 @@ func (m *Manager) Backup(ctx context.Context, destination string) (err error) {
 	if _, err = os.Lstat(destination); !os.IsNotExist(err) {
 		return fmt.Errorf("backup destination must not exist")
 	}
+	parent, err := filepath.EvalSymlinks(filepath.Dir(destination))
+	if err != nil {
+		return err
+	}
+	roots := []string{m.Dir}
+	for _, path := range manifest.HostState {
+		roots = append(roots, path)
+	}
+	for _, path := range roots {
+		source, err := filepath.EvalSymlinks(path)
+		if err != nil {
+			return err
+		}
+		if within(source, parent) {
+			return fmt.Errorf("backup destination must be outside manager and host store trees")
+		}
+	}
 	scratch, err := os.MkdirTemp(filepath.Dir(destination), ".hades-backup-")
 	if err != nil {
 		return err

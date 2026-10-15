@@ -88,3 +88,10 @@ func TestBackupRequiresStoppedHostStore(t *testing.T) {
 		t.Fatal("live store accepted")
 	}
 }
+
+func TestBackupCannotRecurseIntoItsOwnDestination(t *testing.T) {
+	root := t.TempDir()
+	if _, err := Archive(root, root+"/nested.tar"); err == nil {
+		t.Fatal("recursive archive target accepted")
+	}
+}

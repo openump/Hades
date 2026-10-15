@@ -181,6 +181,9 @@ func (m *Manager) Apply(ctx context.Context, root string, manifest Manifest) err
 	return nil
 }
 func (m *Manager) Live(ctx context.Context, manifest Manifest) error {
+	if err := Validate(m.Release(manifest), manifest); err != nil {
+		return err
+	}
 	services := []string{"broker", "historian"}
 	if manifest.Profile == "secure" {
 		services = append(services, "history-proxy")

@@ -75,6 +75,17 @@ func files(root string) ([]string, int64, error) {
 // Archive writes a cold, private tar with an exact per-file digest index. The
 // caller supplies stopped component directories and holds all application locks.
 func Archive(root, destination string) (digest string, err error) {
+	sourceRoot, err := filepath.EvalSymlinks(root)
+	if err != nil {
+		return "", err
+	}
+	parent, err := filepath.EvalSymlinks(filepath.Dir(destination))
+	if err != nil {
+		return "", err
+	}
+	if within(sourceRoot, parent) {
+		return "", fmt.Errorf("backup destination must be outside source tree")
+	}
 	names, size, err := files(root)
 	if err != nil {
 		return "", err
@@ -288,4 +299,9 @@ func lockHostStores(manifest Manifest) (locks []*os.File, err error) {
 		locks = append(locks, lock)
 	}
 	return locks, nil
+}
+
+func within(root, path string) bool {
+	relative, err := filepath.Rel(root, path)
+	return err == nil && (relative == "." || (!strings.HasPrefix(relative, "../") && !filepath.IsAbs(relative)))
 }
