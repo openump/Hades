@@ -194,7 +194,7 @@ func Run(ctx context.Context, path, expected string) error {
 	child := exec.Command(cfg.Binary, cfg.Args...)
 	child.Dir = cfg.Directory
 	// Avoid ambient loader/Go diagnostic variables altering the reviewed process.
-	child.Env = []string{"PATH=/usr/local/bin:/usr/bin:/bin", "HOME=" + cfg.State, "LANG=C.UTF-8"}
+	child.Env = []string{"PATH=/usr/local/bin:/usr/bin:/bin", "HOME=" + cfg.State, "TMPDIR=" + cfg.State, "LANG=C.UTF-8"}
 	child.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 	child.Stdout = out
 	child.Stderr = out

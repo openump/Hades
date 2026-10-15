@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Positive/negative mTLS, MQTT ACL, HTTP role and root-rotation checks."""
 import datetime,hashlib,json,os,pathlib,ssl,subprocess,tempfile,time,urllib.request,urllib.error,urllib.parse
-import socket,socketserver,struct,threading
+import socket,socketserver,struct,threading,uuid
 root=pathlib.Path(__file__).resolve().parents[1];os.chdir(root)
 ot_lab=os.environ.get('HADES_TEST_OT_GATEWAY')=='1'
 for tool in ('hades-service','hades-transfer','hades-gateway','hades-pki','hades-history-proxy','hades-normalizer','hades-history','hades-consumer'):
@@ -10,7 +10,7 @@ subprocess.run(['go','build','-o','artifacts/hades-test-receiver-native','./test
 native=os.environ.get('HADES_MOSQUITTO_BINARY')
 mp=os.environ.get('HADES_SECURE_MQTT_PORT','18884');hp=os.environ.get('HADES_SECURE_HISTORY_PORT','18430')
 compose=['docker','compose','-f','deploy/compose.secure.yaml']
-children=[]
+children=[];installed_units=[]
 class ModbusLab(socketserver.StreamRequestHandler):
  def handle(self):
   self.request.settimeout(3)
@@ -134,7 +134,23 @@ with tempfile.TemporaryDirectory(prefix='hades-security-') as scratch:
      service_config={'revision':'ot-lab','binary':executable,'binary_sha256':hashlib.sha256(pathlib.Path(executable).read_bytes()).hexdigest(),'args':gateway_command[1:],'directory':str(root),'state':scratch+'/gs','ready_pattern':'gateway_health','files':{str(pathlib.Path('examples/site/modbus-lab.metadata.json').resolve()):hashlib.sha256(pathlib.Path('examples/site/modbus-lab.metadata.json').read_bytes()).hexdigest()},'log_bytes':65536,'finite':True}
      config_path=scratch+'/gateway-service.json';pathlib.Path(config_path).write_text(json.dumps(service_config));os.chmod(config_path,0o600)
      definition=subprocess.check_output(['artifacts/hades-service-native','-action','digest','-config',config_path]).decode().strip()
-     subprocess.run(['artifacts/hades-service-native','-action','run','-config',config_path,'-digest',definition],stderr=logs,check=True,timeout=35)
+     if os.environ.get('HADES_TEST_SYSTEMD')=='1':
+      unit='hades-ot-'+uuid.uuid4().hex[:10]
+      pathlib.Path(service_config['state']).mkdir(mode=0o700)
+      unit_file=pathlib.Path(scratch)/(unit+'.service')
+      unit_file.write_bytes(subprocess.check_output(['artifacts/hades-service-native','-action','unit','-config',config_path,'-name',unit,'-user',os.environ['USER']]))
+      subprocess.run(['sudo','install','-m','644',str(unit_file),'/run/systemd/system/'+unit+'.service'],check=True);installed_units.append(unit)
+      subprocess.run(['sudo','systemctl','daemon-reload'],check=True)
+      subprocess.run(['sudo','systemctl','start',unit],check=True)
+      def gateway_live():
+       result=subprocess.run(['artifacts/hades-service-native','-action','status','-config',config_path],capture_output=True)
+       return json.loads(result.stdout) if result.returncode==0 else None
+      state=wait(lambda:gateway_live() is not None,'installed gateway live readiness')
+      wait(lambda:subprocess.check_output(['systemctl','show',unit,'-p','ActiveState','--value'],text=True).strip()!='active','finite gateway lifecycle')
+      assert subprocess.check_output(['systemctl','show',unit,'-p','ExecMainStatus','--value'],text=True).strip()=='0'
+      print('gateway: installed systemd lifecycle, digest-bound live readiness and clean finite shutdown passed')
+     else:
+      subprocess.run(['artifacts/hades-service-native','-action','run','-config',config_path,'-digest',definition],stderr=logs,check=True,timeout=35)
      for line in pathlib.Path(scratch+'/gs/events.log').read_text().splitlines():
       if line.startswith('{"boundary":') or ('"type":"gateway_admitted"' in line and line.startswith('{')):acquisition.write(line+'\n')
       else:logs.write(line+'\n')
@@ -203,6 +219,10 @@ with tempfile.TemporaryDirectory(prefix='hades-security-') as scratch:
    assert all(p['host_ip']=='127.0.0.1' and p['target'] in (8883,8429) for service in config['services'].values() for p in service.get('ports',[]))
   print('security: mTLS Go pipeline, publish/SUBACK/management denials, loopback ports and CA rotation/reconnection passed')
  finally:
+  for unit in installed_units:
+   subprocess.run(['sudo','systemctl','stop',unit],check=False)
+   subprocess.run(['sudo','rm','-f','/run/systemd/system/'+unit+'.service'],check=True)
+  if installed_units:subprocess.run(['sudo','systemctl','daemon-reload'],check=True)
   for child in children:
    if child.poll() is None:child.terminate()
   for child in children:

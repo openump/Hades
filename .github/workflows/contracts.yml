@@ -114,7 +114,7 @@ jobs:
           echo 'fcdc579a09227fa3e2e3e208d3cf75cfd03d42ae141a4b23b18659a94428bfa3  '"$RUNNER_TEMP/telegraf.tar.gz" | sha256sum -c -
           mkdir -p "$RUNNER_TEMP/telegraf"
           tar -xzf "$RUNNER_TEMP/telegraf.tar.gz" -C "$RUNNER_TEMP/telegraf"
-          HADES_TELEGRAF_BINARY="$RUNNER_TEMP/telegraf/telegraf-1.40.2/usr/bin/telegraf" ./scripts/smoke-ot-gateway
+          HADES_TEST_SYSTEMD=1 HADES_TELEGRAF_BINARY="$RUNNER_TEMP/telegraf/telegraf-1.40.2/usr/bin/telegraf" ./scripts/smoke-ot-gateway
       - name: Remove disposable security stack
         if: always()
         env:
