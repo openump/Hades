@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/sha256"
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -242,5 +243,53 @@ func TestBatchByteLimit(t *testing.T) {
 	}
 	if calls < 2 || received != total || a.accepted != 256 {
 		t.Fatal(calls, received, total, a.accepted)
+	}
+}
+
+func TestResumeOlderOwnershipDuringInFlightBatch(t *testing.T) {
+	cfg, _ := fixture(t)
+	a, err := Open(cfg, t.TempDir()+"/intake")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer a.Close()
+	if err = a.ConfigureDrain(1, 65536); err != nil {
+		t.Fatal(err)
+	}
+	var ids []string
+	for i := 0; i < 3; i++ {
+		id := sample.UUID()
+		raw, e := cfg.Observation("normal", i, id, time.Now().UTC().Add(-time.Minute).Add(time.Duration(i)*time.Millisecond))
+		if e != nil {
+			t.Fatal(e)
+		}
+		var p map[string]any
+		if e = json.Unmarshal(raw, &p); e != nil {
+			t.Fatal(e)
+		}
+		ids = append(ids, p["message_id"].(string))
+		if _, e = a.Intake(cfg.Prefix+"telemetry", raw); e != nil {
+			t.Fatal(e)
+		}
+	}
+	if err = a.Drain(context.Background(), func(context.Context, []byte) error { return &PermanentError{Status: 400} }); err != nil {
+		t.Fatal(err)
+	}
+	if delay := a.NextDrainDelay(); delay != 0 {
+		t.Fatal("ready backlog delayed", delay)
+	}
+	if err = a.Drain(context.Background(), func(context.Context, []byte) error { return a.Resume(ids[0]) }); err != nil {
+		t.Fatal(err)
+	}
+	if len(a.pending) != 2 || a.order[0].id != cfg.Metadata["asset_id"].(string)+"/"+ids[0] {
+		t.Fatal("resume corrupted FIFO ownership")
+	}
+	for len(a.pending) > 0 {
+		if err = a.Drain(context.Background(), func(context.Context, []byte) error { return nil }); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if delay := a.NextDrainDelay(); delay != 100*time.Millisecond {
+		t.Fatal("idle worker spins", delay)
 	}
 }

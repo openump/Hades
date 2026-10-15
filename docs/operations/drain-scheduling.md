@@ -16,7 +16,9 @@ Prometheus import body. An individual mapped record exceeding the configured
 byte limit produces an explicit drain error and retains ownership.
 
 One drain call sends at most one request, ordered by durable admission time and
-identity for ties. Records admitted during a request join a later batch. Expired
+identity for ties. An indexed heap selects only the bounded batch, avoiding a
+full-backlog sort on every call; exact-ID removal also handles an older suspended
+record resumed while a request is in flight. Records admitted during a request join a later batch. Expired
 records suspend individually without contaminating a valid batch. Permanent HTTP
 errors suspend the affected batch and preserve each observation for reconciliation.
 
@@ -30,7 +32,8 @@ prefix stays retired; only the remaining ownership replays.
 History and transfer retain their full-jitter exponential backoff (up to 30 s).
 A transient failure records `retry_at` and returns; later polling calls before
 that deadline perform no downstream request. Transfer also respects Retry-After.
-The CLI workers poll every 100 ms. A network attempt itself still uses the sink's
+The history worker drains ready batches immediately; idle/backoff polling is
+bounded to 100 ms. The transfer worker polls every 100 ms. A network attempt itself still uses the sink's
 existing timeout; the change removes retry sleeps, not synchronous HTTP I/O.
 Backoff state is process-local and restarts with the worker.
 

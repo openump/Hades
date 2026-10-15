@@ -2,12 +2,12 @@
 package history
 
 import (
+	"container/heap"
 	"context"
 	"crypto/sha256"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"sort"
 	"sync"
 	"time"
 
@@ -37,6 +37,8 @@ type Record struct {
 	Skips    int       `json:"skips"`
 }
 type Adapter struct {
+	order                                                       pendingHeap
+	orderIndex                                                  map[string]*pendingItem
 	drainMu                                                     sync.Mutex
 	retryAt                                                     time.Time
 	retryAttempt                                                int
@@ -62,7 +64,7 @@ func Open(cfg *sample.Config, dir string) (*Adapter, error) {
 	if err != nil {
 		return nil, err
 	}
-	a := &Adapter{batchRecords: 64, batchBytes: 1024 * 1024, cfg: cfg, store: store, records: map[string]Record{}, samples: map[string]string{}, pending: map[string]bool{}}
+	a := &Adapter{orderIndex: map[string]*pendingItem{}, batchRecords: 64, batchBytes: 1024 * 1024, cfg: cfg, store: store, records: map[string]Record{}, samples: map[string]string{}, pending: map[string]bool{}}
 	for key, raw := range store.Records {
 		var r Record
 		err = json.Unmarshal(raw, &r)
@@ -82,7 +84,7 @@ func Open(cfg *sample.Config, dir string) (*Adapter, error) {
 		}
 		a.records[key] = r
 		if r.State == "pending" {
-			a.pending[key] = true
+			a.enqueuePending(key, r)
 		}
 		for _, sampleKey := range keys {
 			if _, exists := a.samples[sampleKey]; exists {
@@ -188,7 +190,7 @@ func (a *Adapter) Intake(topic string, raw []byte) (string, error) {
 		return "", &StorageError{err}
 	}
 	a.records[key] = r
-	a.pending[key] = true
+	a.enqueuePending(key, r)
 	for _, sampleKey := range keys {
 		a.samples[sampleKey] = key
 	}
@@ -235,22 +237,14 @@ func (a *Adapter) Drain(ctx context.Context, write func(context.Context, []byte)
 		a.mu.Unlock()
 		return nil
 	}
-	ids := make([]string, 0, len(a.pending))
-	for id := range a.pending {
-		ids = append(ids, id)
-	}
-	sort.Slice(ids, func(i, j int) bool {
-		x, y := a.records[ids[i]], a.records[ids[j]]
-		if x.Accepted.Equal(y.Accepted) {
-			return ids[i] < ids[j]
-		}
-		return x.Accepted.Before(y.Accepted)
-	})
+	hasPending := len(a.pending) > 0
 	var body []byte
 	selected := make([]string, 0, a.batchRecords)
 	records := make([]Record, 0, a.batchRecords)
 	var invalid error
-	for _, id := range ids {
+	removed := make([]*pendingItem, 0, a.batchRecords)
+	for len(a.order) > 0 {
+		id := a.order[0].id
 		r := a.records[id]
 		if len(selected) >= a.batchRecords || len(body)+len(r.Lines) > a.batchBytes {
 			break
@@ -262,6 +256,7 @@ func (a *Adapter) Drain(ctx context.Context, write func(context.Context, []byte)
 			}
 			invalid = window
 		}
+		removed = append(removed, heap.Pop(&a.order).(*pendingItem))
 		selected = append(selected, id)
 		records = append(records, r)
 		body = append(body, r.Lines...)
@@ -269,9 +264,12 @@ func (a *Adapter) Drain(ctx context.Context, write func(context.Context, []byte)
 			break
 		}
 	}
+	for _, item := range removed {
+		heap.Push(&a.order, item)
+	}
 	a.mu.Unlock()
 	if len(selected) == 0 {
-		if len(ids) > 0 {
+		if hasPending {
 			return fmt.Errorf("historian record exceeds configured batch bytes")
 		}
 		return nil
@@ -315,7 +313,7 @@ func (a *Adapter) Drain(ctx context.Context, write func(context.Context, []byte)
 		storageErr := a.store.Put(selected[i], encoded)
 		if storageErr == nil {
 			a.records[selected[i]] = r
-			delete(a.pending, selected[i])
+			a.retirePending(selected[i])
 			if r.State == "api_accepted" {
 				a.accepted++
 			}
@@ -372,7 +370,7 @@ func (a *Adapter) Resume(id string) error {
 		return err
 	}
 	a.records[key] = r
-	a.pending[key] = true
+	a.enqueuePending(key, r)
 	return nil
 }
 

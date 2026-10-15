@@ -90,7 +90,7 @@ func run() error {
 			case <-ctx.Done():
 				workerDone <- ctx.Err()
 				return
-			case <-time.After(100 * time.Millisecond):
+			case <-time.After(adapter.NextDrainDelay()):
 			}
 		}
 	}()

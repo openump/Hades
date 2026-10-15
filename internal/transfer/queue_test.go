@@ -97,3 +97,33 @@ func TestBoundsAndSuspendedOwnership(t *testing.T) {
 		t.Fatal(q.Stats())
 	}
 }
+
+func TestRetryAfterSchedulesWithoutBlocking(t *testing.T) {
+	cfg, r := fixture(t)
+	q, err := Open(cfg, t.TempDir()+"/queue", 2, 1048576)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer q.Close()
+	if err = q.Intake(r.Topic, r.Payload); err != nil {
+		t.Fatal(err)
+	}
+	clock := time.Now()
+	q.now = func() time.Time { return clock }
+	ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
+	defer cancel()
+	if err = q.Drain(ctx, func(context.Context, Record) error { return &RetryError{After: time.Minute} }); err != nil {
+		t.Fatal("retry blocked caller", err)
+	}
+	clock = clock.Add(59 * time.Second)
+	if err = q.Drain(context.Background(), func(context.Context, Record) error { t.Fatal("Retry-After ignored"); return nil }); err != nil {
+		t.Fatal(err)
+	}
+	clock = clock.Add(time.Second)
+	if err = q.Drain(context.Background(), func(context.Context, Record) error { return nil }); err != nil {
+		t.Fatal(err)
+	}
+	if q.Stats()["pending"] != 0 {
+		t.Fatal(q.Stats())
+	}
+}
