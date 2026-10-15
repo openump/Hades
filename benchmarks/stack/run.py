@@ -161,7 +161,6 @@ class Run:
             if unit not in self.units:
                 self.units.append(unit)
             command(['sudo', 'systemctl', 'daemon-reload'])
-            command(['sudo', 'systemctl', 'reset-failed', unit])
             command(['sudo', 'systemctl', 'start', unit])
             proc = None
         else:
