@@ -1,53 +1,45 @@
-# First OT pilot: selection pending
+# Selected pilot: OPC UA mock server
 
-Hades-014 requires a named real device and site-approved read-only scope.
-No real pilot device, firmware, endpoint, operator, host or access window has
-been supplied. The lab fixture below is not a selected PLC and does not satisfy
-real-device acceptance. Do not derive a register map from a generic Modbus example.
+**Selection:** Owner-selected software pilot, 2026-10-15.
+**Implementation status:** Not implemented or verified yet.
 
-## Site selection record to complete with the operator
+The OPC UA mock server replaces Siemens S7-1200 / Modbus TCP as the active
+pilot target. Hades-014/015 now qualify a repeatable software source and its
+read-only acquisition path. Physical PLC access, Siemens firmware behavior and
+physical-device qualification are outside this pilot. Existing Modbus lab
+fixtures remain regression tests; their results do not qualify OPC UA.
 
-| Required evidence | Current state |
+## Profile to implement and verify
+
+| Item | Selected scope / evidence still needed |
 | --- | --- |
-| Site/operator and written read-only authorization | Pending |
-| Device manufacturer, exact model and firmware | Pending |
-| Manufacturer register map/manual revision and link | Pending |
-| Approved IP/port, unit ID, network path and access window | Pending |
-| Read functions, zero-based register addresses, types and byte order | Pending |
-| Scaling/offset, UCUM units and valid ranges for each signal | Pending |
-| Maximum poll rate, timeout, retry and device connection limits | Pending |
-| Reference readings and operator comparison method | Pending |
-| Pilot host CPU/RAM/OS/storage and service account | Pending |
-| Gateway/site clock synchronization and measured uncertainty | Pending |
-| Device/server permissions or read-only protocol enforcement | Pending |
-| Security profile, certificates, rollback and stop authority | Pending |
+| Source | Local isolated OPC UA mock server; exact implementation/version/artifact hash to select and pin |
+| Endpoint | Loopback or isolated disposable test network; actual endpoint and application URI recorded by the implementing ticket |
+| Address space | Versioned deterministic namespace URI and NodeIds; resolve namespace indexes at connection time |
+| Initial signals | Numeric temperature, monotonically increasing counter and machine-state value; define exact OPC UA types, units, ranges and OpenUMP mappings |
+| Acquisition | Explicit allowlisted reads; choose and document polling or subscriptions, sampling/update rates, deadlines and reconnect limits |
+| Quality/time | Preserve OPC UA StatusCode and source/server timestamps under an explicit mapping; unavailable values remain null/bad/uncertain, not fabricated zeros |
+| Security | Pinned application identities and certificate trust; authenticated encrypted profile, restricted read identity, and negative read/write authorization tests |
+| Reference values | Deterministic source ledger and expected values, timestamps, quality and scenario transitions |
+| Fault scenarios | Bad/uncertain quality, missing node, timeout, disconnect/restart and recovery without uncontrolled retry bursts |
+| Host | Record actual OS/CPU/RAM/storage and network; software pilot does not remove capacity evidence requirements |
+| Lifecycle | Reproducible start/stop/reset, private credentials, bounded logs/state and cleanup of only owned test resources |
 
-`config/gateway/pilot.example.json` is an unapproved record template. Missing
-fields are intentional; it must not be interpreted as deployment approval.
+No implementation, endpoint, certificate policy or package version is implied
+by this selection. Existing Go gateway code is Modbus/lab-specific and needs an
+OPC UA path. Follow ADR-0003 for deployed custom code; evaluate upstream server
+and client capabilities before selecting dependencies. Avoid a new platform
+runtime without recording its maintenance/resource tradeoff.
 
-## Selected foundation candidate and explicit lab scope
+## Acceptance boundary
 
-The existing ADR-0002 selects Telegraf 1.40.2 with Modbus TCP as the first driver
-candidate. The vendor device/firmware documentation must confirm compatibility
-before that candidate becomes a real-device selection. The lab is a local TCP
-fixture accepting unit 1, function 3 (read holding registers), zero-based register
-0, one unsigned 16-bit big-endian value. It returns 672 deci-degrees Celsius,
-which normalization scales once to 67.2 `Cel`. No write, broadcast, other unit,
-other register, multi-register type or vendor operation is permitted by this
-fixture. This does not prove a PLC's register semantics or write protection.
+Close Hades-014 after the mock implementation/version, node map, host, security,
+rates and expected values are documented and reviewed. Close Hades-015 after
+actual OPC UA source → gateway → normalizer → MQTT → history/consumer tests,
+including fault and authorization checks, pass with preserved identities and
+correct time/quality semantics. Running the old Modbus fixture is insufficient.
 
-The lab wrapper admits one reading at a time, limits polling to at most 1 Hz,
-uses a 200 ms device timeout with no busy retries, and reconnects on the next
-scheduled read. Failed reads become null/bad observations with a bounded reason;
-there is no last-value/zero substitution. Observation time is the gateway's UTC
-poll completion/failure time, not device sample time. Clock uncertainty remains
-unknown (`null`) until the site supplies a measured bound.
-
-Modbus TCP itself supplies neither authentication nor read-only privileges.
-The gateway's read-only configuration is not a substitute for device/access-gateway
-permissions and OT firewall enforcement. Keep the source on the authorized OT
-segment and carry observations to Hades through the Hades-013 authenticated
-boundary. The current lab executable rejects non-loopback source endpoints.
-
-Sources: [ADR-0002](../decisions/0002-reference-components.md),
-[Telegraf 1.40.2 Modbus configuration](https://github.com/influxdata/telegraf/blob/v1.40.2/plugins/inputs/modbus/README.md).
+The owner authorizes a local software pilot through this selection. It does not
+authorize connecting to real equipment, modifying PLC programs or deploying to
+an external site. Operator evaluation and reproducible host measurements remain
+required before broader rollout. A future physical pilot needs separate scope.
