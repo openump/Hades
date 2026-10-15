@@ -8,6 +8,12 @@ port=os.environ.get('HADES_MQTT_PORT','1883');vmport=os.environ.get('HADES_VM_PO
 compose=['docker','compose','-f','deploy/compose.yaml','--profile','history']
 native=os.environ.get('HADES_VM_BINARY')
 interop=os.environ.get('HADES_INTEROPERABILITY')=='1'
+cloud=os.environ.get('HADES_CLOUD_OUTAGE')=='1'
+if cloud:
+ import runpy
+ Scenario=runpy.run_path('tests/recovery/cloud-outage/scenario.py')['Scenario']
+ for tool,path in [('hades-transfer','./cmd/hades-transfer'),('hades-pki','./cmd/hades-pki'),('hades-test-receiver','./tests/fixtures/cloud-receiver/cmd')]:
+  subprocess.run(['go','build','-o','artifacts/'+tool,path],check=True)
 with tempfile.TemporaryDirectory(prefix='hades-history-') as scratch:
  children=[];history=None;vm=None;logs=open(scratch+'/logs','w');stdout=open(scratch+'/history.jsonl','w')
  def wait_for(check,label):
@@ -46,6 +52,7 @@ with tempfile.TemporaryDirectory(prefix='hades-history-') as scratch:
    secondary=subprocess.Popen([os.environ.get('HADES_PYTHON','python3'),'examples/consumer-secondary/consumer.py','--count','4'],stdin=transport.stdout,stdout=secondary_out,stderr=logs);children.append(secondary);transport.stdout.close()
    wait_for(lambda:'"type":"ready"' in pathlib.Path(primary_out.name).read_text(),'primary subscription')
 
+  if cloud:cloud_scenario=Scenario(scratch,children,logs,port,wait_for)
   normalizer=subprocess.Popen(['artifacts/hades-normalizer','-broker',f'mqtt://127.0.0.1:{port}','-listen','127.0.0.1:18082','-quarantine',scratch+'/normalization-quarantine'],stdout=logs,stderr=logs);children.append(normalizer)
   wait_for(lambda:urllib.request.urlopen('http://127.0.0.1:18082/health',timeout=1).status==200,'normalizer readiness')
   if interop:wait_for(lambda:'"type":"ready"' in pathlib.Path(secondary_out.name).read_text(),'secondary subscription')
@@ -66,6 +73,9 @@ with tempfile.TemporaryDirectory(prefix='hades-history-') as scratch:
   history.terminate();assert history.wait(timeout=15)==0
   start_history();assert all(r['state']=='pending' for r in records())
   start_vm();wait_for(lambda:len(records())==3 and all(r['state']=='api_accepted' for r in records()),'recovery retirement')
+  if cloud:
+   assert interop,'cloud evidence requires both consumers'
+   cloud_scenario.recover(records(),[primary_out.name,secondary_out.name])
   # Replay immutable normalized bytes, including identity and original timestamps.
   owned=records()[0]
   topic=owned['topic'];import base64

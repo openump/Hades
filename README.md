@@ -64,3 +64,7 @@ Read-only OT lab preparation and outstanding site approval: [pilot evidence](doc
 
 Operational counters/limits: [diagnostics](docs/operations/diagnostics.md).
 Isolated fault matrix and loss evidence: [recovery](docs/operations/recovery-evidence.md).
+
+Cloud transfer with durable receipts and an isolated test receiver:
+[transfer implementation](docs/integration/zeus-transfer.md) and
+[cloud outage evidence](docs/operations/cloud-outage-evidence.md).
