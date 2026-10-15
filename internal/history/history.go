@@ -289,7 +289,7 @@ func (a *Adapter) Stats() map[string]any {
 			suspended++
 		}
 	}
-	return map[string]any{"records": len(a.records), "bytes": a.store.Bytes, "pending": pending, "oldest_pending_ms": oldestMS, "suspended": suspended, "admitted": a.admitted, "api_accepted": a.accepted, "duplicates": a.duplicates, "conflicts": a.conflicts, "skipped_values": a.skipped, "retries": a.retries, "validation_failures": a.validationFailures, "storage_failures": a.storageFailures, "capacity_refusals": a.capacityRefusals, "write_count": a.writeCount, "write_ms_sum": a.writeMS, "storage": a.store.Stats(), "transfer_state": "not_implemented"}
+	return map[string]any{"records": len(a.records), "bytes": a.store.Bytes, "pending": pending, "oldest_pending_ms": oldestMS, "suspended": suspended, "admitted": a.admitted, "api_accepted": a.accepted, "duplicates": a.duplicates, "conflicts": a.conflicts, "skipped_values": a.skipped, "retries": a.retries, "validation_failures": a.validationFailures, "storage_failures": a.storageFailures, "capacity_refusals": a.capacityRefusals, "write_count": a.writeCount, "write_ms_sum": a.writeMS, "storage": a.store.Stats(), "transfer_state": "not_observed_by_this_service"}
 }
 func (a *Adapter) Close() error {
 	a.mu.Lock()
