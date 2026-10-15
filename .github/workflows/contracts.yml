@@ -37,10 +37,14 @@ jobs:
           python -m unittest discover -s tests -v
       - name: Build Linux targets without cgo
         run: |
-          for tool in hades-check hades-simulator hades-consumer hades-normalizer hades-history hades-pki hades-history-proxy hades-gateway hades-transfer; do
+          for tool in hades-check hades-simulator hades-consumer hades-normalizer hades-history hades-pki hades-history-proxy hades-gateway hades-transfer hades-site hades-capacity; do
             CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o "artifacts/$tool-amd64" "./cmd/$tool"
             CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -o "artifacts/$tool-arm64" "./cmd/$tool"
           done
+      - name: Reference capacity workload (not pilot qualification)
+        run: |
+          go run ./cmd/hades-capacity -host-label github-ubuntu-24.04 -count 30 -rate 50
+          go run ./cmd/hades-capacity -host-label github-ubuntu-24.04 -count 30 -rate 0
       - name: Reachable Go vulnerability check
         run: go run golang.org/x/vuln/cmd/govulncheck@v1.9.0 ./...
 
@@ -135,3 +139,18 @@ jobs:
         run: |
           test ! -f artifacts/recovery/report.json || cat artifacts/recovery/report.json
           test ! -f artifacts/recovery/blocked-consumer.jsonl || cat artifacts/recovery/blocked-consumer.jsonl
+
+  operations:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Reviewed secure rollout and isolated cold restore
+        run: ./scripts/smoke-site-recovery
+      - name: Recovery boundary and timing evidence
+        if: always()
+        run: test ! -f artifacts/site-recovery/report.json || cat artifacts/site-recovery/report.json
