@@ -30,6 +30,8 @@ func run() error {
 	intake := flag.String("intake", "runtime/history-intake", "private synced intake")
 	quarantine := flag.String("quarantine", "runtime/history-quarantine", "private diagnostic store")
 	resume := flag.String("resume-id", "", "resume one suspended immutable message before running")
+	batchRecords := flag.Int("batch-records", 64, "maximum records per historian request (1..256)")
+	batchBytes := flag.Int("batch-bytes", 1048576, "maximum historian request bytes (65536..1048576)")
 	credentials := transport.Flags()
 	logPath := operations.LogFlag()
 	flag.Parse()
@@ -51,6 +53,9 @@ func run() error {
 		return err
 	}
 	defer adapter.Close()
+	if err = adapter.ConfigureDrain(*batchRecords, *batchBytes); err != nil {
+		return err
+	}
 	if *resume != "" {
 		if err = adapter.Resume(*resume); err != nil {
 			return err

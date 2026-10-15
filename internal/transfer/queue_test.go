@@ -44,7 +44,7 @@ func TestSyncedOwnershipAndReceiptBoundary(t *testing.T) {
 	calls := 0
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
-	err = q.Drain(ctx, func(_ context.Context, got Record) error {
+	send := func(_ context.Context, got Record) error {
 		calls++
 		if string(got.Payload) != string(r.Payload) || got.Digest != r.Digest {
 			t.Fatal("immutable content changed")
@@ -53,7 +53,16 @@ func TestSyncedOwnershipAndReceiptBoundary(t *testing.T) {
 			return ErrReceipt
 		}
 		return nil
-	})
+	}
+	err = q.Drain(ctx, send)
+	if err != nil || calls != 1 {
+		t.Fatal("first attempt did not return", err, calls)
+	}
+	if err = q.Drain(ctx, send); err != nil || calls != 1 {
+		t.Fatal("retry ignored backoff", err, calls)
+	}
+	q.retryAt = time.Time{}
+	err = q.Drain(ctx, send)
 	if err != nil || calls != 2 || q.Stats()["pending"] != 0 || q.Stats()["receipt_errors"] != uint64(1) {
 		t.Fatal(err, calls, q.Stats())
 	}

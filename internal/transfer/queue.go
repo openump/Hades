@@ -46,6 +46,9 @@ type Record struct {
 	Reason   string    `json:"reason,omitempty"`
 }
 type Queue struct {
+	drainMu                                                                                                sync.Mutex
+	retryAt                                                                                                time.Time
+	retryAttempt                                                                                           int
 	now                                                                                                    func() time.Time
 	mu                                                                                                     sync.Mutex
 	cfg                                                                                                    *sample.Config
@@ -163,7 +166,16 @@ func (q *Queue) change(r Record) error {
 // source clock of unknown quality. Replay beyond 72h of local durable ownership
 // is suspended for explicit receiver reconciliation, rather than silently lost.
 func (q *Queue) Drain(ctx context.Context, send func(context.Context, Record) error) error {
+	q.drainMu.Lock()
+	defer q.drainMu.Unlock()
+	if ctx.Err() != nil {
+		return ctx.Err()
+	}
 	q.mu.Lock()
+	if q.now().Before(q.retryAt) {
+		q.mu.Unlock()
+		return nil
+	}
 	if q.paused {
 		q.mu.Unlock()
 		return ErrAuthorization
@@ -174,77 +186,86 @@ func (q *Queue) Drain(ctx context.Context, send func(context.Context, Record) er
 			ids = append(ids, id)
 		}
 	}
-	sort.Slice(ids, func(i, j int) bool { return q.records[ids[i]].Accepted.Before(q.records[ids[j]].Accepted) })
+	sort.Slice(ids, func(i, j int) bool {
+		x, y := q.records[ids[i]], q.records[ids[j]]
+		if x.Accepted.Equal(y.Accepted) {
+			return ids[i] < ids[j]
+		}
+		return x.Accepted.Before(y.Accepted)
+	})
 	q.mu.Unlock()
+	if len(ids) > 256 {
+		ids = ids[:256]
+	}
 	for _, id := range ids {
 		q.mu.Lock()
 		r := q.records[id]
 		q.mu.Unlock()
-		for attempt := 0; ; attempt++ {
-			if q.now().Sub(r.Accepted) > 72*time.Hour {
-				q.mu.Lock()
-				r.State = "suspended"
-				r.Reason = "replay_window_requires_reconciliation"
-				err := q.change(r)
-				q.mu.Unlock()
-				if err != nil {
-					return err
-				}
-				break
-			}
-			if ctx.Err() != nil {
-				return ctx.Err()
-			}
-			err := send(ctx, r)
+		if q.now().Sub(r.Accepted) > 72*time.Hour {
 			q.mu.Lock()
-			if err == nil {
-				err = q.store.Delete(id)
-				if err == nil {
-					delete(q.records, id)
-					q.delivered++
-				} else {
-					q.storageErrors++
-				}
-				q.mu.Unlock()
-				if err != nil {
-					return err
-				}
-				break
-			}
-			if errors.Is(err, ErrAuthorization) {
-				q.paused = true
-				q.mu.Unlock()
+			r.State = "suspended"
+			r.Reason = "replay_window_requires_reconciliation"
+			err := q.change(r)
+			q.mu.Unlock()
+			if err != nil {
 				return err
 			}
-			var permanent *PermanentError
-			if errors.As(err, &permanent) {
-				r.State = "suspended"
-				r.Reason = permanent.Error()
-				err = q.change(r)
-				q.mu.Unlock()
-				if err != nil {
-					return err
-				}
-				break
-			}
-			q.retries++
-			if errors.Is(err, ErrReceipt) {
-				q.receiptErrors++
+			continue
+		}
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
+		err := send(ctx, r)
+		q.mu.Lock()
+		if err == nil {
+			err = q.store.Delete(id)
+			if err == nil {
+				delete(q.records, id)
+				q.delivered++
+				q.retryAttempt = 0
+				q.retryAt = time.Time{}
+			} else {
+				q.storageErrors++
 			}
 			q.mu.Unlock()
-			delay := delivery.Delay(attempt)
-			var hint *RetryError
-			if errors.As(err, &hint) && hint.After > delay {
-				delay = hint.After
+			if err != nil {
+				return err
 			}
-			timer := time.NewTimer(delay)
-			select {
-			case <-ctx.Done():
-				timer.Stop()
-				return ctx.Err()
-			case <-timer.C:
-			}
+			continue
 		}
+		if errors.Is(err, ErrAuthorization) {
+			q.paused = true
+			q.mu.Unlock()
+			return err
+		}
+		var permanent *PermanentError
+		if errors.As(err, &permanent) {
+			r.State = "suspended"
+			r.Reason = permanent.Error()
+			err = q.change(r)
+			q.mu.Unlock()
+			if err != nil {
+				return err
+			}
+			continue
+		}
+		q.retries++
+		if errors.Is(err, ErrReceipt) {
+			q.receiptErrors++
+		}
+		if ctx.Err() != nil {
+			q.mu.Unlock()
+			return ctx.Err()
+		}
+		delay := max(time.Millisecond, delivery.Delay(q.retryAttempt))
+		q.retryAttempt++
+		var hint *RetryError
+		if errors.As(err, &hint) && hint.After > delay {
+			delay = hint.After
+		}
+		q.retryAt = q.now().Add(delay)
+		q.mu.Unlock()
+		return nil
 	}
 	return nil
 }
@@ -282,7 +303,7 @@ func (q *Queue) Stats() map[string]any {
 	if !oldest.IsZero() {
 		age = max(0, time.Since(oldest).Milliseconds())
 	}
-	return map[string]any{"pending": pending, "suspended": suspended, "oldest_pending_ms": age, "admitted": q.admitted, "delivered": q.delivered, "duplicates": q.duplicates, "conflicts": q.conflicts, "drops": q.drops, "dropped_bytes": q.droppedBytes, "retries": q.retries, "receipt_errors": q.receiptErrors, "storage_errors": q.storageErrors, "authorization_paused": q.paused, "store": q.store.Stats(), "boundary": "verified_durable_receipt", "counters": "process_lifetime"}
+	return map[string]any{"retry_at": q.retryAt, "pending": pending, "suspended": suspended, "oldest_pending_ms": age, "admitted": q.admitted, "delivered": q.delivered, "duplicates": q.duplicates, "conflicts": q.conflicts, "drops": q.drops, "dropped_bytes": q.droppedBytes, "retries": q.retries, "receipt_errors": q.receiptErrors, "storage_errors": q.storageErrors, "authorization_paused": q.paused, "store": q.store.Stats(), "boundary": "verified_durable_receipt", "counters": "process_lifetime"}
 }
 func (q *Queue) Close() error {
 	q.mu.Lock()

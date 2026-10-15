@@ -165,6 +165,8 @@ func TestReplayWindowAlsoBoundsAnAlreadyRetryingRequest(t *testing.T) {
 		}
 		return nil
 	})
+	clock = clock.Add(time.Minute)
+	err = q.Drain(context.Background(), func(context.Context, Record) error { t.Fatal("expired retry sent"); return nil })
 	if err != nil || calls != 1 || q.Stats()["suspended"] != 1 {
 		t.Fatal("retry exceeded reconciliation window", err, calls, q.Stats())
 	}

@@ -56,7 +56,7 @@ func TestDurableRetryDedupAndConflict(t *testing.T) {
 	calls := 0
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
-	err = a.Drain(ctx, func(_ context.Context, body []byte) error {
+	send := func(_ context.Context, body []byte) error {
 		calls++
 		if calls == 1 {
 			return context.DeadlineExceeded
@@ -70,7 +70,16 @@ func TestDurableRetryDedupAndConflict(t *testing.T) {
 			t.Fatal(string(body))
 		}
 		return nil
-	})
+	}
+	err = a.Drain(ctx, send)
+	if err != nil || calls != 1 {
+		t.Fatal("first attempt did not return", err, calls)
+	}
+	if err = a.Drain(ctx, send); err != nil || calls != 1 {
+		t.Fatal("retry ignored backoff", err, calls)
+	}
+	a.retryAt = time.Time{}
+	err = a.Drain(ctx, send)
 	if err != nil || calls != 2 {
 		t.Fatal(err, calls)
 	}
