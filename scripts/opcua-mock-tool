@@ -2,6 +2,7 @@
 """Build/test only the OPC UA fixture with a checked loopback/security source patch."""
 import hashlib,json,pathlib,subprocess,sys,tempfile,shutil
 root=pathlib.Path(__file__).resolve().parents[1]
+subprocess.run(['go','mod','download'],cwd=root,check=True)
 subprocess.run(['go','mod','verify'],cwd=root,check=True)
 module=json.loads(subprocess.check_output(['go','list','-m','-json','github.com/awcullen/opcua'],cwd=root))
 if module['Version']!='v1.4.0':raise SystemExit('review the fixture overlay before changing SDK version')
