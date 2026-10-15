@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
 """Positive/negative mTLS, MQTT ACL, HTTP role and root-rotation checks."""
 import datetime,json,os,pathlib,ssl,subprocess,tempfile,time,urllib.request,urllib.error,urllib.parse
-import socketserver,struct,threading
+import socket,socketserver,struct,threading
 root=pathlib.Path(__file__).resolve().parents[1];os.chdir(root)
 ot_lab=os.environ.get('HADES_TEST_OT_GATEWAY')=='1'
-for tool in ('hades-gateway','hades-pki','hades-history-proxy','hades-normalizer','hades-history','hades-consumer'):
+for tool in ('hades-transfer','hades-gateway','hades-pki','hades-history-proxy','hades-normalizer','hades-history','hades-consumer'):
  subprocess.run(['go','build','-o',f'artifacts/{tool}-native',f'./cmd/{tool}'],check=True)
+subprocess.run(['go','build','-o','artifacts/hades-test-receiver-native','./tests/fixtures/cloud-receiver/cmd'],check=True)
 native=os.environ.get('HADES_MOSQUITTO_BINARY')
 mp=os.environ.get('HADES_SECURE_MQTT_PORT','18884');hp=os.environ.get('HADES_SECURE_HISTORY_PORT','18430')
 compose=['docker','compose','-f','deploy/compose.secure.yaml']
@@ -95,7 +96,12 @@ with tempfile.TemporaryDirectory(prefix='hades-security-') as scratch:
   wait(lambda:subprocess.run(command('pub','admin',v1)+['-t','hades/admin/health','-m','ready'],capture_output=True,timeout=2).returncode==0,'secure broker readiness')
   # Untrusted/no client certificate and trusted but unprivileged identity.
   pub(None,topic,False);pub('outsider',topic,False);pub('consumer-primary',topic,False);pub('normalizer','openump/v1/other/site/area/line/asset/telemetry',False)
-  pub('normalizer',topic);pub('history-adapter',topic,False)
+  pub('normalizer',topic);pub('history-adapter',topic,False);pub('transfer-adapter',topic,False)
+  for kind in ('telemetry','metadata','status'):
+   approved=topic.rsplit('/',1)[0]+'/'+kind
+   result=subprocess.run(command('sub','transfer-adapter',v1)+['-t',approved,'-E','-W','5','-d'],capture_output=True,timeout=8)
+   assert result.returncode==0 and b'Subscribed (mid: 1): 1' in result.stdout+result.stderr,(approved,result.stdout,result.stderr)
+  denied_sub('transfer-adapter','#');denied_sub('transfer-adapter','$CONTROL/dynamic-security/v1/response')
   denied_sub('normalizer',topic);denied_sub('consumer-primary','#');denied_sub('history-adapter',topic.rsplit('/',1)[0]+'/metadata')
   pub('consumer-secondary','$CONTROL/dynamic-security/v1',False)
   denied_sub('consumer-primary','$CONTROL/dynamic-security/v1/response')
@@ -105,7 +111,11 @@ with tempfile.TemporaryDirectory(prefix='hades-security-') as scratch:
   http('/health','outsider',403)
   try:http('/health',None,200);raise AssertionError('anonymous HTTPS accepted')
   except (OSError,urllib.error.URLError):pass
-  # Actual Go mTLS path: gateway HTTPS -> normalizer TLS MQTT -> consumer/history.
+  # Actual Go mTLS path includes the scoped transfer subscription and receipts.
+  with socket.socket() as free:free.bind(('127.0.0.1',0));cloud_port=free.getsockname()[1]
+  receiver=subprocess.Popen(['artifacts/hades-test-receiver-native','-listen','127.0.0.1:'+str(cloud_port),'-store',scratch+'/receiver']+flags('cloud-receiver',v1)+metadata_args,stdout=logs,stderr=logs);children.append(receiver)
+  transfer=subprocess.Popen(['artifacts/hades-transfer-native','-broker','tls://127.0.0.1:'+mp,'-receiver','https://127.0.0.1:'+str(cloud_port)+'/v1/ingest/observations','-intake',scratch+'/transfer','-quarantine',scratch+'/transfer-quarantine','-cloud-ca',str(v1/'ca.crt'),'-cloud-cert',str(v1/'transfer-adapter.crt'),'-cloud-key',str(v1/'transfer-adapter.key')]+flags('transfer-adapter',v1)+metadata_args,stdout=logs,stderr=logs);children.append(transfer)
+  wait(lambda:'"type":"transfer_ready"' in pathlib.Path(logs.name).read_text(),'TLS transfer subscription')
   history=subprocess.Popen(['artifacts/hades-history-native','-broker','tls://127.0.0.1:'+mp,'-historian','https://127.0.0.1:'+hp,'-intake',scratch+'/intake','-quarantine',scratch+'/history-quarantine']+flags('history-adapter',v1)+metadata_args,stdout=logs,stderr=logs);children.append(history)
   wait(lambda:'"type":"history_ready"' in pathlib.Path(logs.name).read_text(),'TLS history subscription')
   consumer=subprocess.Popen(['artifacts/hades-consumer-native','-broker','tls://127.0.0.1:'+mp,'-count',('4' if ot_lab else '1'),'-timeout','40s']+flags('consumer-primary',v1)+metadata_args,stdout=consumerout,stderr=logs);children.append(consumer)
@@ -136,6 +146,12 @@ with tempfile.TemporaryDirectory(prefix='hades-security-') as scratch:
   assert consumer.wait(timeout=40)==0,pathlib.Path(logs.name).read_text()[-4000:]
   def accepted():return any(json.load(open(p))['value']['state']=='api_accepted' for p in pathlib.Path(scratch+'/intake').glob('*.json'))
   wait(accepted,'TLS synced history and API acceptance')
+  def transferred():return [json.load(open(p))['value']['record'] for p in pathlib.Path(scratch+'/receiver').glob('*.json') if json.load(open(p))['value']['record']['topic'].endswith('/telemetry')]
+  wait(lambda:len(transferred())==(4 if ot_lab else 1) and not list(pathlib.Path(scratch+'/transfer').glob('*.json')),'TLS durable transfer receipt retirement')
+  local_payloads={json.load(open(p))['value']['payload'] for p in pathlib.Path(scratch+'/intake').glob('*.json')}
+  assert {r['payload'] for r in transferred()}==local_payloads
+  transfer.terminate();assert transfer.wait(timeout=10)==0
+  print('transfer: scoped mTLS broker-to-receiver path preserved exact payloads and retired only after durable receipts')
   if ot_lab:
    wait(lambda:len(list(pathlib.Path(scratch+'/intake').glob('*.json')))==4 and all(json.load(open(p))['value']['state']=='api_accepted' for p in pathlib.Path(scratch+'/intake').glob('*.json')),'lab history retirement')
    received=[json.loads(line) for line in pathlib.Path(consumerout.name).read_text().splitlines() if json.loads(line)['type']=='telemetry']

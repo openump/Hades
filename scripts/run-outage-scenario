@@ -1,0 +1,11 @@
+#!/usr/bin/env python3
+"""Run cloud isolation on the already-started disposable reference broker.
+Use unique HADES_MQTT_PORT/HADES_VM_PORT with native tools, or a dedicated
+COMPOSE_PROJECT_NAME and matching published ports. Never use a pilot broker.
+"""
+import os, pathlib, subprocess
+root=pathlib.Path(__file__).resolve().parents[1]
+os.chdir(root)
+subprocess.run(['go','test','-race','-v','./internal/transfer','./tests/integration/bridge'],check=True)
+env=dict(os.environ,HADES_CLOUD_OUTAGE='1',HADES_INTEROPERABILITY='1')
+subprocess.run(['./scripts/smoke-history'],env=env,check=True)

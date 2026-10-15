@@ -96,3 +96,12 @@ After a volatile-stage crash, the exact lost count may be unknowable without an 
 ## Reference failure evidence
 
 Hades-017's [recovery matrix](../operations/recovery-evidence.md) records volatile-stage loss, synced intake recovery, replay after unknown sink outcome, queue/quarantine capacity and a measured historian API-acknowledgement crash gap. Results qualify only the tested profile/host; pilot hardware and physical storage failure evidence remain pending.
+
+
+Hades-018/019 reference behavior: the 72-hour limit suspends queued records for
+receiver reconciliation instead of automatically deleting them. This preserves
+unknown-clock and expired-window evidence while continuing to account occupied
+capacity. Only verified receipts retire records. The implementation pins one
+approved metadata snapshot; historical multi-revision deployment is not claimed.
+See [cloud transfer](../integration/zeus-transfer.md) and the
+[isolated outage matrix](../operations/cloud-outage-evidence.md).

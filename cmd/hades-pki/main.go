@@ -64,7 +64,7 @@ func run() error {
 	if err = write("ca.key", caKey, "PRIVATE KEY", 0600); err != nil {
 		return err
 	}
-	identities := []string{"broker", "ingress", "history-proxy", "gateway-press-04", "normalizer", "consumer-primary", "consumer-secondary", "history-adapter", "admin"}
+	identities := []string{"broker", "ingress", "history-proxy", "gateway-press-04", "normalizer", "consumer-primary", "consumer-secondary", "history-adapter", "transfer-adapter", "cloud-receiver", "admin"}
 	if *tests {
 		identities = append(identities, "outsider")
 	}
@@ -74,7 +74,7 @@ func run() error {
 			return err
 		}
 		leaf := &x509.Certificate{SerialNumber: serial(), Subject: pkix.Name{CommonName: name}, NotBefore: now.Add(-time.Minute), NotAfter: now.Add(24 * time.Hour), KeyUsage: x509.KeyUsageDigitalSignature, ExtKeyUsage: []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth}}
-		if name == "broker" || name == "ingress" || name == "history-proxy" {
+		if name == "broker" || name == "ingress" || name == "history-proxy" || name == "cloud-receiver" {
 			leaf.ExtKeyUsage = []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth}
 			leaf.DNSNames = []string{"localhost", name}
 			leaf.IPAddresses = []net.IP{net.ParseIP("127.0.0.1"), net.ParseIP("::1")}

@@ -37,7 +37,7 @@ jobs:
           python -m unittest discover -s tests -v
       - name: Build Linux targets without cgo
         run: |
-          for tool in hades-check hades-simulator hades-consumer hades-normalizer hades-history hades-pki hades-history-proxy hades-gateway; do
+          for tool in hades-check hades-simulator hades-consumer hades-normalizer hades-history hades-pki hades-history-proxy hades-gateway hades-transfer; do
             CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o "artifacts/$tool-amd64" "./cmd/$tool"
             CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -o "artifacts/$tool-arm64" "./cmd/$tool"
           done
@@ -77,6 +77,11 @@ jobs:
         run: ./scripts/smoke-history
       - name: Independent consumer stack
         run: ./scripts/smoke-stack
+      - name: Cloud outage isolation and receipt replay
+        run: ./scripts/run-outage-scenario
+      - name: Cloud outage report
+        if: always()
+        run: cat artifacts/cloud-outage/report.json
       - name: Broker logs
         if: always()
         run: docker compose -f deploy/compose.yaml --profile history logs broker historian
