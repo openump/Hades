@@ -58,6 +58,11 @@ func TestSyncedOwnershipAndReceiptBoundary(t *testing.T) {
 	if err != nil || calls != 1 {
 		t.Fatal("first attempt did not return", err, calls)
 	}
+	if q.retryAt.IsZero() {
+		t.Fatal("retry was not scheduled")
+	}
+	// Exercise the future-deadline branch without depending on random jitter or scheduler timing.
+	q.retryAt = time.Now().Add(time.Hour)
 	if err = q.Drain(ctx, send); err != nil || calls != 1 {
 		t.Fatal("retry ignored backoff", err, calls)
 	}
