@@ -62,3 +62,13 @@ writes/endurance, historian growth under actual label cardinality, acquisition
 load, replay catch-up and longer observation intervals on the named target host.
 Run with a trusted machine inventory label and preserve duration, source/build
 revision, workload parameters and raw results. Hades-022 stays open.
+
+## Multi-context reference extension
+
+Hades-025's development harness now exercises actual normalizers, MQTT, historian
+adapters/database, Go and C/Python consumers and optional durable receipt transfer.
+See [workload commands and measurement limits](../../benchmarks/stack/README.md).
+The serial transfer-intake results above retain their original narrow scope.
+The harness supports bounded multi-measurement simulator contexts, declared
+bursts and fixture outages. Its report lists omitted components, sampled timing
+precision, illustrative sizing assumptions and missing physical metrics explicitly. Neither report qualifies the OPC UA pilot.

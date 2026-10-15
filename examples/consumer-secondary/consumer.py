@@ -26,8 +26,12 @@ class Consumer:
    if len(self.seen)>4096:self.seen.popitem(last=False)
   result=dict(type=kind,asset_id=p['asset_id'],message_id=key,duplicate=duplicate,topic=topic,payload=p)
   if kind=='telemetry':
-   r=p['measurements']['motor_temperature'];d=self.metadata['measurements']['motor_temperature']
-   result.update(value=r['value'],unit=r['unit'],quality=r['quality'],observed_at=p['observed_at'],freshness=observation_freshness(p['observed_at'],now,d['expected_interval_ms'],p['source']['clock_uncertainty_ms']))
+   result['observed_at']=p['observed_at'];result['measurements']={}
+   for name,r in p['measurements'].items():
+    d=self.metadata['measurements'][name]
+    summary=dict(value=r['value'],unit=r['unit'],quality=r['quality'],freshness=observation_freshness(p['observed_at'],now,d['expected_interval_ms'],p['source']['clock_uncertainty_ms']))
+    result['measurements'][name]=summary
+    if name=='motor_temperature':result.update(summary)
   return result
 
 def main():

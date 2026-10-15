@@ -98,3 +98,11 @@ The behavior follows the official [Compose up volume-preserving recreation](http
 [Compose config validation](https://docs.docker.com/reference/cli/docker/compose/config/),
 and [container inspection](https://docs.docker.com/reference/cli/docker/inspect/)
 interfaces. This is a reference deployment path, not pilot qualification.
+
+## Independently running host workers
+
+Use the [reviewed host service lifecycle](service-lifecycle.md) for actual gateway,
+normalizer, history and optional transfer process supervision. The Compose
+manifest alone does not establish the running host workers' revision. Inspect
+live status and each worker's independent health before declaring a rollout
+complete.

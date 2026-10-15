@@ -37,7 +37,7 @@ jobs:
           python -m unittest discover -s tests -v
       - name: Build Linux targets without cgo
         run: |
-          for tool in hades-check hades-simulator hades-consumer hades-normalizer hades-history hades-pki hades-history-proxy hades-gateway hades-transfer hades-site hades-capacity; do
+          for tool in hades-check hades-simulator hades-consumer hades-normalizer hades-history hades-pki hades-history-proxy hades-gateway hades-transfer hades-site hades-capacity hades-service; do
             CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o "artifacts/$tool-amd64" "./cmd/$tool"
             CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -o "artifacts/$tool-arm64" "./cmd/$tool"
           done
@@ -114,7 +114,7 @@ jobs:
           echo 'fcdc579a09227fa3e2e3e208d3cf75cfd03d42ae141a4b23b18659a94428bfa3  '"$RUNNER_TEMP/telegraf.tar.gz" | sha256sum -c -
           mkdir -p "$RUNNER_TEMP/telegraf"
           tar -xzf "$RUNNER_TEMP/telegraf.tar.gz" -C "$RUNNER_TEMP/telegraf"
-          HADES_TELEGRAF_BINARY="$RUNNER_TEMP/telegraf/telegraf-1.40.2/usr/bin/telegraf" ./scripts/smoke-ot-gateway
+          HADES_TEST_SYSTEMD=1 HADES_TELEGRAF_BINARY="$RUNNER_TEMP/telegraf/telegraf-1.40.2/usr/bin/telegraf" ./scripts/smoke-ot-gateway
       - name: Remove disposable security stack
         if: always()
         env:
@@ -154,3 +154,30 @@ jobs:
       - name: Recovery boundary and timing evidence
         if: always()
         run: test ! -f artifacts/site-recovery/report.json || cat artifacts/site-recovery/report.json
+
+  service-capacity:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
+        with:
+          go-version-file: go.mod
+          cache: true
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: '3.14.6'
+      - name: Install independent development validator
+        run: python -m pip install -r requirements-dev.txt
+      - name: Installed Linux lifecycle and multi-context outage workload
+        run: |
+          ./scripts/benchmark-stack --systemd --assets 2 --measurements 2 --count 8 --burst-seconds 1 --host-label github-ubuntu-24.04 --output artifacts/stack-capacity/two-assets
+          ./scripts/benchmark-stack --systemd --assets 4 --measurements 4 --count 8 --burst-seconds 1 --rate 8 --burst-rate 24 --envelope-bytes 4096 --host-label github-ubuntu-24.04 --output artifacts/stack-capacity/four-assets
+          ./scripts/benchmark-stack --assets 2 --count 4 --no-transfer --host-label github-ubuntu-24.04 --output artifacts/stack-capacity/disabled-transfer
+      - name: Preserve public synthetic measurement reports
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: stack-capacity-reference
+          path: artifacts/stack-capacity/
+          retention-days: 14

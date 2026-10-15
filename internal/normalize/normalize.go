@@ -10,8 +10,9 @@ import (
 )
 
 type Engine struct {
-	Config  *sample.Config
-	mapping *bloblang.Executor
+	Config          *sample.Config
+	mapping         *bloblang.Executor
+	approvedNumeric bool
 }
 
 func New(cfg *sample.Config, mapping string) (*Engine, error) {
@@ -19,7 +20,31 @@ func New(cfg *sample.Config, mapping string) (*Engine, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &Engine{cfg, executor}, nil
+	return &Engine{Config: cfg, mapping: executor}, nil
+}
+
+// NewApprovedNumeric is an opt-in, simulator-only profile for bounded canonical
+// numeric readings. Raw names/units must match the reviewed metadata exactly;
+// the legacy deci-Celsius conversion profile remains unchanged.
+func NewApprovedNumeric(cfg *sample.Config) (*Engine, error) {
+	if cfg.Metadata["acquisition"].(map[string]any)["protocol"] != "simulator" {
+		return nil, fmt.Errorf("approved numeric profile requires simulator provenance")
+	}
+	defs := cfg.Metadata["measurements"].(map[string]any)
+	if len(defs) < 1 || len(defs) > 64 {
+		return nil, fmt.Errorf("numeric profile requires 1..64 approved measurements")
+	}
+	for _, value := range defs {
+		if value.(map[string]any)["type"] != "number" {
+			return nil, fmt.Errorf("numeric profile requires numeric definitions")
+		}
+	}
+	e, err := New(cfg, "root = this")
+	if err != nil {
+		return nil, err
+	}
+	e.approvedNumeric = true
+	return e, nil
 }
 func (e *Engine) Map(raw []byte) ([]byte, error) {
 	value, err := contracts.Decode(raw)
@@ -40,30 +65,48 @@ func (e *Engine) Map(raw []byte) ([]byte, error) {
 		}
 	}
 	signals, ok := obj["signals"].(map[string]any)
-	if !ok || len(signals) != 1 {
-		return nil, fmt.Errorf("expected temperature signal only")
+	if !ok {
+		return nil, fmt.Errorf("expected signal object")
 	}
-	reading, ok := signals["temperature"].(map[string]any)
-	if !ok || reading["unit"] != "deciCel" {
-		return nil, fmt.Errorf("temperature must declare deciCel")
+	defs := e.Config.Metadata["measurements"].(map[string]any)
+	if (!e.approvedNumeric && len(signals) != 1) || (e.approvedNumeric && len(signals) != len(defs)) {
+		return nil, fmt.Errorf("signal cardinality differs from approved profile")
 	}
-	for _, key := range []string{"value", "unit", "quality"} {
-		if _, exists := reading[key]; !exists {
-			return nil, fmt.Errorf("missing raw reading field %s", key)
+	for name, value := range signals {
+		reading, ok := value.(map[string]any)
+		expectedUnit := "deciCel"
+		if e.approvedNumeric {
+			definition, exists := defs[name].(map[string]any)
+			if !exists {
+				return nil, fmt.Errorf("unapproved signal %s", name)
+			}
+			expectedUnit = definition["unit"].(string)
+		} else if name != "temperature" {
+			return nil, fmt.Errorf("expected temperature signal only")
 		}
-	}
-	// Convert only this reading to Bento's float64 representation. Envelope numbers
-	// (revision and sequence in particular) stay lossless json.Number values.
-	if reading["value"] != nil {
-		n, ok := reading["value"].(json.Number)
-		if !ok {
-			return nil, fmt.Errorf("raw value must be numeric or null")
+		if !ok || reading["unit"] != expectedUnit {
+			return nil, fmt.Errorf("signal unit differs from approved profile")
 		}
-		f, err := n.Float64()
-		if err != nil {
-			return nil, err
+		for _, key := range []string{"value", "unit", "quality"} {
+			if _, exists := reading[key]; !exists {
+				return nil, fmt.Errorf("missing raw reading field %s", key)
+			}
 		}
-		reading["value"] = f
+		// Only reading numbers enter Bento's float64 representation. Envelope revision
+		// and sequence retain the original lossless json.Number representation.
+		if reading["value"] != nil {
+			n, ok := reading["value"].(json.Number)
+			if !ok {
+				return nil, fmt.Errorf("raw value must be numeric or null")
+			}
+			f, err := n.Float64()
+			if err != nil {
+				return nil, err
+			}
+			if !e.approvedNumeric {
+				reading["value"] = f
+			}
+		}
 	}
 	mapped, err := e.mapping.Query(signals)
 	if err != nil {

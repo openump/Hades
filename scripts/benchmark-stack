@@ -1,0 +1,5 @@
+#!/bin/sh
+# Development orchestration; the deployed services are Go.
+set -eu
+cd "$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)"
+exec "${HADES_PYTHON:-python3}" benchmarks/stack/run.py "$@"

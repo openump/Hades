@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"github.com/openump/Hades/internal/contracts"
 	"github.com/openump/Hades/internal/delivery"
+	"github.com/openump/Hades/internal/operations"
 	"github.com/openump/Hades/internal/sample"
 	"github.com/openump/Hades/internal/storage"
 	"io"
@@ -17,6 +18,7 @@ import (
 )
 
 type Server struct {
+	processingLatency                                                                   operations.Latency
 	refusedBytes                                                                        uint64
 	pendingSince                                                                        []time.Time
 	capacityRefusals, storageFailures, processingCount, staleReadings, unknownFreshness uint64
@@ -43,16 +45,21 @@ func NewServer(engine *Engine, dir string, maxRecords, maxBytes int) (*Server, e
 	return &Server{engine: engine, maxRecords: maxRecords, maxBytes: maxBytes, quarantine: q, wake: make(chan struct{}, 1), slots: make(chan struct{}, 16)}, nil
 }
 func (s *Server) Close() error { return s.quarantine.Close() }
+
+// Stats is a service-local snapshot; it does not imply transfer readiness.
+func (s *Server) Stats() map[string]any {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	oldestMS := int64(0)
+	if len(s.pendingSince) > 0 {
+		oldestMS = max(time.Since(s.pendingSince[0]).Milliseconds(), 0)
+	}
+	return map[string]any{"pending_records": len(s.pending), "pending_bytes": s.bytes, "admitted": s.admitted, "published": s.published, "rejected": s.rejected, "quarantine_records": len(s.quarantine.Records), "quarantine_bytes": s.quarantine.Bytes, "quarantine_evictions": s.evicted, "retries": s.retries, "publish_failures": s.retries, "capacity_refusals": s.capacityRefusals, "refused_bytes": s.refusedBytes, "storage_failures": s.storageFailures, "processing_count": s.processingCount, "processing_latency": s.processingLatency.Snapshot(), "processing_ms_sum": s.processingMS, "stale_readings": s.staleReadings, "unknown_freshness": s.unknownFreshness, "disk_reserve_ok": s.quarantine.Available(0) == nil, "queue_limit_records": s.maxRecords, "queue_limit_bytes": s.maxBytes, "last_admission": s.lastAdmission, "oldest_pending_ms": oldestMS, "transfer_state": "not_observed_by_this_service"}
+}
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if r.URL.Path == "/health" && r.Method == http.MethodGet {
-		s.mu.Lock()
-		defer s.mu.Unlock()
 		w.Header().Set("Content-Type", "application/json")
-		oldestMS := int64(0)
-		if len(s.pendingSince) > 0 {
-			oldestMS = max(time.Since(s.pendingSince[0]).Milliseconds(), 0)
-		}
-		json.NewEncoder(w).Encode(map[string]any{"pending_records": len(s.pending), "pending_bytes": s.bytes, "admitted": s.admitted, "published": s.published, "rejected": s.rejected, "quarantine_records": len(s.quarantine.Records), "quarantine_bytes": s.quarantine.Bytes, "quarantine_evictions": s.evicted, "retries": s.retries, "publish_failures": s.retries, "capacity_refusals": s.capacityRefusals, "refused_bytes": s.refusedBytes, "storage_failures": s.storageFailures, "processing_count": s.processingCount, "processing_ms_sum": s.processingMS, "stale_readings": s.staleReadings, "unknown_freshness": s.unknownFreshness, "disk_reserve_ok": s.quarantine.Available(0) == nil, "queue_limit_records": s.maxRecords, "queue_limit_bytes": s.maxBytes, "last_admission": s.lastAdmission, "oldest_pending_ms": oldestMS, "transfer_state": "not_implemented"})
+		json.NewEncoder(w).Encode(s.Stats())
 		return
 	}
 	if r.URL.Path != "/observations" || r.Method != http.MethodPost {
@@ -79,6 +86,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	defer func() {
+		s.processingLatency.Observe(time.Since(started))
 		s.processingCount++
 		s.processingMS += float64(time.Since(started)) / float64(time.Millisecond)
 	}()
