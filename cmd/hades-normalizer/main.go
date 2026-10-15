@@ -15,6 +15,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 )
@@ -29,6 +30,8 @@ func run() error {
 	listen := flag.String("listen", "127.0.0.1:8081", "loopback HTTP ingress")
 	root := flag.String("root", ".", "repository root")
 	config := flag.String("config", "examples/site/metadata.json", "approved development metadata")
+	writers := flag.String("ingress-writers", "gateway-press-04", "comma-separated exact verified client CNs")
+	readers := flag.String("ingress-readers", "admin", "comma-separated exact health-reader CNs")
 	profile := flag.String("signal-profile", "temperature", "temperature, approved-numeric (simulator) or opcua-mock")
 	mapping := flag.String("mapping", "config/normalization/temperature.blobl", "trusted reading mapping")
 	quarantine := flag.String("quarantine", "runtime/quarantine", "private bounded quarantine")
@@ -118,7 +121,12 @@ func run() error {
 			return err
 		}
 		server.TLSConfig = tlsConfig
-		server.Handler = transport.Ingress(ingress)
+		policy, policyErr := transport.NewIngressPolicy(strings.Split(*writers, ","), strings.Split(*readers, ","))
+		if policyErr != nil {
+			listener.Close()
+			return policyErr
+		}
+		server.Handler = policy.Wrap(ingress)
 		go func() { errors <- server.ServeTLS(listener, "", "") }()
 	} else {
 		go func() { errors <- server.Serve(listener) }()
