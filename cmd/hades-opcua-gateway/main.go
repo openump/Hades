@@ -4,6 +4,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"github.com/awcullen/opcua/ua"
@@ -16,6 +17,7 @@ import (
 	"net/url"
 	"os"
 	"os/signal"
+	"sync/atomic"
 	"syscall"
 	"time"
 )
@@ -70,10 +72,29 @@ func run() error {
 	defer sink.CloseIdleConnections()
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
+	ctx, deadlineStop := context.WithTimeout(ctx, 15*time.Minute)
+	defer deadlineStop()
 	var reader *opcuapilot.Reader
 	defer func() {
 		if reader != nil {
 			reader.Close()
+		}
+	}()
+	var acquired, failures, admitted, retries, badReadings atomic.Uint64
+	go func() {
+		ticker := time.NewTicker(time.Second)
+		defer ticker.Stop()
+		health := json.NewEncoder(os.Stdout)
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				if health.Encode(map[string]any{"type": "opcua_gateway_health", "polls": acquired.Load(), "acquisition_failures": failures.Load(), "bad_readings": badReadings.Load(), "admitted": admitted.Load(), "ingress_retries": retries.Load(), "volatile_poll_limit_records": 3}) != nil {
+					stop()
+					return
+				}
+			}
 		}
 	}()
 	boot := sample.UUID()
@@ -92,12 +113,14 @@ func run() error {
 			values, err = reader.Read(read)
 			cancel()
 		}
+		acquired.Add(1)
 		completed := time.Now().UTC()
 		next := completed.Add(time.Second)
 		if ctx.Err() != nil {
-			return nil
+			return cancelled(ctx)
 		}
 		if err != nil {
+			failures.Add(1)
 			if reader != nil {
 				reader.Close()
 				reader = nil
@@ -109,16 +132,33 @@ func run() error {
 		}
 		for i, signal := range opcuapilot.Signals {
 			reading, stamp, origin, ext := opcuapilot.MapValue(signal, values[i], completed)
+			if reading["quality"] == "bad" {
+				badReadings.Add(1)
+			}
 			ext["opcua.namespace_uri"] = opcuapilot.NamespaceURI
+			ext["opcua.status_origin"] = "server"
+			if reader != nil {
+				ext["opcua.namespace_index"] = reader.Namespace
+			} else {
+				ext["opcua.namespace_index"] = nil
+			}
+			if err != nil {
+				ext["opcua.status_origin"] = "gateway"
+				ext["opcua.transport_error"] = "connection_failed"
+				if errors.Is(err, context.DeadlineExceeded) {
+					ext["opcua.transport_error"] = "timeout"
+				}
+			}
 			payload := map[string]any{"schema_version": "1.0", "asset_id": cfg.Metadata["asset_id"], "metadata_revision": cfg.Metadata["metadata_revision"], "message_id": sample.UUID(), "observed_at": stamp.UTC().Format(sample.Timestamp), "ingested_at": time.Now().UTC().Format(sample.Timestamp), "source": map[string]any{"gateway_id": cfg.Metadata["acquisition"].(map[string]any)["gateway_id"], "protocol": "opc-ua", "boot_id": boot, "sequence": sequence, "clock_origin": origin, "clock_uncertainty_ms": nil}, "signals": map[string]any{signal.Name: reading}, "extensions": ext}
 			raw, _ := json.Marshal(payload)
 			sequence++
-			if err := gateway.SubmitObserved(ctx, sink, *ingress, raw, func() {}); err != nil {
+			if err := gateway.SubmitObserved(ctx, sink, *ingress, raw, func() { retries.Add(1) }); err != nil {
 				if ctx.Err() != nil {
-					return nil
+					return cancelled(ctx)
 				}
 				return err
 			}
+			admitted.Add(1)
 			if err := output.Encode(map[string]any{"type": "gateway_admitted", "payload": payload, "boundary": "accepted_volatile"}); err != nil {
 				return err
 			}
@@ -128,10 +168,17 @@ func run() error {
 			select {
 			case <-ctx.Done():
 				timer.Stop()
-				return nil
+				return cancelled(ctx)
 			case <-timer.C:
 			}
 		}
+	}
+	return nil
+}
+
+func cancelled(ctx context.Context) error {
+	if errors.Is(ctx.Err(), context.DeadlineExceeded) {
+		return ctx.Err()
 	}
 	return nil
 }

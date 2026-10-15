@@ -67,6 +67,10 @@ func Certificate(path, uri string) (*x509.Certificate, error) {
 	if err != nil {
 		return nil, err
 	}
+	public, ok := cert.PublicKey.(*rsa.PublicKey)
+	if !ok || public.N.BitLen() < 2048 || public.N.BitLen() > 4096 {
+		return nil, fmt.Errorf("RSA 2048..4096 application certificate required")
+	}
 	if time.Now().Before(cert.NotBefore) || time.Now().After(cert.NotAfter) || len(cert.URIs) != 1 || cert.URIs[0].String() != uri {
 		return nil, fmt.Errorf("certificate time or application URI mismatch")
 	}

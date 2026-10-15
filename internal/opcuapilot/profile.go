@@ -61,6 +61,13 @@ func MapValue(signal Signal, value ua.DataValue, now time.Time) (map[string]any,
 	}
 	ext["opcua.source_picoseconds"] = value.SourcePicoseconds
 	ext["opcua.server_picoseconds"] = value.ServerPicoseconds
+	ext["opcua.timestamp_origin"] = "source"
+	if value.SourceTimestamp.IsZero() {
+		ext["opcua.timestamp_origin"] = "server"
+	}
+	if origin == "gateway" {
+		ext["opcua.timestamp_origin"] = "gateway"
+	}
 	reading := map[string]any{"value": nil, "unit": signal.Unit, "quality": "bad", "reason": fmt.Sprintf("opcua_status_0x%08x", uint32(value.StatusCode))}
 	if uint32(value.StatusCode)&0x80000000 != 0 {
 		return reading, stamp, origin, ext
