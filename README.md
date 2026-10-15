@@ -72,3 +72,8 @@ Cloud transfer with durable receipts and an isolated test receiver:
 Reviewed reference configuration revisions and cold recovery:
 [rollout](docs/operations/configuration-rollout.md) and
 [backup/restore](docs/operations/backup-restore.md).
+
+Current evaluation status, operator checklist and evidence map:
+[MVP evaluation package](docs/releases/mvp-evaluation.md).
+Pilot capacity qualification remains pending; the
+[capacity workload](docs/operations/capacity-report.md) measures a reference slice.
