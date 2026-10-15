@@ -177,18 +177,19 @@ func (q *Queue) Drain(ctx context.Context, send func(context.Context, Record) er
 	for _, id := range ids {
 		q.mu.Lock()
 		r := q.records[id]
-		if time.Since(r.Accepted) > 72*time.Hour {
-			r.State = "suspended"
-			r.Reason = "replay_window_requires_reconciliation"
-			err := q.change(r)
-			q.mu.Unlock()
-			if err != nil {
-				return err
-			}
-			continue
-		}
 		q.mu.Unlock()
 		for attempt := 0; ; attempt++ {
+			if time.Since(r.Accepted) > 72*time.Hour {
+				q.mu.Lock()
+				r.State = "suspended"
+				r.Reason = "replay_window_requires_reconciliation"
+				err := q.change(r)
+				q.mu.Unlock()
+				if err != nil {
+					return err
+				}
+				break
+			}
 			if ctx.Err() != nil {
 				return ctx.Err()
 			}

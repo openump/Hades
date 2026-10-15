@@ -138,3 +138,32 @@ func TestReplayWindowAndAuthorizationPreserveOwnership(t *testing.T) {
 		t.Fatal(q.Stats())
 	}
 }
+
+func TestReplayWindowAlsoBoundsAnAlreadyRetryingRequest(t *testing.T) {
+	cfg, r := fixture(t)
+	q, err := Open(cfg, t.TempDir()+"/queue", 2, 1024*1024)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer q.Close()
+	if err = q.Intake(r.Topic, r.Payload); err != nil {
+		t.Fatal(err)
+	}
+	owned := q.records[r.ID]
+	owned.Accepted = time.Now().Add(-72*time.Hour + 200*time.Millisecond)
+	if err = q.change(owned); err != nil {
+		t.Fatal(err)
+	}
+	calls := 0
+	err = q.Drain(context.Background(), func(context.Context, Record) error {
+		calls++
+		if calls == 1 {
+			time.Sleep(250 * time.Millisecond)
+			return ErrReceipt
+		}
+		return nil
+	})
+	if err != nil || calls != 1 || q.Stats()["suspended"] != 1 {
+		t.Fatal("retry exceeded reconciliation window", err, calls, q.Stats())
+	}
+}
