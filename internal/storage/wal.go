@@ -201,7 +201,7 @@ func (w *WAL) recover(path string, last bool) error {
 	defer f.Close()
 	offset := int64(0)
 	for {
-		var header [8]byte
+		var header [16]byte
 		n, err := io.ReadFull(f, header[:])
 		if err == io.EOF {
 			break
@@ -216,6 +216,9 @@ func (w *WAL) recover(path string, last bool) error {
 			return fmt.Errorf("torn sealed WAL header: %w", err)
 		}
 		_ = n
+		if binary.BigEndian.Uint32(header[8:12]) != crc32.ChecksumIEEE(header[:8]) || string(header[12:16]) != "UMP2" {
+			return fmt.Errorf("corrupt WAL header")
+		}
 		size := int(binary.BigEndian.Uint32(header[:4]))
 		if size < 1 || size > walFrameBytes {
 			return fmt.Errorf("corrupt WAL frame size")
@@ -239,8 +242,8 @@ func (w *WAL) recover(path string, last bool) error {
 			return err
 		}
 		w.apply(values, w.segment, offset, size)
-		offset += int64(8 + size)
-		w.physical += int64(8 + size)
+		offset += int64(16 + size)
+		w.physical += int64(16 + size)
 		if len(w.index) > w.maxRecords || w.bytes > w.maxBytes || w.physical > int64(w.maxBytes)*2 {
 			return ErrFull
 		}
@@ -290,21 +293,21 @@ func (w *WAL) Commit(values []Mutation) error {
 			charged += len(v.Value) + Overhead
 		}
 	}
-	if count > w.maxRecords || charged > w.maxBytes || w.physical+int64(len(raw)+8) > int64(w.maxBytes)*2 {
+	if count > w.maxRecords || charged > w.maxBytes || w.physical+int64(len(raw)+16) > int64(w.maxBytes)*2 {
 		return ErrFull
 	}
 	var stat syscall.Statfs_t
 	if err = syscall.Statfs(w.dir, &stat); err != nil {
 		return err
 	}
-	if uint64(stat.Bavail)*uint64(stat.Bsize) < w.reserve+uint64(len(raw)+8) {
+	if uint64(stat.Bavail)*uint64(stat.Bsize) < w.reserve+uint64(len(raw)+16) {
 		return ErrFull
 	}
 	info, err := w.file.Stat()
 	if err != nil {
 		return err
 	}
-	if info.Size()+int64(len(raw)+8) > walSegmentBytes {
+	if info.Size()+int64(len(raw)+16) > walSegmentBytes {
 		if err = w.file.Close(); err != nil {
 			return err
 		}
@@ -318,10 +321,12 @@ func (w *WAL) Commit(values []Mutation) error {
 			return err
 		}
 	}
-	frame := make([]byte, 8+len(raw))
+	frame := make([]byte, 16+len(raw))
 	binary.BigEndian.PutUint32(frame[:4], uint32(len(raw)))
 	binary.BigEndian.PutUint32(frame[4:8], crc32.ChecksumIEEE(raw))
-	copy(frame[8:], raw)
+	binary.BigEndian.PutUint32(frame[8:12], crc32.ChecksumIEEE(frame[:8]))
+	copy(frame[12:16], "UMP2")
+	copy(frame[16:], raw)
 	n, err := w.file.Write(frame)
 	if err == nil && n != len(frame) {
 		err = io.ErrShortWrite
@@ -351,16 +356,19 @@ func (w *WAL) Get(key string) (json.RawMessage, error) {
 		return nil, err
 	}
 	defer f.Close()
-	var header [8]byte
+	var header [16]byte
 	if _, err = f.ReadAt(header[:], loc.Offset); err != nil {
 		return nil, err
+	}
+	if binary.BigEndian.Uint32(header[8:12]) != crc32.ChecksumIEEE(header[:8]) || string(header[12:16]) != "UMP2" {
+		return nil, fmt.Errorf("corrupt WAL header")
 	}
 	size := int(binary.BigEndian.Uint32(header[:4]))
 	if size < 1 || size > walFrameBytes {
 		return nil, fmt.Errorf("corrupt WAL size")
 	}
 	raw := make([]byte, size)
-	if _, err = f.ReadAt(raw, loc.Offset+8); err != nil {
+	if _, err = f.ReadAt(raw, loc.Offset+16); err != nil {
 		return nil, err
 	}
 	if crc32.ChecksumIEEE(raw) != binary.BigEndian.Uint32(header[4:]) {
