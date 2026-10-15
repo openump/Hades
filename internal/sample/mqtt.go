@@ -162,7 +162,7 @@ func (c *Client) Publish(ctx context.Context, topic string, raw []byte, retained
 		properties.MessageExpiry = &expiry
 	}
 	response, err := c.Manager.Publish(attempt, &paho.Publish{Topic: topic, QoS: 1, Retain: retained, Payload: raw, Properties: properties})
-	if err == nil && (response == nil || response.ReasonCode >= 128) {
+	if err == nil && (response == nil || response.ReasonCode >= 128 || (!retained && response.ReasonCode != 0)) {
 		return fmt.Errorf("publication rejected")
 	}
 	return err

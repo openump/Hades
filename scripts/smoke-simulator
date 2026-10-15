@@ -7,7 +7,7 @@ consumer=''
 producer=''
 cleanup() {
   if [ -n "$consumer" ]; then kill "$consumer" 2>/dev/null || true; fi
-  if [ -n "$producer" ]; then kill "$producer" 2>/dev/null || true; fi
+  if [ -n "$producer" ]; then kill -CONT "$producer" 2>/dev/null || true; kill "$producer" 2>/dev/null || true; fi
   rm -rf "$work"
 }
 trap cleanup EXIT INT TERM
@@ -31,6 +31,7 @@ artifacts/hades-simulator -broker "$broker" -scenario cycle -count 15 -timeout 6
 producer=$!
 wait_for '"type":"telemetry"' "$work/consumer.jsonl"
 wait_for '"type":"published"' "$work/producer.jsonl"
+kill -STOP "$producer"
 python3 - "$work" <<'PY'
 import json,sys
 from pathlib import Path
@@ -41,6 +42,8 @@ compose exec -T broker mosquitto_pub -h 127.0.0.1 -V mqttv5 -q 1 -t openump/v1/a
 wait_for '"duplicate":true' "$work/consumer.jsonl"
 compose restart broker
 compose up -d --wait --wait-timeout 60
+wait_for '"reconnected":true' "$work/consumer.jsonl"
+kill -CONT "$producer"
 if ! wait "$producer"; then cat "$work/producer.err"; exit 1; fi
 producer=''
 if ! wait "$consumer"; then cat "$work/consumer.err"; exit 1; fi
