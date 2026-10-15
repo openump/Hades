@@ -46,6 +46,7 @@ type Record struct {
 	Reason   string    `json:"reason,omitempty"`
 }
 type Queue struct {
+	now                                                                                      func() time.Time
 	mu                                                                                       sync.Mutex
 	cfg                                                                                      *sample.Config
 	store                                                                                    *storage.Store
@@ -94,7 +95,7 @@ func Open(cfg *sample.Config, dir string, maxRecords, maxBytes int) (*Queue, err
 	if err != nil {
 		return nil, err
 	}
-	q := &Queue{cfg: cfg, store: s, records: map[string]Record{}}
+	q := &Queue{now: time.Now, cfg: cfg, store: s, records: map[string]Record{}}
 	for id, raw := range s.Records {
 		var r Record
 		if err = json.Unmarshal(raw, &r); err == nil {
@@ -179,7 +180,7 @@ func (q *Queue) Drain(ctx context.Context, send func(context.Context, Record) er
 		r := q.records[id]
 		q.mu.Unlock()
 		for attempt := 0; ; attempt++ {
-			if time.Since(r.Accepted) > 72*time.Hour {
+			if q.now().Sub(r.Accepted) > 72*time.Hour {
 				q.mu.Lock()
 				r.State = "suspended"
 				r.Reason = "replay_window_requires_reconciliation"

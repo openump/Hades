@@ -150,7 +150,9 @@ func TestReplayWindowAlsoBoundsAnAlreadyRetryingRequest(t *testing.T) {
 		t.Fatal(err)
 	}
 	owned := q.records[r.ID]
-	owned.Accepted = time.Now().Add(-72*time.Hour + 200*time.Millisecond)
+	clock := time.Now()
+	q.now = func() time.Time { return clock }
+	owned.Accepted = clock.Add(-72*time.Hour + time.Second)
 	if err = q.change(owned); err != nil {
 		t.Fatal(err)
 	}
@@ -158,7 +160,7 @@ func TestReplayWindowAlsoBoundsAnAlreadyRetryingRequest(t *testing.T) {
 	err = q.Drain(context.Background(), func(context.Context, Record) error {
 		calls++
 		if calls == 1 {
-			time.Sleep(250 * time.Millisecond)
+			clock = clock.Add(2 * time.Second)
 			return ErrReceipt
 		}
 		return nil
