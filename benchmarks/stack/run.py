@@ -2,7 +2,6 @@
 """Bounded disposable multi-context reference workload. Never a pilot approval."""
 import argparse
 import base64
-import collections
 import copy
 import datetime
 import hashlib
@@ -559,6 +558,7 @@ class Run:
                 p.kill(); p.wait()
         if self.units:
             for unit in self.units:
+                command(['sudo', 'systemctl', 'stop', unit])
                 command(['sudo', 'rm', '-f', '/run/systemd/system/'+unit+'.service'])
             command(['sudo', 'systemctl', 'daemon-reload'])
         if not self.native:

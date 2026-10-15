@@ -5,6 +5,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"runtime"
 	"strings"
 	"time"
 )
@@ -38,5 +39,6 @@ func main() {
 			os.Exit(3)
 		} // Fail safely if a missing cgroup limit permits >1.25 GiB.
 		time.Sleep(50 * time.Millisecond)
+		runtime.KeepAlive(retained)
 	}
 }
