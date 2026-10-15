@@ -1,6 +1,7 @@
 package normalize
 
 import (
+	"container/list"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -18,6 +19,9 @@ import (
 )
 
 type Server struct {
+	qmu                                                                                 sync.Mutex
+	quarantineFIFO                                                                      *list.List
+	quarantineRecords, quarantineBytes                                                  int
 	processingLatency                                                                   operations.Latency
 	refusedBytes                                                                        uint64
 	pendingSince                                                                        []time.Time
@@ -42,19 +46,29 @@ func NewServer(engine *Engine, dir string, maxRecords, maxBytes int) (*Server, e
 	if err != nil {
 		return nil, err
 	}
-	return &Server{engine: engine, maxRecords: maxRecords, maxBytes: maxBytes, quarantine: q, wake: make(chan struct{}, 1), slots: make(chan struct{}, 16)}, nil
+	fifo := list.New()
+	keys := make([]string, 0, len(q.Records))
+	for key := range q.Records {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	for _, key := range keys {
+		fifo.PushBack(key)
+	}
+	return &Server{quarantineFIFO: fifo, quarantineRecords: len(q.Records), quarantineBytes: q.Bytes, engine: engine, maxRecords: maxRecords, maxBytes: maxBytes, quarantine: q, wake: make(chan struct{}, 1), slots: make(chan struct{}, 16)}, nil
 }
 func (s *Server) Close() error { return s.quarantine.Close() }
 
 // Stats is a service-local snapshot; it does not imply transfer readiness.
 func (s *Server) Stats() map[string]any {
+	diskOK := s.quarantine.Available(0) == nil
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	oldestMS := int64(0)
 	if len(s.pendingSince) > 0 {
 		oldestMS = max(time.Since(s.pendingSince[0]).Milliseconds(), 0)
 	}
-	return map[string]any{"pending_records": len(s.pending), "pending_bytes": s.bytes, "admitted": s.admitted, "published": s.published, "rejected": s.rejected, "quarantine_records": len(s.quarantine.Records), "quarantine_bytes": s.quarantine.Bytes, "quarantine_evictions": s.evicted, "retries": s.retries, "publish_failures": s.retries, "capacity_refusals": s.capacityRefusals, "refused_bytes": s.refusedBytes, "storage_failures": s.storageFailures, "processing_count": s.processingCount, "processing_latency": s.processingLatency.Snapshot(), "processing_ms_sum": s.processingMS, "stale_readings": s.staleReadings, "unknown_freshness": s.unknownFreshness, "disk_reserve_ok": s.quarantine.Available(0) == nil, "queue_limit_records": s.maxRecords, "queue_limit_bytes": s.maxBytes, "last_admission": s.lastAdmission, "oldest_pending_ms": oldestMS, "transfer_state": "not_observed_by_this_service"}
+	return map[string]any{"pending_records": len(s.pending), "pending_bytes": s.bytes, "admitted": s.admitted, "published": s.published, "rejected": s.rejected, "quarantine_records": s.quarantineRecords, "quarantine_bytes": s.quarantineBytes, "quarantine_evictions": s.evicted, "retries": s.retries, "publish_failures": s.retries, "capacity_refusals": s.capacityRefusals, "refused_bytes": s.refusedBytes, "storage_failures": s.storageFailures, "processing_count": s.processingCount, "processing_latency": s.processingLatency.Snapshot(), "processing_ms_sum": s.processingMS, "stale_readings": s.staleReadings, "unknown_freshness": s.unknownFreshness, "disk_reserve_ok": diskOK, "queue_limit_records": s.maxRecords, "queue_limit_bytes": s.maxBytes, "last_admission": s.lastAdmission, "oldest_pending_ms": oldestMS, "transfer_state": "not_observed_by_this_service"}
 }
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if r.URL.Path == "/health" && r.Method == http.MethodGet {
@@ -83,9 +97,9 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "body read failed", 400)
 		return
 	}
-	s.mu.Lock()
-	defer s.mu.Unlock()
 	defer func() {
+		s.mu.Lock()
+		defer s.mu.Unlock()
 		s.processingLatency.Observe(time.Since(started))
 		s.processingCount++
 		s.processingMS += float64(time.Since(started)) / float64(time.Millisecond)
@@ -104,33 +118,15 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		normalized, err = s.engine.Map(raw)
 	}
 	if err != nil {
+		s.mu.Lock()
 		s.rejected++
+		s.mu.Unlock()
 		reason := err.Error()
 		if len(reason) > 512 {
 			reason = reason[:512]
 		}
 		record, _ := json.Marshal(map[string]any{"received_at": time.Now().UTC(), "status": status, "reason": reason, "payload_prefix": raw[:min(len(raw), contracts.MaxPayloadBytes)], "truncated": len(raw) > contracts.MaxPayloadBytes})
-		key := fmt.Sprintf("%020d-%s", time.Now().UnixNano(), sample.UUID())
-		// Diagnostic eviction is allowed; normal publication records are never evicted.
-		for len(s.quarantine.Records) >= 10000 || s.quarantine.Bytes+len(record)+storage.Overhead+128 > 64*1024*1024 {
-			keys := make([]string, 0, len(s.quarantine.Records))
-			for k := range s.quarantine.Records {
-				keys = append(keys, k)
-			}
-			sort.Strings(keys)
-			if len(keys) == 0 {
-				break
-			}
-			if qerr := s.quarantine.Delete(keys[0]); qerr != nil {
-				s.storageFailures++
-				http.Error(w, "quarantine storage failed", 503)
-				return
-			}
-			s.evicted++
-		}
-		if qerr := s.quarantine.Put(key, record); qerr != nil {
-			s.storageFailures++
-			log.Printf("quarantine unavailable: %v", qerr)
+		if qerr := s.quarantineRecord(record); qerr != nil {
 			http.Error(w, "quarantine unavailable", 503)
 			return
 		}
@@ -145,19 +141,24 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		u := sample.Num(source["clock_uncertainty_ms"])
 		uncertainty = &u
 	}
+	var stale, unknown uint64
 	for name := range obj["measurements"].(map[string]any) {
 		definition := s.engine.Config.Metadata["measurements"].(map[string]any)[name].(map[string]any)
 		switch contracts.Freshness(observed, time.Now(), sample.Num(definition["expected_interval_ms"]), uncertainty) {
 		case "stale":
-			s.staleReadings++
+			stale++
 		case "unknown":
-			s.unknownFreshness++
+			unknown++
 		}
 	}
+	s.mu.Lock()
+	s.staleReadings += stale
+	s.unknownFreshness += unknown
 	charge := len(normalized) + storage.Overhead
 	if len(s.pending) >= s.maxRecords || s.bytes+charge > s.maxBytes {
 		s.capacityRefusals++
 		s.refusedBytes += uint64(len(normalized))
+		s.mu.Unlock()
 		w.Header().Set("Retry-After", "1")
 		http.Error(w, "volatile queue full", 503)
 		return
@@ -167,6 +168,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	s.bytes += charge
 	s.admitted++
 	s.lastAdmission = time.Now().UTC()
+	s.mu.Unlock()
 	select {
 	case s.wake <- struct{}{}:
 	default:
@@ -174,6 +176,41 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(202)
 	io.WriteString(w, "{\"acceptance\":\"accepted_volatile\"}\n")
+}
+
+// quarantineRecord serializes only diagnostic ownership. Publication and health
+// never acquire qmu; the queue snapshot is cached after each disk mutation.
+func (s *Server) quarantineRecord(record []byte) (err error) {
+	s.qmu.Lock()
+	defer s.qmu.Unlock()
+	defer func() {
+		s.mu.Lock()
+		defer s.mu.Unlock()
+		s.quarantineRecords = len(s.quarantine.Records)
+		s.quarantineBytes = s.quarantine.Bytes
+		if err != nil {
+			s.storageFailures++
+		}
+	}()
+	for len(s.quarantine.Records) >= 10000 || s.quarantine.Bytes+len(record)+storage.Overhead+128 > 64*1024*1024 {
+		front := s.quarantineFIFO.Front()
+		if front == nil {
+			break
+		}
+		if err = s.quarantine.Delete(front.Value.(string)); err != nil {
+			return err
+		}
+		s.quarantineFIFO.Remove(front)
+		s.mu.Lock()
+		s.evicted++
+		s.mu.Unlock()
+	}
+	key := fmt.Sprintf("%020d-%s", time.Now().UnixNano(), sample.UUID())
+	if err = s.quarantine.Put(key, record); err != nil {
+		return err
+	}
+	s.quarantineFIFO.PushBack(key)
+	return nil
 }
 func (s *Server) Run(ctx context.Context, publish func(context.Context, []byte) error) error {
 	for {
