@@ -46,7 +46,10 @@ func TestCatalogExactAssetRevisionAndUnits(t *testing.T) {
 	if err != nil || len(cfg.Metadata["measurements"].(map[string]any)) != 2 {
 		t.Fatal(cfg, err)
 	}
+	originalProtocol := cfg.Metadata["acquisition"].(map[string]any)["protocol"]
+	cfg.Metadata["acquisition"].(map[string]any)["protocol"] = "simulator"
 	raw, err := cfg.Observation("normal", 1, sample.UUID(), time.Now())
+	cfg.Metadata["acquisition"].(map[string]any)["protocol"] = originalProtocol
 	if err != nil {
 		t.Fatal(err)
 	}
