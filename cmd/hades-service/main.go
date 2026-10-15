@@ -37,6 +37,9 @@ func run() error {
 		fmt.Println(supervisor.Digest(cfg))
 		return nil
 	case "unit":
+		if err = supervisor.Validate(cfg); err != nil {
+			return err
+		}
 		binary, err := os.Executable()
 		if err != nil {
 			return err

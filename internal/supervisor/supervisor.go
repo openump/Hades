@@ -26,6 +26,7 @@ import (
 )
 
 type Config struct {
+	Finite        bool              `json:"finite,omitempty"`
 	WritablePaths []string          `json:"writable_paths"`
 	Revision      string            `json:"revision"`
 	Binary        string            `json:"binary"`
@@ -247,6 +248,9 @@ func Run(ctx context.Context, path, expected string) error {
 			syscall.Kill(-child.Process.Pid, syscall.SIGKILL)
 			if err != nil {
 				return fmt.Errorf("service child exited: %w", err)
+			}
+			if cfg.Finite {
+				return nil
 			}
 			return fmt.Errorf("service child exited before supervision ended")
 		case <-ctx.Done():

@@ -35,6 +35,7 @@ func TestLiveIdentityLogsAndShutdown(t *testing.T) {
 	raw, _ = json.Marshal(cfg)
 	os.WriteFile(path, raw, 0600)
 	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 	done := make(chan error, 1)
 	go func() { done <- Run(ctx, path, Digest(cfg)) }()
 	deadline := time.Now().Add(5 * time.Second)
@@ -57,6 +58,22 @@ func TestLiveIdentityLogsAndShutdown(t *testing.T) {
 	if _, err := Probe(context.Background(), wrong); err == nil {
 		t.Fatal("wrong revision accepted")
 	}
+	changed := cfg
+	changed.Revision = "unapplied"
+	changedRaw, _ := json.Marshal(changed)
+	if err := os.WriteFile(path, changedRaw, 0600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Probe(context.Background(), cfg); err == nil {
+		t.Fatal("partially applied definition accepted")
+	}
+	original, _ := json.Marshal(cfg)
+	if err := os.WriteFile(path, original, 0600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Probe(context.Background(), cfg); err != nil {
+		t.Fatal(err)
+	}
 	time.Sleep(100 * time.Millisecond)
 	cancel()
 	if err := <-done; err != nil {
@@ -67,7 +84,10 @@ func TestLiveIdentityLogsAndShutdown(t *testing.T) {
 	}
 	for _, name := range []string{"events.log", "events.log.1"} {
 		info, err := os.Stat(filepath.Join(cfg.State, name))
-		if err == nil && (info.Size() > 512 || info.Mode().Perm() != 0600) {
+		if err != nil {
+			t.Fatal(err)
+		}
+		if info.Size() > 512 || info.Mode().Perm() != 0600 {
 			t.Fatal(info)
 		}
 	}
