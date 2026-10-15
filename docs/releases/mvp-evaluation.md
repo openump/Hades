@@ -2,12 +2,12 @@
 
 **Disposition: not accepted for a production pilot.** This package maps reference
 implementation evidence to WHITEPAPER.md section 9. It is not a release tag,
-license grant, operator sign-off or proof of Siemens hardware compatibility.
+license grant, operator sign-off or proof of physical hardware compatibility.
 
 | White-paper criterion | Evidence / unresolved gate |
 | --- | --- |
 | 1. Clean-host stack from pinned artifacts | Linux CI builds and starts disposable pinned stacks. Run the runbook on the selected host; site acceptance pending. |
-| 2. Simulator and supported OT source | Simulator and four-poll FC3 Modbus lab pass. Siemens S7-1200 real-device map, host and authorization pending. |
+| 2. Simulator and supported OT source | Simulator and four-poll FC3 Modbus lab pass. Active pilot changed to OPC UA mock; server/node map, gateway integration and verification pending. Physical-device acceptance is separate. |
 | 3. Two independent consumers | Go/Paho and Python/Mosquitto agreement checked by `scripts/smoke-stack` and cloud-outage CI. |
 | 4. Bounded invalid-input quarantine | `internal/normalize` tests and normalization/security/recovery CI. |
 | 5. Queryable numeric history | `scripts/smoke-history`: value/time/quality, query range and replay checks. API acknowledgement remains best effort. |
@@ -34,8 +34,8 @@ license grant, operator sign-off or proof of Siemens hardware compatibility.
 - [ ] Build artifacts on clean supported Linux host; record architecture and hashes.
 - [ ] Run conformance, security, local/cloud recovery and site restore checks.
 - [ ] Review private credential provisioning, expiry/rotation and scoped access.
-- [ ] Confirm named Siemens CPU/firmware/TIA version, approved MB_SERVER map,
-      FC3-only access, polling limits, site operator and access window.
+- [ ] Verify the pinned OPC UA mock, versioned node map, read-only identity,
+      security, bounded acquisition and source-to-history fault scenarios.
 - [ ] Run representative steady/burst whole-stack pilot capacity measurements.
 - [ ] Set retention, outage tolerance, backup frequency and recovery objectives
       from measured storage/throughput/endurance and agreed acceptable loss.
@@ -45,6 +45,6 @@ license grant, operator sign-off or proof of Siemens hardware compatibility.
 - [ ] Operator records review, date, scope, restrictions and approval reference
       before production pilot rollout.
 
-No operator sign-off has been obtained. The owner explicitly left the Siemens
-pilot pending. Hades-022/023 remain open for those acceptance gates; passing lab
+No operator sign-off has been obtained. The owner replaced the Siemens pilot with a software OPC UA mock pilot;
+its implementation and verification remain pending. Hades-022/023 remain open for those acceptance gates; passing lab
 CI alone cannot close them or mark the Hades MVP production ready.

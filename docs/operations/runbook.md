@@ -24,15 +24,15 @@ scripts stop services, kill test processes and remove their own volumes; don't
 point them at a pilot deployment. See their individual guides for environment
 variables and native/Compose prerequisites. Preserve reports and source IDs.
 
-## Read-only Siemens pilot — on hold
+## OPC UA mock software pilot — selected
 
-Selected direction is Siemens S7-1200 via Modbus TCP. Exact CPU/firmware,
-MB_SERVER configuration, signal/register layout, polling limits, host and access
-authorization remain unconfirmed. Use the [read-only checklist](../pilot/read-only-checklist.md)
-and [site profile](../pilot/site-profile.md). Current gateway CLI is lab-only and
-rejects non-loopback sources; do not bypass that restriction to connect a PLC.
-A reviewed device-specific implementation/configuration and operator approval
-must precede site access. No PLC program download is authorized by this package.
+The owner selected a local OPC UA mock server in place of the Siemens/Modbus
+physical pilot. Follow the [pilot profile](../pilot/site-profile.md) and
+[read-only checklist](../pilot/read-only-checklist.md). Server/client selection,
+versioned NodeIds, security, quality/time mapping and gateway implementation
+are pending; the current Modbus gateway cannot read OPC UA. Existing Modbus
+fixtures remain regression tests, not OPC UA acceptance. Physical PLC access
+and firmware/controller qualification are outside this software pilot.
 
 ## Troubleshooting and recovery
 

@@ -1,25 +1,23 @@
-# Operator review before first real read
+# OPC UA software-pilot review checklist
 
-The site operator completes and signs the pilot profile before any real endpoint
-is contacted. A passing protocol simulator test is preparation, not authorization.
+The active pilot is a local OPC UA mock server, selected on 2026-10-15.
+This checklist replaces the active Siemens/Modbus selection checklist; existing
+Modbus lab tests remain separate regression evidence.
 
-- Confirm device model/firmware and vendor manual revision; reconcile manual
-  register numbering with zero-based wire addresses and exact unit ID.
-- Approve each signal, function, type, byte/word order, scaling, unit and valid
-  range. Explicitly exclude writes, control commands, broadcasts and discovery.
-- Approve polling, timeouts, retry behavior and connection budget; confirm they
-  cannot disrupt existing control or maintenance clients.
-- Record read-only device/access-gateway permissions and firewall rules.
-  A Modbus function-3 client alone does not establish a read-only security boundary.
-- Identify the operator, gateway host, service account and emergency stop owner.
-  Review the Hades-013 certificates and isolated OT/management network paths.
-- Establish a synchronized gateway clock and measured uncertainty. Preserve
-  unknown clock trust instead of asserting zero uncertainty.
-- Run the lab timeout/device-exception/reconnect fixtures and validate telemetry,
-  quality and historian mapping before changing any endpoint configuration.
-- Record an access window, safe rollback, baseline reference readings and expected
-  error responses. Connect only to the exact approved endpoint and signal map.
-- Compare source, normalized and historian results against operator-observed
-  values; attach timestamps, metadata/config revision and sanitised evidence.
-- Record real-device pass/fail separately from lab checks. Leave Hades-014/015
-  open until the required site review and real-device evidence exist.
+- Pin server/client versions, licenses, artifacts and supported runtime/CPU targets.
+- Record endpoint, application URI, namespace URI, deterministic NodeIds and types.
+- Define units/scaling/ranges and deterministic expected values for each signal.
+- Select polling or subscriptions and document bounded rates, timeouts, reconnect
+  and pending-data limits. Resolve namespace indexes after reconnect.
+- Establish application-certificate trust and authenticated encryption, protect
+  private keys and use a restricted read identity.
+- Verify unknown/untrusted clients, unapproved reads and writes are rejected.
+  Client code issuing only reads is not proof of server-side write protection.
+- Specify source/server timestamp precedence, clock uncertainty and StatusCode to
+  OpenUMP quality mapping; never substitute zeros or assert unknown clock trust.
+- Exercise good/bad/uncertain values, missing nodes, disconnects, server restart
+  and recovery with a source ledger and bounded resources.
+- Compare source, normalized, broker, historian and consumer values/IDs/time/quality.
+- Record host inventory, configuration revision, commands, output and cleanup.
+- Report software-pilot pass/fail explicitly. Do not claim Siemens compatibility,
+  physical I/O timing, controller load or real-device acceptance from the mock.

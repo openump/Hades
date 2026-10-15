@@ -1,3 +1,7 @@
+> Scope update — 2026-10-15: the active pilot is now an OPC UA mock server.
+> The Modbus evidence below is historical lab regression evidence; OPC UA
+> server/client integration, node mapping and acceptance have not run yet.
+
 # Read-only gateway integration: lab evidence only
 
 **Status:** lab implementation ready; real pilot selection/authorization and
