@@ -3,6 +3,7 @@ package site
 
 import (
 	"crypto/sha256"
+	"crypto/x509"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -50,7 +51,7 @@ func Digest(m Manifest) string {
 }
 func fileHash(raw []byte) string { return fmt.Sprintf("%x", sha256.Sum256(raw)) }
 func Required(profile, metadata string) []string {
-	paths := []string{metadata, "schemas/v1/common.schema.json", "schemas/v1/telemetry.schema.json", "schemas/v1/metadata.schema.json", "schemas/v1/status.schema.json", "deploy/broker/Dockerfile", "deploy/historian/Dockerfile"}
+	paths := []string{"config/normalization/temperature.blobl", "config/gateway/pilot.example.json", metadata, "schemas/v1/common.schema.json", "schemas/v1/telemetry.schema.json", "schemas/v1/metadata.schema.json", "schemas/v1/status.schema.json", "deploy/broker/Dockerfile", "deploy/historian/Dockerfile"}
 	if profile == "secure" {
 		return append(paths, "deploy/compose.secure.yaml", "config/broker/security/mosquitto.conf", "config/broker/security/roles.json", "deploy/historian/Proxy.Dockerfile", "artifacts/hades-history-proxy")
 	}
@@ -162,9 +163,26 @@ func Validate(root string, m Manifest) error {
 			if key.Mode().Perm()&0077 != 0 {
 				return fmt.Errorf("private key permissions unsafe: %s", role)
 			}
-			if _, err := transport.Server(transport.Paths{CA: dir + "/ca.crt", Cert: dir + "/" + role + ".crt", Key: dir + "/" + role + ".key"}); err != nil {
+			credentials, err := transport.Server(transport.Paths{CA: dir + "/ca.crt", Cert: dir + "/" + role + ".crt", Key: dir + "/" + role + ".key"})
+			if err != nil {
 				return fmt.Errorf("invalid TLS material: %s", role)
 			}
+			leaf, err := x509.ParseCertificate(credentials.Certificates[0].Certificate[0])
+			if err != nil {
+				return fmt.Errorf("invalid server certificate: %s", role)
+			}
+			intermediates := x509.NewCertPool()
+			for _, der := range credentials.Certificates[0].Certificate[1:] {
+				certificate, err := x509.ParseCertificate(der)
+				if err != nil {
+					return err
+				}
+				intermediates.AddCert(certificate)
+			}
+			if _, err = leaf.Verify(x509.VerifyOptions{Roots: credentials.RootCAs, Intermediates: intermediates, KeyUsages: []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth}}); err != nil {
+				return fmt.Errorf("untrusted/expired server certificate: %s", role)
+			}
+
 		}
 	}
 	allowedState := map[string]bool{"history-intake": true, "history-quarantine": true, "transfer-intake": true, "transfer-quarantine": true, "normalization-quarantine": true}
@@ -225,8 +243,11 @@ func Stage(root, destination string, m Manifest) error {
 		if err = write(filepath.Join(destination, path), raw); err != nil {
 			return err
 		}
+		if err = os.Chmod(filepath.Join(destination, path), 0644); err != nil {
+			return err
+		}
 		if path == "artifacts/hades-history-proxy" {
-			if err = os.Chmod(filepath.Join(destination, path), 0700); err != nil {
+			if err = os.Chmod(filepath.Join(destination, path), 0755); err != nil {
 				return err
 			}
 		}
@@ -235,15 +256,7 @@ func Stage(root, destination string, m Manifest) error {
 	if err := write(filepath.Join(destination, "site.json"), raw); err != nil {
 		return err
 	}
-	labels := map[string]any{"services": map[string]any{}}
-	services := []string{"broker", "historian"}
-	if m.Profile == "secure" {
-		services = append(services, "history-proxy", "security-init")
-	}
-	for _, service := range services {
-		labels["services"].(map[string]any)[service] = map[string]any{"labels": map[string]string{"org.openump.config-revision": m.Revision, "org.openump.config-digest": Digest(m)}}
-	}
-	raw, _ = json.Marshal(labels)
+	raw = Labels(m)
 	if err := write(filepath.Join(destination, "labels.json"), raw); err != nil {
 		return err
 	}
@@ -260,4 +273,17 @@ func Stage(root, destination string, m Manifest) error {
 	}
 	complete = true
 	return syncDir(filepath.Dir(destination))
+}
+
+func Labels(m Manifest) []byte {
+	labels := map[string]any{"services": map[string]any{}}
+	services := []string{"broker", "historian"}
+	if m.Profile == "secure" {
+		services = append(services, "history-proxy", "security-init")
+	}
+	for _, service := range services {
+		labels["services"].(map[string]any)[service] = map[string]any{"labels": map[string]string{"org.openump.config-revision": m.Revision, "org.openump.config-digest": Digest(m)}}
+	}
+	raw, _ := json.Marshal(labels)
+	return raw
 }

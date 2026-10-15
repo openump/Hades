@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -91,5 +92,52 @@ func TestApplyDoesNotCommitOnFailureAndReportsLiveRevision(t *testing.T) {
 	active, err = manager.Active()
 	if err != nil || active.Revision != "lab-a" {
 		t.Fatal(active, err)
+	}
+}
+
+func TestSecretReferencesMustMatchTrustedServerCertificates(t *testing.T) {
+	root, _ := fixture(t)
+	source := t.TempDir()
+	for _, path := range Required("secure", "examples/site/metadata.json") {
+		if path == "artifacts/hades-history-proxy" {
+			if err := write(filepath.Join(source, path), []byte("fixture binary")); err != nil {
+				t.Fatal(err)
+			}
+			continue
+		}
+		raw, err := Read(root, path, MaxFile)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err = write(filepath.Join(source, path), raw); err != nil {
+			t.Fatal(err)
+		}
+	}
+	certdir := t.TempDir() + "/pki"
+	command := exec.Command("go", "run", "../../cmd/hades-pki", "-out", certdir)
+	if output, err := command.CombinedOutput(); err != nil {
+		t.Fatal(err, string(output))
+	}
+	m, err := Prepare(source, "secure-a", "hades-secure-test", "secure", "examples/site/metadata.json", map[string]string{"HADES_SECURITY_DIR": certdir}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = os.Chmod(certdir+"/broker.key", 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err = Validate(source, m); err == nil {
+		t.Fatal("public private-key permissions accepted")
+	}
+	os.Chmod(certdir+"/broker.key", 0600)
+	// A valid certificate pair must also chain to the referenced CA.
+	another := t.TempDir() + "/pki"
+	command = exec.Command("go", "run", "../../cmd/hades-pki", "-out", another)
+	if output, err := command.CombinedOutput(); err != nil {
+		t.Fatal(err, string(output))
+	}
+	raw, _ := os.ReadFile(another + "/ca.crt")
+	os.WriteFile(certdir+"/ca.crt", raw, 0644)
+	if err = Validate(source, m); err == nil {
+		t.Fatal("untrusted certificate chain accepted")
 	}
 }

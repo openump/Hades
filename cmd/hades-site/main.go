@@ -6,6 +6,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"path/filepath"
 
 	"github.com/openump/Hades/internal/site"
 )
@@ -26,11 +27,17 @@ func run() error {
 	profile := flag.String("profile", "dev", "dev or secure reference stack")
 	metadata := flag.String("metadata", "examples/site/metadata.json", "approved snapshot")
 	security := flag.String("security-dir", "", "external private credential directory")
+	hostState := flag.String("host-state", "{}", "JSON map of declared absolute adapter state directories")
 	ports := flag.String("ports", "{}", "JSON published port references")
 	digest := flag.String("digest", "", "existing release digest for rollback or trusted backup SHA256 for restore")
+	archive := flag.String("archive", "", "private cold backup tar")
+	target := flag.String("target", "", "new isolated restore directory")
 	flag.Parse()
 	ctx, cancel := site.Deadline()
 	defer cancel()
+	if *action == "restore" {
+		return site.Restore(*archive, *target, *digest)
+	}
 	if *action == "prepare" {
 		secrets := map[string]string{}
 		if *security != "" {
@@ -42,6 +49,12 @@ func run() error {
 		}
 		manifest, err := site.Prepare(*root, *revision, *project, *profile, *metadata, secrets, mapping)
 		if err != nil {
+			return err
+		}
+		if err = json.Unmarshal([]byte(*hostState), &manifest.HostState); err != nil {
+			return err
+		}
+		if err = site.Validate(*root, manifest); err != nil {
 			return err
 		}
 		return json.NewEncoder(os.Stdout).Encode(manifest)
@@ -63,8 +76,14 @@ func run() error {
 		return json.NewEncoder(os.Stdout).Encode(map[string]any{"revision": manifest.Revision, "digest": site.Digest(manifest), "live": true, "scope": "reference_compose_services_only"})
 	case "rollback":
 		return manager.Rollback(ctx, *digest)
+	case "backup":
+		return manager.Backup(ctx, *archive)
 	case "apply", "validate":
-		raw, err := os.ReadFile(*manifestPath)
+		absolute, err := filepath.Abs(*manifestPath)
+		if err != nil {
+			return err
+		}
+		raw, err := site.Read(filepath.Dir(absolute), filepath.Base(absolute), 65536)
 		if err != nil {
 			return err
 		}

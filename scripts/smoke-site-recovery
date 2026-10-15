@@ -1,0 +1,136 @@
+#!/usr/bin/env python3
+"""Disposable versioned rollout and cold restore. Python orchestrates Go services."""
+import datetime, hashlib, json, os, pathlib, shutil, socket, ssl, subprocess, tempfile, time, urllib.request, urllib.parse
+root=pathlib.Path(__file__).resolve().parents[1];os.chdir(root)
+for tool,path in [('hades-site','./cmd/hades-site'),('hades-restore-fixture','./tests/recovery/restore'),('hades-pki','./cmd/hades-pki')]:
+ subprocess.run(['go','build','-o','artifacts/'+tool,path],check=True)
+native=bool(os.environ.get('HADES_VM_BINARY'))
+if not native:
+ subprocess.run(['go','build','-o','artifacts/hades-history-proxy','./cmd/hades-history-proxy'],env=dict(os.environ,CGO_ENABLED='0',GOOS='linux',GOARCH='amd64'),check=True)
+site=str(root/'artifacts/hades-site');fixture=str(root/'artifacts/hades-restore-fixture')
+def run(args,**kwargs):return subprocess.check_output([str(x) for x in args],stderr=subprocess.STDOUT,**kwargs).decode()
+def freeport():
+ with socket.socket() as s:s.bind(('127.0.0.1',0));return s.getsockname()[1]
+def wait(check,label):
+ for _ in range(450):
+  try:
+   if check():return
+  except (OSError,ValueError):pass
+  time.sleep(.1)
+ raise RuntimeError(label+' timed out')
+with tempfile.TemporaryDirectory(prefix='hades-site-recovery-') as temporary:
+ scratch=pathlib.Path(temporary);children=[];projects=[];logs=open(scratch/'native.log','w');mp=freeport();vp=freeport()
+ manager=scratch/'manager';ledger=scratch/'source.json';host=scratch/'host';host.mkdir(mode=0o700)
+ run([fixture,'-action','seed','-history',host/'history-intake','-transfer',host/'transfer-intake','-ledger',ledger])
+ original=json.loads(ledger.read_text());expected_ms=int(datetime.datetime.now(datetime.timezone.utc).timestamp()*1000)-2000
+ pki=scratch/'pki';run(['artifacts/hades-pki','-out',pki,'-test-identities'])
+ def context(role,certdir=pki):
+  c=ssl.create_default_context(cafile=str(certdir/'ca.crt'));c.load_cert_chain(str(certdir/(role+'.crt')),str(certdir/(role+'.key')));return c
+ certdir=pki
+ def http(path,data=None,role='consumer-primary'):
+  return urllib.request.urlopen(urllib.request.Request(('http' if native else 'https')+f'://127.0.0.1:{vp}'+path,data=data),context=None if native else context(role,certdir),timeout=3)
+ def sample():
+  query=urllib.parse.urlencode({'match[]':'hades_restore_sample{site="lab"}','start':expected_ms/1000-1,'end':expected_ms/1000+1})
+  values=[json.loads(line) for line in http('/api/v1/export?'+query).read().splitlines()]
+  return any(v['timestamps']==[expected_ms] and v['values']==[67.2] for v in values)
+ def compose(manifest,release,*args):
+  env=dict(os.environ,**manifest.get('ports',{}),**manifest.get('secret_references',{}))
+  file='compose.secure.yaml'
+  return run(['docker','compose','-p',manifest['project'],'-f',release/'deploy'/file,'-f',release/'labels.json',*args],env=env)
+ def prepare(source,revision,project,credentials,manager_path):
+  raw=run([site,'-action','prepare','-root',source,'-revision',revision,'-project',project,'-profile','secure','-security-dir',credentials,'-ports',json.dumps({'HADES_SECURE_MQTT_PORT':str(mp),'HADES_SECURE_HISTORY_PORT':str(vp)})])
+  m=json.loads(raw);m['host_state']={name:str(host/name) for name in ('history-intake','transfer-intake')}
+  path=scratch/(revision+'.json');path.write_text(json.dumps(m));return m,path
+ def apply(path,state=manager,source=root):run([site,'-action','apply','-root',source,'-manifest',path,'-state',state])
+ def status(state=manager):return json.loads(run([site,'-action','status','-state',state]))
+ def broker_command(binary,role=None):
+  if native:return [os.environ['HADES_MQTT_'+binary.upper()],'-h','127.0.0.1','-p',str(mp)]
+  # C MQTT client in the existing pinned image; host networking is fixture-only.
+  return ['docker','run','--rm','--network','host','-v',str(certdir)+':/cert:ro','--user',str(os.getuid()),'--entrypoint','mosquitto_'+binary,'openump/hades-mosquitto:2.1.2-dev','-h','127.0.0.1','-p',str(mp),'--cafile','/cert/ca.crt','--cert','/cert/'+role+'.crt','--key','/cert/'+role+'.key']
+ topic='hades/dev/backup' if native else 'openump/v1/acme/berlin/assembly/line-01/press-04/metadata'
+ message='cold-retained-fixture' if native else pathlib.Path('examples/site/metadata.json').read_text()
+ def retained():return run(broker_command('sub','transfer-adapter')+['-V','mqttv5','-q','1','-t',topic,'-C','1','-W','5']).strip()==message.strip()
+ vm=None;broker=None
+ def start_native(data):
+  global vm,broker
+  vm=subprocess.Popen([os.environ['HADES_VM_BINARY'],f'-httpListenAddr=127.0.0.1:{vp}','-storageDataPath='+str(data/'historian'),'-retentionPeriod=1d','-inmemoryDataFlushInterval=1s','-memory.allowedBytes=64MiB'],stdout=logs,stderr=logs);children.append(vm)
+  (data/'broker').mkdir(mode=0o700,exist_ok=True)
+  cfg=data/'broker.conf';cfg.write_text(f'listener {mp} 127.0.0.1\nallow_anonymous true\npersistence true\npersistence_location {data}/broker/\nautosave_interval 5\n')
+  broker=subprocess.Popen([os.environ['HADES_MOSQUITTO_BINARY'],'-c',str(cfg)],stdout=logs,stderr=logs);children.append(broker)
+  wait(lambda:http('/health').status==200,'native readiness')
+ def stop_native():
+  for child in (broker,vm):child.terminate();assert child.wait(timeout=30)==0
+ try:
+  rollout=False
+  if native:
+   source_data=scratch/'native';source_data.mkdir(mode=0o700);start_native(source_data)
+  else:
+   manifest,path=prepare(root,'lab-a','hades-site-'+str(os.getpid()),pki,manager);apply(path)
+   digest=status()['digest'];release=manager/'releases'/digest;projects.append((manifest,release))
+   wait(lambda:http('/api/v1/query?query=up').status==200,'secure readiness')
+  http('/api/v1/import/prometheus',f'hades_restore_sample{{site="lab"}} 67.2 {expected_ms}\n'.encode(),role='history-adapter').close()
+  run(broker_command('pub','normalizer')+['-V','mqttv5','-q','1','-t',topic,'-m',message,'-r'])
+  wait(sample,'known source history sample')
+  if not native:
+   source_b=scratch/'reviewed-b';source_b.mkdir(mode=0o700)
+   for name in manifest['files']:
+    dest=source_b/name;dest.parent.mkdir(parents=True,exist_ok=True);shutil.copy2(root/name,dest)
+   cfg=source_b/'config/broker/security/mosquitto.conf';cfg.write_text(cfg.read_text().replace('max_inflight_messages 20','max_inflight_messages 10'))
+   revision_b,path_b=prepare(source_b,'lab-b',manifest['project'],pki,manager)
+   apply(path_b,source=source_b);assert status()['revision']=='lab-b';wait(sample,'history after upgrade')
+   invalid=json.loads(path_b.read_text());invalid['files'][invalid['metadata']]='0'*64
+   bad=scratch/'invalid.json';bad.write_text(json.dumps(invalid))
+   rejected=subprocess.run([site,'-action','apply','-root',str(source_b),'-manifest',str(bad),'-state',str(manager)],capture_output=True)
+   assert rejected.returncode!=0 and b'digest mismatch' in rejected.stderr
+   assert status()['revision']=='lab-b'
+   run([site,'-action','rollback','-digest',digest,'-state',manager]);assert status()['revision']=='lab-a';wait(sample,'history after rollback');rollout=True
+  archive=scratch/'site-backup.tar'
+  if native:
+   stop_native();snapshot=scratch/'snapshot';snapshot.mkdir(mode=0o700)
+   shutil.copytree(source_data/'broker',snapshot/'broker');shutil.copytree(source_data/'historian',snapshot/'historian');shutil.copytree(host,snapshot/'host')
+   backup=json.loads(run([fixture,'-action','archive','-snapshot',snapshot,'-archive',archive]));start_native(source_data)
+  else:backup=json.loads(run([site,'-action','backup','-state',manager,'-archive',archive]))
+  assert retained();wait(sample,'source resumed after backup')
+  restored=scratch/'restored';recovery_start=time.monotonic()
+  run([site,'-action','restore','-archive',archive,'-target',restored,'-digest',backup['sha256']])
+  # No PKI material is supplied by the archive. Reprovision a new trust bundle.
+  assert not list(restored.rglob('*.key')) and not list(restored.rglob('*.pem'))
+  newpki=scratch/'replacement-pki';run(['artifacts/hades-pki','-out',newpki,'-test-identities'])
+  assert hashlib.sha256((pki/'ca.crt').read_bytes()).digest()!=hashlib.sha256((newpki/'ca.crt').read_bytes()).digest()
+  verified=json.loads(run([fixture,'-action','verify','-history',restored/'host/history-intake','-transfer',restored/'host/transfer-intake','-ledger',ledger]))
+  assert verified['restored_message_id']==original['message_id'] and verified['original_observed_at']==original['observed_at']
+  if native:
+   stop_native();start_native(restored)
+  else:
+   # Use fresh project/volumes and ports; never import into source volumes.
+   restored_state=scratch/'restore-manager';mp=freeport();vp=freeport();certdir=newpki
+   restored_manifest,restored_path=prepare(root,'restored-a','hades-restore-'+str(os.getpid()),newpki,restored_state)
+   restored_manifest['host_state']={name:str(restored/'host'/name) for name in ('history-intake','transfer-intake')};restored_path.write_text(json.dumps(restored_manifest))
+   # Apply creates a fresh isolated volume set, then stop before importing cold files.
+   apply(restored_path,state=restored_state);restored_digest=status(restored_state)['digest'];restored_release=restored_state/'releases'/restored_digest
+   projects.append((restored_manifest,restored_release));compose(restored_manifest,restored_release,'stop','--timeout','30')
+   for service,destination,uid in [('broker','/mosquitto/data','1883'),('historian','/storage','10001')]:
+    identity=compose(restored_manifest,restored_release,'ps','-a','-q',service).strip()
+    # The destination is an isolated fresh project, stopped before any import.
+    # Remove only the bootstrap contents of this newly created test volume.
+    # VictoriaMetrics cold restore requires an empty destination, never a merge.
+    run(['docker','run','--rm','--network','none','--read-only','--cap-drop','ALL','--cap-add','DAC_OVERRIDE','--volumes-from',identity,'alpine:3.24@sha256:294b683cb724975bec92580e1e685676bd4b50bda910ddb8c51d4cabeaec77e6','sh','-ec','find "$1" -mindepth 1 -maxdepth 1 -exec rm -rf -- {} +','restore',destination])
+    run(['docker','cp',str(restored/service)+'/.',identity+':'+destination])
+    run(['docker','run','--rm','--network','none','--read-only','--cap-drop','ALL','--cap-add','CHOWN','--cap-add','DAC_OVERRIDE','--volumes-from',identity, 'alpine:3.24@sha256:294b683cb724975bec92580e1e685676bd4b50bda910ddb8c51d4cabeaec77e6','chown','-R',uid+':'+uid,destination])
+   broker_id=compose(restored_manifest,restored_release,'ps','-a','-q','broker').strip()
+   run(['docker','cp',str(restored/'broker-policy.json'),broker_id+':/credentials/broker/roles.json'])
+   run(['docker','run','--rm','--network','none','--read-only','--cap-drop','ALL','--cap-add','CHOWN','--cap-add','DAC_OVERRIDE','--volumes-from',broker_id,'alpine:3.24@sha256:294b683cb724975bec92580e1e685676bd4b50bda910ddb8c51d4cabeaec77e6','chown','1883:1883','/credentials/broker/roles.json'])
+   apply(restored_path,state=restored_state);assert status(restored_state)['revision']=='restored-a'
+  wait(sample,'restored exact history sample');assert retained()
+  report={'rollout_upgrade_reject_rollback':rollout,'profile':'native-cold-copy' if native else 'secure-compose','history_value':67.2,'history_timestamp_ms':expected_ms,'retained_broker_message':True,'queued_identity_verified':verified,'backup_sha256':backup['sha256'],'recovery_ms':round((time.monotonic()-recovery_start)*1000),'secret_keys_in_archive':0,'replacement_ca_reprovisioned':True,'boundary':'clean_shutdown_and_synced_intake','pilot':'pending'}
+  output=pathlib.Path('artifacts/site-recovery');output.mkdir(parents=True,exist_ok=True);(output/'report.json').write_text(json.dumps(report,indent=2)+'\n');print(json.dumps(report,sort_keys=True))
+ finally:
+  for child in children:
+   if child.poll() is None:child.terminate()
+  for child in children:
+   try:child.wait(timeout=15)
+   except subprocess.TimeoutExpired:child.kill();child.wait()
+  for manifest,release in reversed(projects):
+   try:compose(manifest,release,'down','-v')
+   except subprocess.CalledProcessError as error:print(error.output.decode())
+  logs.close()

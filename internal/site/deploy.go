@@ -57,6 +57,10 @@ func Open(dir string, run Runner) (*Manager, error) {
 	if err = os.MkdirAll(abs, 0700); err != nil {
 		return nil, err
 	}
+	info, err := os.Lstat(abs)
+	if err != nil || !info.IsDir() || info.Mode().Perm() != 0700 || info.Mode()&os.ModeSymlink != 0 {
+		return nil, fmt.Errorf("manager state must be private mode 0700 without symlink")
+	}
 	s, err := storage.Open(filepath.Join(abs, "control"), 4, 1024*1024, 128*1024*1024)
 	if err != nil {
 		return nil, err
@@ -98,10 +102,25 @@ func (m *Manager) Release(manifest Manifest) string {
 	return filepath.Join(m.Dir, "releases", Digest(manifest))
 }
 func (m *Manager) ValidateCompose(ctx context.Context, manifest Manifest, release string) error {
-	_, err := m.run(ctx, release, compose(manifest, release, "config", "--quiet"), environment(manifest))
+	raw, err := Read(release, "labels.json", 8192)
+	if err != nil {
+		return err
+	}
+	if !bytes.Equal(raw, Labels(manifest)) {
+		return fmt.Errorf("generated revision labels modified")
+	}
+	_, err = m.run(ctx, release, compose(manifest, release, "config", "--quiet"), environment(manifest))
 	return err
 }
 func (m *Manager) Apply(ctx context.Context, root string, manifest Manifest) error {
+	if err := Validate(root, manifest); err != nil {
+		return err
+	}
+	if _, exists := m.store.Records["active"]; exists {
+		if _, err := m.Active(); err != nil {
+			return err
+		}
+	}
 	if old, err := m.Active(); err == nil {
 		// Keep persistence format, project/volume identity, topic mapping and metadata
 		// context stable. A migration requires its own explicit reconciliation plan.
