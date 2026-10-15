@@ -55,6 +55,10 @@ sizes, and checks temporary-copy/archive disk headroom plus a 128 MiB reserve.
 It then copies cold broker/historian state, live broker policy, configuration and
 host stores. One manager lock prevents concurrent deployment/backup.
 
+The archive destination must be outside the manager and declared host store
+trees, so capture cannot recursively include its own temporary files. Interrupting
+the CLI process can leave services stopped; inspect and restart explicitly.
+
 The archive is mode 0600 and is written exclusively, synced with its parent
 folder, with an exact per-file checksum index. Limits are 10,000 files and 32 GiB
 of source data. Symlinks, special files and private-key filenames are rejected.

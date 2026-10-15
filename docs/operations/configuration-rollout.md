@@ -69,8 +69,8 @@ labels and explicitly roll back the recorded digest; do not report success from
 a marker or assume automatic rollback occurred. A crash during staging can leave
 an incomplete release; quarantine that incomplete directory before retrying.
 
-This first path preserves the profile, project identity, metadata bytes and
-security-policy seed across upgrades. Changing those is rejected even if the new
+This first path preserves the profile, project identity, metadata bytes, Compose
+volume topology, component artifacts and security-policy seed across upgrades. Changing those is rejected even if the new
 snapshot is syntactically valid. Existing queues pin metadata context. Dynamic
 Security's live policy persists in its credential volume; a new seed file does
 not replace it, so seed-policy migrations are deliberately rejected. There is no

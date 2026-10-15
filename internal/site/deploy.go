@@ -127,6 +127,11 @@ func (m *Manager) Apply(ctx context.Context, root string, manifest Manifest) err
 		if old.Project != manifest.Project || old.Profile != manifest.Profile || old.Files["config/broker/security/roles.json"] != manifest.Files["config/broker/security/roles.json"] || old.Metadata != manifest.Metadata || old.Files[old.Metadata] != manifest.Files[manifest.Metadata] {
 			return fmt.Errorf("incompatible deployment identity/profile/metadata change; migration required")
 		}
+		for _, path := range []string{"deploy/compose.yaml", "deploy/compose.secure.yaml", "deploy/broker/Dockerfile", "deploy/historian/Dockerfile", "deploy/historian/Proxy.Dockerfile", "artifacts/hades-history-proxy"} {
+			if old.Files[path] != manifest.Files[path] {
+				return fmt.Errorf("component/volume topology change requires separate migration: %s", path)
+			}
+		}
 		if old.Revision == manifest.Revision && Digest(old) != Digest(manifest) {
 			return fmt.Errorf("revision already names different content")
 		}
