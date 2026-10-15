@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Disposable versioned rollout and cold restore. Python orchestrates Go services."""
-import datetime, hashlib, json, os, pathlib, shutil, socket, ssl, subprocess, tempfile, time, urllib.request, urllib.parse
+import datetime, hashlib, json, os, pathlib, secrets, shutil, socket, ssl, subprocess, tempfile, time, urllib.request, urllib.parse
 root=pathlib.Path(__file__).resolve().parents[1];os.chdir(root)
 for tool,path in [('hades-site','./cmd/hades-site'),('hades-restore-fixture','./tests/recovery/restore'),('hades-pki','./cmd/hades-pki')]:
  subprocess.run(['go','build','-o','artifacts/'+tool,path],check=True)
@@ -20,6 +20,7 @@ def wait(check,label):
  raise RuntimeError(label+' timed out')
 with tempfile.TemporaryDirectory(prefix='hades-site-recovery-') as temporary:
  scratch=pathlib.Path(temporary);children=[];projects=[];logs=open(scratch/'native.log','w');mp=freeport();vp=freeport()
+ token=secrets.token_hex(4)
  manager=scratch/'manager';ledger=scratch/'source.json';host=scratch/'host';host.mkdir(mode=0o700)
  run([fixture,'-action','seed','-history',host/'history-intake','-transfer',host/'transfer-intake','-ledger',ledger])
  original=json.loads(ledger.read_text());expected_ms=int(datetime.datetime.now(datetime.timezone.utc).timestamp()*1000)-2000
@@ -41,6 +42,10 @@ with tempfile.TemporaryDirectory(prefix='hades-site-recovery-') as temporary:
   raw=run([site,'-action','prepare','-root',source,'-revision',revision,'-project',project,'-profile','secure','-security-dir',credentials,'-ports',json.dumps({'HADES_SECURE_MQTT_PORT':str(mp),'HADES_SECURE_HISTORY_PORT':str(vp)})])
   m=json.loads(raw);m['host_state']={name:str(host/name) for name in ('history-intake','transfer-intake')}
   path=scratch/(revision+'.json');path.write_text(json.dumps(m));return m,path
+ def fresh(manifest):
+  project=manifest['project']
+  assert not run(['docker','ps','-a','-q','--filter','label=com.docker.compose.project='+project]).strip(),'test project already owns containers'
+  assert not run(['docker','volume','ls','-q','--filter','label=com.docker.compose.project='+project]).strip(),'test project already owns volumes'
  def apply(path,state=manager,source=root):run([site,'-action','apply','-root',source,'-manifest',path,'-state',state])
  def status(state=manager):return json.loads(run([site,'-action','status','-state',state]))
  def broker_command(binary,role=None):
@@ -65,7 +70,7 @@ with tempfile.TemporaryDirectory(prefix='hades-site-recovery-') as temporary:
   if native:
    source_data=scratch/'native';source_data.mkdir(mode=0o700);start_native(source_data)
   else:
-   manifest,path=prepare(root,'lab-a','hades-site-'+str(os.getpid()),pki,manager);apply(path)
+   manifest,path=prepare(root,'lab-a','hades-site-'+str(os.getpid())+'-'+token,pki,manager);fresh(manifest);apply(path)
    digest=status()['digest'];release=manager/'releases'/digest;projects.append((manifest,release))
    wait(lambda:http('/api/v1/query?query=up').status==200,'secure readiness')
   http('/api/v1/import/prometheus',f'hades_restore_sample{{site="lab"}} 67.2 {expected_ms}\n'.encode(),role='history-adapter').close()
@@ -104,10 +109,10 @@ with tempfile.TemporaryDirectory(prefix='hades-site-recovery-') as temporary:
   else:
    # Use fresh project/volumes and ports; never import into source volumes.
    restored_state=scratch/'restore-manager';mp=freeport();vp=freeport();certdir=newpki
-   restored_manifest,restored_path=prepare(root,'restored-a','hades-restore-'+str(os.getpid()),newpki,restored_state)
+   restored_manifest,restored_path=prepare(root,'restored-a','hades-restore-'+str(os.getpid())+'-'+token,newpki,restored_state)
    restored_manifest['host_state']={name:str(restored/'host'/name) for name in ('history-intake','transfer-intake')};restored_path.write_text(json.dumps(restored_manifest))
    # Apply creates a fresh isolated volume set, then stop before importing cold files.
-   apply(restored_path,state=restored_state);restored_digest=status(restored_state)['digest'];restored_release=restored_state/'releases'/restored_digest
+   fresh(restored_manifest);apply(restored_path,state=restored_state);restored_digest=status(restored_state)['digest'];restored_release=restored_state/'releases'/restored_digest
    projects.append((restored_manifest,restored_release));compose(restored_manifest,restored_release,'stop','--timeout','30')
    for service,destination,uid in [('broker','/mosquitto/data','1883'),('historian','/storage','10001')]:
     identity=compose(restored_manifest,restored_release,'ps','-a','-q',service).strip()
