@@ -13,6 +13,7 @@ type Engine struct {
 	Config          *sample.Config
 	mapping         *bloblang.Executor
 	approvedNumeric bool
+	opcua           bool
 }
 
 func New(cfg *sample.Config, mapping string) (*Engine, error) {
@@ -46,6 +47,21 @@ func NewApprovedNumeric(cfg *sample.Config) (*Engine, error) {
 	e.approvedNumeric = true
 	return e, nil
 }
+
+// NewOPCUAMock accepts one approved node per raw observation, preserving its
+// original status/timestamps in envelope extensions without changing v1 schemas.
+func NewOPCUAMock(cfg *sample.Config) (*Engine, error) {
+	if err := sample.CheckOPCUAMock(cfg); err != nil {
+		return nil, err
+	}
+	e, err := New(cfg, "root = this")
+	if err != nil {
+		return nil, err
+	}
+	e.approvedNumeric = true
+	e.opcua = true
+	return e, nil
+}
 func (e *Engine) Map(raw []byte) ([]byte, error) {
 	value, err := contracts.Decode(raw)
 	if err != nil {
@@ -56,6 +72,9 @@ func (e *Engine) Map(raw []byte) ([]byte, error) {
 		return nil, fmt.Errorf("raw observation must be object")
 	}
 	allowed := map[string]bool{"schema_version": true, "message_id": true, "asset_id": true, "metadata_revision": true, "observed_at": true, "ingested_at": true, "source": true, "signals": true}
+	if e.opcua {
+		allowed["extensions"] = true
+	}
 	if len(obj) != len(allowed) {
 		return nil, fmt.Errorf("raw observation requires exactly the declared fields")
 	}
@@ -69,7 +88,7 @@ func (e *Engine) Map(raw []byte) ([]byte, error) {
 		return nil, fmt.Errorf("expected signal object")
 	}
 	defs := e.Config.Metadata["measurements"].(map[string]any)
-	if (!e.approvedNumeric && len(signals) != 1) || (e.approvedNumeric && len(signals) != len(defs)) {
+	if (!e.approvedNumeric && len(signals) != 1) || (e.approvedNumeric && !e.opcua && len(signals) != len(defs)) || (e.opcua && len(signals) != 1) {
 		return nil, fmt.Errorf("signal cardinality differs from approved profile")
 	}
 	for name, value := range signals {

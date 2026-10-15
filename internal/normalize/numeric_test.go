@@ -2,6 +2,7 @@ package normalize
 
 import (
 	"encoding/json"
+	"github.com/openump/Hades/internal/sample"
 	"strings"
 	"testing"
 )
@@ -57,5 +58,35 @@ func TestNumericIdentityPreservesLargeReading(t *testing.T) {
 	}
 	if !strings.Contains(string(out), "9007199254740993") {
 		t.Fatal(string(out))
+	}
+}
+
+func TestOPCUAMockPreservesSparseReadingAndProvenance(t *testing.T) {
+	cfg, err := sample.LoadContext("../..", "../../examples/site/opcua-mock.metadata.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	engine, err := NewOPCUAMock(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, payload := fixture(t)
+	payload["metadata_revision"] = 3
+	payload["source"].(map[string]any)["protocol"] = "opc-ua"
+	payload["source"].(map[string]any)["gateway_id"] = "opcua-mock-01"
+	payload["signals"] = map[string]any{"cycle_counter": map[string]any{"value": 4294967295, "unit": "1", "quality": "uncertain"}}
+	payload["extensions"] = map[string]any{"opcua.status_code": 1073741824, "opcua.source_timestamp": "2026-10-15T10:00:00.1234567Z"}
+	raw, _ := json.Marshal(payload)
+	normalized, err := engine.Map(raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(normalized), "4294967295") || !strings.Contains(string(normalized), "1234567Z") {
+		t.Fatal(string(normalized))
+	}
+	payload["signals"].(map[string]any)["unauthorized"] = payload["signals"].(map[string]any)["cycle_counter"]
+	raw, _ = json.Marshal(payload)
+	if _, err = engine.Map(raw); err == nil {
+		t.Fatal("unapproved reading accepted")
 	}
 }

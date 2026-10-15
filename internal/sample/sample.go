@@ -236,3 +236,23 @@ func (c *Config) Inspect(topic string, raw []byte, now time.Time) (map[string]an
 	}
 	return result, nil
 }
+
+// CheckOPCUAMock validates the fixed software pilot without linking a protocol
+// SDK or the normalization engine into otherwise independent runtimes.
+func CheckOPCUAMock(c *Config) error {
+	if c.Metadata["acquisition"].(map[string]any)["protocol"] != "opc-ua" || c.Interval != time.Second {
+		return fmt.Errorf("one-second OPC UA mock context required")
+	}
+	defs := c.Metadata["measurements"].(map[string]any)
+	expected := map[string]string{"motor_temperature": "Cel", "cycle_counter": "1", "machine_state": "1"}
+	if len(defs) != len(expected) {
+		return fmt.Errorf("OPC UA mock requires exactly three reviewed numeric definitions")
+	}
+	for name, unit := range expected {
+		d, ok := defs[name].(map[string]any)
+		if !ok || d["type"] != "number" || d["unit"] != unit || Num(d["expected_interval_ms"]) != 1000 {
+			return fmt.Errorf("OPC UA mock definition mismatch")
+		}
+	}
+	return nil
+}

@@ -37,7 +37,7 @@ jobs:
           python -m unittest discover -s tests -v
       - name: Build Linux targets without cgo
         run: |
-          for tool in hades-check hades-simulator hades-consumer hades-normalizer hades-history hades-pki hades-history-proxy hades-gateway hades-transfer hades-site hades-capacity hades-service; do
+          for tool in hades-check hades-simulator hades-consumer hades-normalizer hades-history hades-pki hades-history-proxy hades-gateway hades-transfer hades-site hades-capacity hades-service hades-opcua-gateway; do
             CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o "artifacts/$tool-amd64" "./cmd/$tool"
             CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -o "artifacts/$tool-arm64" "./cmd/$tool"
           done
@@ -180,4 +180,34 @@ jobs:
         with:
           name: stack-capacity-reference
           path: artifacts/stack-capacity/
+          retention-days: 14
+
+  opcua-pilot:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      COMPOSE_PROJECT_NAME: hades-ci-opcua
+      HADES_SECURE_MQTT_PORT: '18885'
+      HADES_SECURE_HISTORY_PORT: '18432'
+      HADES_TEST_SYSTEMD: '1'
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
+        with:
+          go-version-file: go.mod
+          cache: true
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: '3.14.6'
+      - run: python -m pip install -r requirements-dev.txt
+      - name: Secured read-only mock, fault matrix and loopback confinement
+        run: ./scripts/opcua-mock-tool test
+      - name: Installed gateway through mTLS, independent consumers and history
+        run: ./scripts/smoke-opcua-pilot
+      - name: Preserve synthetic pilot evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: opcua-pilot-reference
+          path: artifacts/opcua-pilot/
           retention-days: 14

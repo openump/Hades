@@ -43,3 +43,11 @@ The owner authorizes a local software pilot through this selection. It does not
 authorize connecting to real equipment, modifying PLC programs or deploying to
 an external site. Operator evaluation and reproducible host measurements remain
 required before broader rollout. A future physical pilot needs separate scope.
+
+## Implemented software profile
+
+The initial selection table above is superseded by the pinned, executable
+[OPC UA mock v1 profile](opcua-mock.md). Its node map, certificate policy,
+acquisition limits, lifecycle and source/fault matrix are implemented. Native
+macOS arm64 verification passed; see the implementation PR for final Linux
+checks and retained evidence before treating this as reviewed acceptance.

@@ -4,6 +4,8 @@ import datetime,hashlib,json,os,pathlib,ssl,subprocess,tempfile,time,urllib.requ
 import socket,socketserver,struct,threading,uuid
 root=pathlib.Path(__file__).resolve().parents[1];os.chdir(root)
 ot_lab=os.environ.get('HADES_TEST_OT_GATEWAY')=='1'
+opc_lab=os.environ.get('HADES_TEST_OPCUA')=='1'
+expected_count=30 if opc_lab else 4 if ot_lab else 1
 for tool in ('hades-service','hades-transfer','hades-gateway','hades-pki','hades-history-proxy','hades-normalizer','hades-history','hades-consumer'):
  subprocess.run(['go','build','-o',f'artifacts/{tool}-native',f'./cmd/{tool}'],check=True)
 subprocess.run(['go','build','-o','artifacts/hades-test-receiver-native','./tests/fixtures/cloud-receiver/cmd'],check=True)
@@ -28,7 +30,7 @@ class ModbusLab(socketserver.StreamRequestHandler):
   except OSError:pass
 
 with tempfile.TemporaryDirectory(prefix='hades-security-') as scratch:
- metadata_args=['-config','examples/site/modbus-lab.metadata.json'] if ot_lab else []
+ metadata_args=['-config','examples/site/opcua-mock.metadata.json'] if opc_lab else ['-config','examples/site/modbus-lab.metadata.json'] if ot_lab else []
  logs=open(scratch+'/logs','w');consumerout=open(scratch+'/consumer','w');broker=None;vm=None;proxy=None;normalizer=None;history=None
  def issue(version):
   path=pathlib.Path(scratch)/version
@@ -118,12 +120,17 @@ with tempfile.TemporaryDirectory(prefix='hades-security-') as scratch:
   wait(lambda:'"type":"transfer_ready"' in pathlib.Path(logs.name).read_text(),'TLS transfer subscription')
   history=subprocess.Popen(['artifacts/hades-history-native','-broker','tls://127.0.0.1:'+mp,'-historian','https://127.0.0.1:'+hp,'-intake',scratch+'/intake','-quarantine',scratch+'/history-quarantine']+flags('history-adapter',v1)+metadata_args,stdout=logs,stderr=logs);children.append(history)
   wait(lambda:'"type":"history_ready"' in pathlib.Path(logs.name).read_text(),'TLS history subscription')
-  consumer=subprocess.Popen(['artifacts/hades-consumer-native','-broker','tls://127.0.0.1:'+mp,'-count',('4' if ot_lab else '1'),'-timeout','40s']+flags('consumer-primary',v1)+metadata_args,stdout=consumerout,stderr=logs);children.append(consumer)
+  consumer=subprocess.Popen(['artifacts/hades-consumer-native','-broker','tls://127.0.0.1:'+mp,'-count',str(expected_count),'-timeout','40s']+flags('consumer-primary',v1)+metadata_args,stdout=consumerout,stderr=logs);children.append(consumer)
   wait(lambda:'"type":"ready"' in pathlib.Path(consumerout.name).read_text(),'TLS Go consumer')
-  normalizer=subprocess.Popen(['artifacts/hades-normalizer-native','-broker','tls://127.0.0.1:'+mp,'-listen','127.0.0.1:18083','-quarantine',scratch+'/normalization-quarantine','-ingress-ca',str(v1/'ca.crt'),'-ingress-cert',str(v1/'ingress.crt'),'-ingress-key',str(v1/'ingress.key')]+flags('normalizer',v1)+metadata_args,stdout=logs,stderr=logs);children.append(normalizer)
+  normalizer=subprocess.Popen(['artifacts/hades-normalizer-native','-broker','tls://127.0.0.1:'+mp,'-listen','127.0.0.1:18083','-quarantine',scratch+'/normalization-quarantine','-ingress-ca',str(v1/'ca.crt'),'-ingress-cert',str(v1/'ingress.crt'),'-ingress-key',str(v1/'ingress.key')]+flags('normalizer',v1)+metadata_args+(['-signal-profile','opcua-mock'] if opc_lab else []),stdout=logs,stderr=logs);children.append(normalizer)
   wait(lambda:http('/health','admin',200,port='18083') is not None,'mTLS ingress')
   http('/observations','consumer-primary',403,data=b'{}',port='18083')
-  if ot_lab:
+  if opc_lab:
+   import runpy
+   Scenario=runpy.run_path('tests/integration/opcua/scenario.py')['Scenario']
+   opc_scenario=Scenario(scratch,logs,children,lambda role:flags(role,v1),http,wait,command('sub','consumer-secondary',v1))
+   events=opc_scenario.run()
+  elif ot_lab:
    with socketserver.ThreadingTCPServer(('127.0.0.1',0),ModbusLab) as source:
     source.daemon_threads=True;source.reads=[];source.rejected=[];source.guard=threading.Lock()
     thread=threading.Thread(target=source.serve_forever,daemon=True);thread.start()
@@ -178,11 +185,14 @@ with tempfile.TemporaryDirectory(prefix='hades-security-') as scratch:
   def accepted():return any(json.load(open(p))['value']['state']=='api_accepted' for p in pathlib.Path(scratch+'/intake').glob('*.json'))
   wait(accepted,'TLS synced history and API acceptance')
   def transferred():return [json.load(open(p))['value']['record'] for p in pathlib.Path(scratch+'/receiver').glob('*.json') if json.load(open(p))['value']['record']['topic'].endswith('/telemetry')]
-  wait(lambda:len(transferred())==(4 if ot_lab else 1) and not list(pathlib.Path(scratch+'/transfer').glob('*.json')),'TLS durable transfer receipt retirement')
+  wait(lambda:len(transferred())==expected_count and not list(pathlib.Path(scratch+'/transfer').glob('*.json')),'TLS durable transfer receipt retirement')
   local_payloads={json.load(open(p))['value']['payload'] for p in pathlib.Path(scratch+'/intake').glob('*.json')}
   assert {r['payload'] for r in transferred()}==local_payloads
   transfer.terminate();assert transfer.wait(timeout=10)==0
   print('transfer: scoped mTLS broker-to-receiver path preserved exact payloads and retired only after durable receipts')
+  if opc_lab:
+   wait(lambda:len(list(pathlib.Path(scratch+'/intake').glob('*.json')))==30 and all(json.load(open(p))['value']['state']=='api_accepted' for p in pathlib.Path(scratch+'/intake').glob('*.json')),'OPC UA history completion')
+   opc_scenario.verify([json.load(open(p))['value'] for p in pathlib.Path(scratch+'/intake').glob('*.json')],transferred(),consumerout.name)
   if ot_lab:
    wait(lambda:len(list(pathlib.Path(scratch+'/intake').glob('*.json')))==4 and all(json.load(open(p))['value']['state']=='api_accepted' for p in pathlib.Path(scratch+'/intake').glob('*.json')),'lab history retirement')
    received=[json.loads(line) for line in pathlib.Path(consumerout.name).read_text().splitlines() if json.loads(line)['type']=='telemetry']

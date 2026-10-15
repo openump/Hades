@@ -41,3 +41,18 @@ Hades-010 embeds the MIT-licensed Bento 1.22.0 public Bloblang engine in the Go 
 Hades-011 pins VictoriaMetrics 1.154.0 OCI index `sha256:4bd592341587d669b7f57d54bbb82bd21ac8675f4e24234b7703a7c0f85197d8` (verified Linux amd64/arm64 manifests). The local development image copies the upstream binary into the same pinned Alpine base to provide a non-root volume owner and health probe.
 
 Hades-013 enables only Mosquitto 2.1.2's upstream Dynamic Security plugin in the pinned source image. The same upstream license applies. Explicit subscription ACLs provide SUBACK rejection; the anonymous development listener does not load this policy. TLS/PKI/proxy code uses Go's standard library, without new module dependencies.
+
+## OPC UA software pilot
+
+`github.com/awcullen/opcua` v1.4.0 (MIT), commit
+`3cdbbee6cc600b55a964f816e4b9ac1481ef7a82`, supplies client/server/UA binary types.
+The disposable mock uses a hash-checked source patch for loopback binding and
+Aes256_Sha256_RsaPss/SignAndEncrypt-only endpoints; the gateway uses the unmodified
+client. See [profile and patch maintenance limits](pilot/opcua-mock.md).
+Linked transitive dependencies include djherbis/buffer v1.2.0, gammazero/deque
+v1.0.0 and workerpool v1.1.3 (MIT), google/uuid v1.6.0 (BSD-3-Clause), pkg/errors
+v0.9.1 (BSD-2-Clause), and x/crypto v0.58.0 (BSD-3-Clause). Exact full build graph
+and notices remain available through go.mod/go.sum and upstream license files.
+No dependency license selects Hades' project license or qualifies a production
+OPC UA deployment. The SDK's gopcua benchmark dependency is not imported by the
+Hades runtime. Reachable vulnerability scanning runs against the current graph.

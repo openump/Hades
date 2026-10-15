@@ -1,0 +1,4 @@
+#!/bin/sh
+set -eu
+cd "$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)"
+HADES_TEST_OPCUA=1 exec ./scripts/smoke-security
