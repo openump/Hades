@@ -95,7 +95,16 @@ with tempfile.TemporaryDirectory(prefix='hades-security-') as scratch:
   wait(lambda:subprocess.run(command('pub','admin',v1)+['-t','hades/admin/health','-m','ready'],capture_output=True,timeout=2).returncode==0,'secure broker readiness')
   # Untrusted/no client certificate and trusted but unprivileged identity.
   pub(None,topic,False);pub('outsider',topic,False);pub('consumer-primary',topic,False);pub('normalizer','openump/v1/other/site/area/line/asset/telemetry',False)
-  pub('normalizer',topic);pub('history-adapter',topic,False)
+  pub('normalizer',topic);pub('history-adapter',topic,False);pub('transfer-adapter',topic,False)
+  for kind in ('telemetry','metadata','status'):
+   approved=topic.rsplit('/',1)[0]+'/'+kind
+   sublog=open(scratch+'/transfer-sub-'+kind,'w')
+   subscriber=subprocess.Popen(command('sub','transfer-adapter',v1)+['-t',approved,'-C','1','-W','5','-d'],stdout=sublog,stderr=sublog);children.append(subscriber)
+   wait(lambda:'SUBACK' in pathlib.Path(sublog.name).read_text(),'approved transfer subscription '+kind)
+   pub('normalizer',approved)
+   assert subscriber.wait(timeout=8)==0,pathlib.Path(sublog.name).read_text()
+   sublog.close()
+  denied_sub('transfer-adapter','#');denied_sub('transfer-adapter','$CONTROL/dynamic-security/v1/response')
   denied_sub('normalizer',topic);denied_sub('consumer-primary','#');denied_sub('history-adapter',topic.rsplit('/',1)[0]+'/metadata')
   pub('consumer-secondary','$CONTROL/dynamic-security/v1',False)
   denied_sub('consumer-primary','$CONTROL/dynamic-security/v1/response')
