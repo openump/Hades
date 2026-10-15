@@ -124,6 +124,7 @@ func run() error {
 			<-workerDone
 			return err
 		case err := <-workerDone:
+			encoder.Encode(map[string]any{"type": "transfer_failure", "stats": adapter.Stats(), "quarantine": diagnostic.Stats()})
 			subscription.Close()
 			if err == context.Canceled || err == context.DeadlineExceeded {
 				return nil

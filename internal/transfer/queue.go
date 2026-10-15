@@ -46,13 +46,13 @@ type Record struct {
 	Reason   string    `json:"reason,omitempty"`
 }
 type Queue struct {
-	now                                                                                      func() time.Time
-	mu                                                                                       sync.Mutex
-	cfg                                                                                      *sample.Config
-	store                                                                                    *storage.Store
-	records                                                                                  map[string]Record
-	closed, paused                                                                           bool
-	admitted, delivered, duplicates, conflicts, drops, retries, receiptErrors, storageErrors uint64
+	now                                                                                                    func() time.Time
+	mu                                                                                                     sync.Mutex
+	cfg                                                                                                    *sample.Config
+	store                                                                                                  *storage.Store
+	records                                                                                                map[string]Record
+	closed, paused                                                                                         bool
+	admitted, delivered, duplicates, conflicts, drops, droppedBytes, retries, receiptErrors, storageErrors uint64
 }
 
 func Digest(topic string, raw []byte) string {
@@ -138,6 +138,7 @@ func (q *Queue) Intake(topic string, raw []byte) error {
 	if err = q.store.Put(id, encoded); err != nil {
 		if errors.Is(err, storage.ErrFull) {
 			q.drops++
+			q.droppedBytes += uint64(len(raw))
 		} else {
 			q.storageErrors++
 		}
@@ -281,7 +282,7 @@ func (q *Queue) Stats() map[string]any {
 	if !oldest.IsZero() {
 		age = max(0, time.Since(oldest).Milliseconds())
 	}
-	return map[string]any{"pending": pending, "suspended": suspended, "oldest_pending_ms": age, "admitted": q.admitted, "delivered": q.delivered, "duplicates": q.duplicates, "conflicts": q.conflicts, "drops": q.drops, "retries": q.retries, "receipt_errors": q.receiptErrors, "storage_errors": q.storageErrors, "authorization_paused": q.paused, "store": q.store.Stats(), "boundary": "verified_durable_receipt", "counters": "process_lifetime"}
+	return map[string]any{"pending": pending, "suspended": suspended, "oldest_pending_ms": age, "admitted": q.admitted, "delivered": q.delivered, "duplicates": q.duplicates, "conflicts": q.conflicts, "drops": q.drops, "dropped_bytes": q.droppedBytes, "retries": q.retries, "receipt_errors": q.receiptErrors, "storage_errors": q.storageErrors, "authorization_paused": q.paused, "store": q.store.Stats(), "boundary": "verified_durable_receipt", "counters": "process_lifetime"}
 }
 func (q *Queue) Close() error {
 	q.mu.Lock()
