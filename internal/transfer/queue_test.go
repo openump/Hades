@@ -4,12 +4,17 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"os"
 	"testing"
 	"time"
 
 	"github.com/openump/Hades/internal/sample"
 	"github.com/openump/Hades/internal/storage"
 )
+
+func writeTransferTestFile(path string, data []byte) error {
+	return os.WriteFile(path, data, 0o600)
+}
 
 func fixture(t *testing.T) (*sample.Config, Record) {
 	t.Helper()
@@ -130,5 +135,70 @@ func TestRetryAfterSchedulesWithoutBlocking(t *testing.T) {
 	}
 	if q.Stats()["pending"] != 0 {
 		t.Fatal(q.Stats())
+	}
+}
+
+func TestMultiAssetTransferIntake(t *testing.T) {
+	secondPath := t.TempDir() + "/oven-01.metadata.json"
+	secondMeta := []byte(`{
+  "schema_version": "1.0",
+  "message_id": "019a1234-5678-7000-8000-000000000020",
+  "asset_id": "urn:openump:acme:berlin:oven-01",
+  "metadata_revision": 1,
+  "published_at": "2026-10-13T13:00:00.000Z",
+  "display_name": "Curing Oven",
+  "asset_type": "curing-oven",
+  "hierarchy": {
+    "enterprise": "acme",
+    "site": "berlin",
+    "area": "heat-treat",
+    "line": "line-02",
+    "asset": "oven-01"
+  },
+  "acquisition": {
+    "gateway_id": "gateway-oven-01",
+    "protocol": "simulator",
+    "expected_status_interval_ms": 1000
+  },
+  "measurements": {
+    "chamber_pressure": {
+      "display_name": "Chamber pressure",
+      "type": "number",
+      "unit": "kPa",
+      "expected_interval_ms": 1000,
+      "valid_range": {
+        "minimum": 80,
+        "maximum": 250
+      }
+    }
+  },
+  "relationships": []
+}`)
+	if err := writeTransferTestFile(secondPath, secondMeta); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := sample.LoadContext("../..", "../../examples/site/metadata.json,"+secondPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	q, err := Open(cfg, t.TempDir()+"/queue", 10, 1024*1024)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer q.Close()
+	for _, asset := range cfg.Assets() {
+		obs, err := asset.Observation("normal", 1, sample.UUID(), time.Now().UTC().Add(-time.Minute))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := q.Intake(asset.Prefix+"telemetry", obs); err != nil {
+			t.Fatalf("transfer intake failed for %s: %v", asset.Prefix, err)
+		}
+		if err := q.Intake(asset.Prefix+"metadata", asset.MetadataBytes); err != nil {
+			t.Fatalf("transfer metadata intake failed for %s: %v", asset.Prefix, err)
+		}
+	}
+	if q.Stats()["admitted"] != uint64(4) {
+		t.Fatalf("expected 4 admitted transfer records across 2 assets, got %v", q.Stats())
 	}
 }

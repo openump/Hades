@@ -10,6 +10,7 @@ import (
 	"github.com/openump/Hades/internal/operations"
 	"github.com/openump/Hades/internal/sample"
 	"github.com/openump/Hades/internal/storage"
+	"github.com/openump/Hades/internal/transport"
 	"io"
 	"log"
 	"net/http"
@@ -19,6 +20,7 @@ import (
 )
 
 type Server struct {
+	IngressPolicy                                                                       *transport.IngressPolicy
 	qmu                                                                                 sync.Mutex
 	quarantineFIFO                                                                      *list.List
 	quarantineRecords, quarantineBytes                                                  int
@@ -105,12 +107,20 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		s.processingMS += float64(time.Since(started)) / float64(time.Millisecond)
 	}()
 	status := 422
+	var decoded any
 	if len(raw) > contracts.MaxPayloadBytes {
 		status = 413
 		err = fmt.Errorf("payload exceeds 65536 bytes")
 	} else {
-		if _, err = contracts.Decode(raw); err != nil {
+		if decoded, err = contracts.Decode(raw); err != nil {
 			status = 400
+		} else if s.IngressPolicy != nil {
+			if rawObj, ok := decoded.(map[string]any); ok {
+				if assetID, ok := rawObj["asset_id"].(string); ok && !s.IngressPolicy.AuthorizeAsset(r, assetID) {
+					http.Error(w, "forbidden", http.StatusForbidden)
+					return
+				}
+			}
 		}
 	}
 	var normalized []byte
@@ -134,6 +144,10 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	obj, _ := s.engine.Config.Validator.Validate("telemetry", normalized)
+	assetCfg, _ := s.engine.Config.ResolveAsset(obj["asset_id"], obj["metadata_revision"])
+	if assetCfg == nil {
+		assetCfg = s.engine.Config
+	}
 	observed, _ := time.Parse(time.RFC3339Nano, obj["observed_at"].(string))
 	source := obj["source"].(map[string]any)
 	var uncertainty *float64
@@ -143,7 +157,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	var stale, unknown uint64
 	for name := range obj["measurements"].(map[string]any) {
-		definition := s.engine.Config.Metadata["measurements"].(map[string]any)[name].(map[string]any)
+		definition := assetCfg.Metadata["measurements"].(map[string]any)[name].(map[string]any)
 		switch contracts.Freshness(observed, time.Now(), sample.Num(definition["expected_interval_ms"]), uncertainty) {
 		case "stale":
 			stale++

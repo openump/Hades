@@ -44,8 +44,12 @@ func (a *Adapter) Subscribe(ctx context.Context, address string, diagnostic func
 		default:
 		}
 	}
-	topic := a.cfg.Prefix + "telemetry"
-	hash := sha256.Sum256([]byte(topic))
+	assets := a.cfg.Assets()
+	topics := make([]string, 0, len(assets))
+	for _, asset := range assets {
+		topics = append(topics, asset.Prefix+"telemetry")
+	}
+	hash := sha256.Sum256([]byte(a.cfg.Prefix + "telemetry"))
 	id := fmt.Sprintf("hades-history-%x", hash[:12])
 	options := autopaho.ClientConfig{TlsCfg: a.cfg.TLS, ServerUrls: []*url.URL{u}, KeepAlive: 10, SessionExpiryInterval: 86400, CleanStartOnInitialConnection: false, ConnectTimeout: 5 * time.Second, ReconnectBackoff: func(attempt int) time.Duration {
 		return delivery.Delay(attempt)
@@ -65,9 +69,20 @@ func (a *Adapter) Subscribe(ctx context.Context, address string, diagnostic func
 		go func() {
 			subctx, done := context.WithTimeout(owner, 5*time.Second)
 			defer done()
-			ack, err := m.Subscribe(subctx, &paho.Subscribe{Subscriptions: []paho.SubscribeOptions{{Topic: topic, QoS: 1, RetainAsPublished: true}}})
-			if err == nil && (len(ack.Reasons) != 1 || ack.Reasons[0] > 1) {
+			subs := make([]paho.SubscribeOptions, 0, len(topics))
+			for _, t := range topics {
+				subs = append(subs, paho.SubscribeOptions{Topic: t, QoS: 1, RetainAsPublished: true})
+			}
+			ack, err := m.Subscribe(subctx, &paho.Subscribe{Subscriptions: subs})
+			if err == nil && len(ack.Reasons) != len(subs) {
 				err = fmt.Errorf("history subscription rejected")
+			}
+			if err == nil {
+				for _, reason := range ack.Reasons {
+					if reason > 1 {
+						err = fmt.Errorf("history subscription rejected")
+					}
+				}
 			}
 			notify(err)
 		}()

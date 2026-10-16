@@ -13,7 +13,11 @@ import (
 
 // Map emits only good numeric values. Quality is a separate bounded series.
 func Map(cfg *sample.Config, p map[string]any) (lines []byte, keys []string, skips int, err error) {
-	if err = contracts.ValidateContext(p, cfg.Metadata); err != nil {
+	assetCfg, resolveErr := cfg.ResolveAsset(p["asset_id"], p["metadata_revision"])
+	if resolveErr != nil {
+		assetCfg = cfg
+	}
+	if err = contracts.ValidateContext(p, assetCfg.Metadata); err != nil {
 		return
 	}
 	observed, _ := time.Parse(time.RFC3339Nano, p["observed_at"].(string))

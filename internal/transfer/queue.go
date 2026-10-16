@@ -108,12 +108,9 @@ func Enterprise(cfg *sample.Config) string { return strings.Split(cfg.Prefix, "/
 
 // Validate uses the pinned approved context; unknown revisions fail closed.
 func Validate(cfg *sample.Config, topic string, raw []byte) (map[string]any, error) {
-	if !strings.HasPrefix(topic, cfg.Prefix) {
-		return nil, fmt.Errorf("unapproved topic")
-	}
-	kind := strings.TrimPrefix(topic, cfg.Prefix)
-	if kind != "telemetry" && kind != "metadata" && kind != "status" {
-		return nil, fmt.Errorf("unapproved message kind")
+	assetCfg, kind, err := cfg.ResolveTopic(topic)
+	if err != nil {
+		return nil, err
 	}
 	p, err := cfg.Validator.Validate(kind, raw)
 	if err != nil {
@@ -122,14 +119,14 @@ func Validate(cfg *sample.Config, topic string, raw []byte) (map[string]any, err
 	if err = cfg.Registry.ValidateTopic(topic, p["asset_id"].(string)); err != nil {
 		return nil, err
 	}
-	if p["metadata_revision"] != cfg.Metadata["metadata_revision"] {
+	if p["metadata_revision"] != assetCfg.Metadata["metadata_revision"] {
 		return nil, fmt.Errorf("unapproved metadata revision")
 	}
-	if kind == "metadata" && !reflect.DeepEqual(p, cfg.Metadata) {
+	if kind == "metadata" && !reflect.DeepEqual(p, assetCfg.Metadata) {
 		return nil, fmt.Errorf("metadata snapshot conflict")
 	}
 	if kind == "telemetry" {
-		err = contracts.ValidateContext(p, cfg.Metadata)
+		err = contracts.ValidateContext(p, assetCfg.Metadata)
 	}
 	return p, err
 }

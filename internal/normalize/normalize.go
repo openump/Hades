@@ -28,16 +28,22 @@ func New(cfg *sample.Config, mapping string) (*Engine, error) {
 // numeric readings. Raw names/units must match the reviewed metadata exactly;
 // the legacy deci-Celsius conversion profile remains unchanged.
 func NewApprovedNumeric(cfg *sample.Config) (*Engine, error) {
-	if cfg.Metadata["acquisition"].(map[string]any)["protocol"] != "simulator" {
-		return nil, fmt.Errorf("approved numeric profile requires simulator provenance")
+	assets := cfg.Assets()
+	if len(assets) == 0 {
+		return nil, fmt.Errorf("numeric profile requires at least one approved asset")
 	}
-	defs := cfg.Metadata["measurements"].(map[string]any)
-	if len(defs) < 1 || len(defs) > 64 {
-		return nil, fmt.Errorf("numeric profile requires 1..64 approved measurements")
-	}
-	for _, value := range defs {
-		if value.(map[string]any)["type"] != "number" {
-			return nil, fmt.Errorf("numeric profile requires numeric definitions")
+	for _, asset := range assets {
+		if asset.Metadata["acquisition"].(map[string]any)["protocol"] != "simulator" {
+			return nil, fmt.Errorf("approved numeric profile requires simulator provenance")
+		}
+		defs := asset.Metadata["measurements"].(map[string]any)
+		if len(defs) < 1 || len(defs) > 64 {
+			return nil, fmt.Errorf("numeric profile requires 1..64 approved measurements")
+		}
+		for _, value := range defs {
+			if value.(map[string]any)["type"] != "number" {
+				return nil, fmt.Errorf("numeric profile requires numeric definitions")
+			}
 		}
 	}
 	e, err := New(cfg, "root = this")
@@ -51,8 +57,14 @@ func NewApprovedNumeric(cfg *sample.Config) (*Engine, error) {
 // NewOPCUAMock accepts one approved node per raw observation, preserving its
 // original status/timestamps in envelope extensions without changing v1 schemas.
 func NewOPCUAMock(cfg *sample.Config) (*Engine, error) {
-	if err := sample.CheckOPCUAMock(cfg); err != nil {
-		return nil, err
+	assets := cfg.Assets()
+	if len(assets) == 0 {
+		return nil, fmt.Errorf("opcua mock profile requires at least one approved asset")
+	}
+	for _, asset := range assets {
+		if err := sample.CheckOPCUAMock(asset); err != nil {
+			return nil, err
+		}
 	}
 	e, err := New(cfg, "root = this")
 	if err != nil {
@@ -83,11 +95,15 @@ func (e *Engine) Map(raw []byte) ([]byte, error) {
 			return nil, fmt.Errorf("unknown raw field %s", key)
 		}
 	}
+	assetCfg, err := e.Config.ResolveAsset(obj["asset_id"], obj["metadata_revision"])
+	if err != nil {
+		return nil, err
+	}
 	signals, ok := obj["signals"].(map[string]any)
 	if !ok {
 		return nil, fmt.Errorf("expected signal object")
 	}
-	defs := e.Config.Metadata["measurements"].(map[string]any)
+	defs := assetCfg.Metadata["measurements"].(map[string]any)
 	if (!e.approvedNumeric && len(signals) != 1) || (e.approvedNumeric && !e.opcua && len(signals) != len(defs)) || (e.opcua && len(signals) != 1) {
 		return nil, fmt.Errorf("signal cardinality differs from approved profile")
 	}
@@ -141,10 +157,10 @@ func (e *Engine) Map(raw []byte) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	if err = contracts.ValidateContext(out, e.Config.Metadata); err != nil {
+	if err = contracts.ValidateContext(out, assetCfg.Metadata); err != nil {
 		return nil, err
 	}
-	if err = e.Config.Registry.ValidateTopic(e.Config.Prefix+"telemetry", out["asset_id"].(string)); err != nil {
+	if err = e.Config.Registry.ValidateTopic(assetCfg.Prefix+"telemetry", out["asset_id"].(string)); err != nil {
 		return nil, err
 	}
 	return normalized, nil

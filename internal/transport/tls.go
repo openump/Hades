@@ -78,13 +78,5 @@ func Peer(r *http.Request) string {
 	return r.TLS.VerifiedChains[0][0].Subject.CommonName
 }
 func Ingress(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		peer := Peer(r)
-		allowed := r.URL.Path == "/observations" && r.Method == http.MethodPost && peer == "gateway-press-04" || r.URL.Path == "/health" && r.Method == http.MethodGet && peer == "admin"
-		if !allowed {
-			http.Error(w, "forbidden", http.StatusForbidden)
-			return
-		}
-		next.ServeHTTP(w, r)
-	})
+	return DefaultIngressPolicy().Wrap(next)
 }
