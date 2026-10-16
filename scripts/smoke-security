@@ -99,6 +99,15 @@ with tempfile.TemporaryDirectory(prefix='hades-security-') as scratch:
   # Untrusted/no client certificate and trusted but unprivileged identity.
   pub(None,topic,False);pub('outsider',topic,False);pub('consumer-primary',topic,False);pub('normalizer','openump/v1/other/site/area/line/asset/telemetry',False)
   pub('normalizer',topic);pub('history-adapter',topic,False);pub('transfer-adapter',topic,False)
+  # Control contracts do not grant telemetry identities write-plane access.
+  command_topic=topic.rsplit('/',1)[0]+'/command/pressure_setpoint'
+  receipt_topic=topic.rsplit('/',1)[0]+'/command_receipt/pressure_setpoint'
+  for identity in ('gateway-press-04','normalizer','history-adapter','transfer-adapter'):
+   for channel in (command_topic,receipt_topic):
+    pub(identity,channel,False);denied_sub(identity,channel)
+  pub('command-proposer',command_topic);pub('command-proposer',receipt_topic,False)
+  pub('hades-actuator',receipt_topic);pub('hades-actuator',command_topic,False)
+  pub('hades-actuator',command_topic.replace('/press-04/','/other-asset/'),False)
   for kind in ('telemetry','metadata','status'):
    approved=topic.rsplit('/',1)[0]+'/'+kind
    result=subprocess.run(command('sub','transfer-adapter',v1)+['-t',approved,'-E','-W','5','-d'],capture_output=True,timeout=8)

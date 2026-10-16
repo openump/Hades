@@ -55,6 +55,22 @@
           "rolename": "transfer-adapter"
         }
       ]
+    },
+    {
+      "username": "hades-actuator",
+      "roles": [
+        {
+          "rolename": "hades-actuator"
+        }
+      ]
+    },
+    {
+      "username": "command-proposer",
+      "roles": [
+        {
+          "rolename": "command-proposer"
+        }
+      ]
     }
   ],
   "roles": [
@@ -193,6 +209,56 @@
         {
           "acltype": "subscribeLiteral",
           "topic": "openump/v1/acme/berlin/assembly/line-01/press-04/status",
+          "allow": true
+        }
+      ]
+    },
+    {
+      "rolename": "hades-actuator",
+      "acls": [
+        {
+          "acltype": "subscribeLiteral",
+          "topic": "openump/v1/acme/berlin/assembly/line-01/press-04/command/+",
+          "allow": true
+        },
+        {
+          "acltype": "publishClientReceive",
+          "topic": "openump/v1/acme/berlin/assembly/line-01/press-04/command/+",
+          "allow": true
+        },
+        {
+          "acltype": "publishClientSend",
+          "topic": "openump/v1/acme/berlin/assembly/line-01/press-04/command_receipt/+",
+          "allow": true
+        },
+        {
+          "acltype": "subscribeLiteral",
+          "topic": "openump/v1/acme/berlin/assembly/line-01/press-04/telemetry",
+          "allow": true
+        },
+        {
+          "acltype": "publishClientReceive",
+          "topic": "openump/v1/acme/berlin/assembly/line-01/press-04/telemetry",
+          "allow": true
+        }
+      ]
+    },
+    {
+      "rolename": "command-proposer",
+      "acls": [
+        {
+          "acltype": "publishClientSend",
+          "topic": "openump/v1/acme/berlin/assembly/line-01/press-04/command/+",
+          "allow": true
+        },
+        {
+          "acltype": "subscribeLiteral",
+          "topic": "openump/v1/acme/berlin/assembly/line-01/press-04/command_receipt/+",
+          "allow": true
+        },
+        {
+          "acltype": "publishClientReceive",
+          "topic": "openump/v1/acme/berlin/assembly/line-01/press-04/command_receipt/+",
           "allow": true
         }
       ]

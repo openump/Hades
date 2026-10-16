@@ -1,3 +1,7 @@
 # All local development clients share this limited anonymous namespace.
 topic readwrite openump/v1/acme/#
 topic readwrite hades/dev/#
+
+# Anonymous development access never grants write-control channels.
+topic deny openump/v1/+/+/+/+/+/command/#
+topic deny openump/v1/+/+/+/+/+/command_receipt/#
