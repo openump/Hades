@@ -50,9 +50,9 @@ with tempfile.TemporaryDirectory(prefix='hades-security-') as scratch:
   except urllib.error.HTTPError as error:actual=error.code
   assert actual==code,(role,path,actual,code)
   return response if actual==code and code<400 else None
- def wait(check,label):
+ def wait(check,label,attempts=200):
   last_error=None
-  for _ in range(200):
+  for _ in range(attempts):
    try:
     if check():return
    except (OSError,ValueError) as error:last_error=error
@@ -231,8 +231,10 @@ with tempfile.TemporaryDirectory(prefix='hades-security-') as scratch:
     remote={r['message_id'] for r in transferred()}
     return local,remote
    import base64
+   # Subscriber reconnect jitter can reach 30 seconds; allow one full backoff
+   # plus intake/receiver delivery without weakening the exact ID comparison.
    try:
-    wait(lambda:received_ids()==(expected_ids,expected_ids),'every acknowledged ID in history and transfer')
+    wait(lambda:received_ids()==(expected_ids,expected_ids),'every acknowledged ID in history and transfer',attempts=600)
    except Exception:
     print('ingress debug:',received_ids(),'expected',expected_ids,'transfer exit',transfer.poll(),'history exit',history.poll())
     raise
