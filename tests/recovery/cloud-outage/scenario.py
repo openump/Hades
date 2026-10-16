@@ -1,6 +1,8 @@
 """Test orchestration only; deployed transfer and fixture code remain Go."""
 import base64, json, os, pathlib, socket, subprocess, time
 
+from scripts.wal_store import load_values
+
 class Scenario:
  def __init__(self, scratch, children, logs, broker_port, wait):
   self.scratch=pathlib.Path(scratch);self.children=children;self.logs=logs;self.wait=wait;self.port=broker_port
@@ -15,7 +17,7 @@ class Scenario:
   self.output.seek(0);self.output.truncate()
   self.adapter=subprocess.Popen(['artifacts/hades-transfer','-broker',f'mqtt://127.0.0.1:{self.port}','-receiver',f'https://127.0.0.1:{self.cloud_port}/v1/ingest/observations','-intake',str(self.scratch/'transfer'),'-quarantine',str(self.scratch/'transfer-quarantine'),'-queue-records','4','-cloud-ca',str(self.cert/'ca.crt'),'-cloud-cert',str(self.cert/'transfer-adapter.crt'),'-cloud-key',str(self.cert/'transfer-adapter.key')],stdout=self.output,stderr=self.logs);self.children.append(self.adapter)
   self.wait(lambda:'"type":"transfer_ready"' in (self.scratch/'transfer.jsonl').read_text(),'transfer subscription')
- def records(self,name):return [json.loads(p.read_text())['value'] for p in (self.scratch/name).glob('*.json')]
+ def records(self,name):return load_values(str(self.scratch/name))
  def stats(self):
   lines=(self.scratch/'transfer.jsonl').read_text().splitlines()
   return next((e['stats'] for e in reversed([json.loads(line) for line in lines]) if e.get('type')=='transfer_stats'),{})

@@ -495,7 +495,7 @@ class Run:
     def run_outage_upgrade_and_replay(self, min_pending):
         self.outage = {'pending': sum(len(entries(self.scratch/(a['name']+'-transfer'))) for a in self.assets),
                        'logical_file_bytes': sum(logical_bytes(self.scratch/(a['name']+'-transfer')) for a in self.assets),
-                       'accounted_bytes_from_records': sum(sum(p.stat().st_size+4096 for p in (self.scratch/(a['name']+'-transfer')).glob('*.json')) for a in self.assets),
+                       'accounted_bytes_from_records': sum(logical_bytes(self.scratch/(a['name']+'-transfer')) + 4096*len(entries(self.scratch/(a['name']+'-transfer'))) for a in self.assets),
                        'local_accepted': sum(len(self.local(a)) for a in self.assets),
                        'worker_stats': {a['name']: self.worker_stats(a['name']+'-transfer') for a in self.assets}}
         assert self.outage['pending'] >= min_pending, (self.outage['pending'], min_pending)

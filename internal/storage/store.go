@@ -285,28 +285,21 @@ func writeFrame(file *os.File, kind byte, key string, value json.RawMessage) (in
 	if err != nil {
 		return 0, err
 	}
-	header := make([]byte, frameHeaderSize)
-	copy(header[:4], []byte("HWAL"))
-	header[4] = kind
+	frame := make([]byte, frameHeaderSize+len(key)+len(value))
+	copy(frame[:4], []byte("HWAL"))
+	frame[4] = kind
 	timestamp := time.Now().UTC().UnixNano()
-	binary.LittleEndian.PutUint64(header[8:16], uint64(timestamp))
-	binary.LittleEndian.PutUint32(header[16:20], uint32(len(key)))
-	binary.LittleEndian.PutUint32(header[20:24], uint32(len(value)))
+	binary.LittleEndian.PutUint64(frame[8:16], uint64(timestamp))
+	binary.LittleEndian.PutUint32(frame[16:20], uint32(len(key)))
+	binary.LittleEndian.PutUint32(frame[20:24], uint32(len(value)))
+	copy(frame[frameHeaderSize:frameHeaderSize+len(key)], key)
+	copy(frame[frameHeaderSize+len(key):], value)
 	h := crc32.NewIEEE()
 	h.Write([]byte{kind})
-	var ts [8]byte
-	binary.LittleEndian.PutUint64(ts[:], uint64(timestamp))
-	h.Write(ts[:])
-	h.Write([]byte(key))
-	h.Write(value)
-	binary.LittleEndian.PutUint32(header[24:28], h.Sum32())
-	if _, err = file.Write(header); err != nil {
-		return 0, err
-	}
-	if _, err = file.Write([]byte(key)); err != nil {
-		return 0, err
-	}
-	if _, err = file.Write(value); err != nil {
+	h.Write(frame[8:16])
+	h.Write(frame[frameHeaderSize:])
+	binary.LittleEndian.PutUint32(frame[24:28], h.Sum32())
+	if _, err = file.Write(frame); err != nil {
 		return 0, err
 	}
 	if err = file.Sync(); err != nil {
