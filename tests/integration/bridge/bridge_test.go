@@ -138,17 +138,9 @@ func TestDurableReceiverReceiptLossRestartAndConflict(t *testing.T) {
 	if err = client.Send(context.Background(), r); !errors.As(err, &permanent) || permanent.Status != 409 {
 		t.Fatal(err)
 	}
-	if len(files(t, dir)) != 1 {
+	if recv.Count() != 1 {
 		t.Fatal("conflict replaced/duplicated durable record")
 	}
-}
-func files(t *testing.T, dir string) []string {
-	t.Helper()
-	p, err := filepath.Glob(dir + "/*.json")
-	if err != nil {
-		t.Fatal(err)
-	}
-	return p
 }
 func TestIdentityScopeAndApprovedKinds(t *testing.T) {
 	cfg, r := fixture(t)
@@ -172,7 +164,7 @@ func TestIdentityScopeAndApprovedKinds(t *testing.T) {
 	if err = client.Send(context.Background(), r); !errors.As(err, &p) || p.Status != 422 {
 		t.Fatal(err)
 	}
-	if len(files(t, dir)) != 1 {
+	if recv.Count() != 1 {
 		t.Fatal("unapproved scope reached storage")
 	}
 	for _, kind := range []string{"metadata", "status"} {
@@ -190,7 +182,7 @@ func TestIdentityScopeAndApprovedKinds(t *testing.T) {
 			t.Fatal(kind, err)
 		}
 	}
-	if len(files(t, dir)) != 3 {
+	if recv.Count() != 3 {
 		t.Fatal("missing approved kinds")
 	}
 	// Trust alone is insufficient: absence of the client certificate fails TLS.

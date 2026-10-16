@@ -34,7 +34,15 @@ func Open(cfg *sample.Config, dir string) (*Receiver, error) {
 		return nil, err
 	}
 	r := &Receiver{cfg: cfg, store: s}
-	for id, raw := range s.Records {
+	for id := range s.Records {
+		raw, ok, err := s.Read(id)
+		if err != nil || !ok {
+			if err == nil {
+				err = fmt.Errorf("missing receiver record %s", id)
+			}
+			s.Close()
+			return nil, err
+		}
 		var e Entry
 		if err = json.Unmarshal(raw, &e); err == nil {
 			var payload map[string]any
@@ -52,6 +60,11 @@ func Open(cfg *sample.Config, dir string) (*Receiver, error) {
 	return r, nil
 }
 func (r *Receiver) Close() error { r.mu.Lock(); defer r.mu.Unlock(); return r.store.Close() }
+func (r *Receiver) Count() int {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return len(r.store.Records)
+}
 func (r *Receiver) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	w.Header().Set("X-Content-Type-Options", "nosniff")
 	// This fixture binds the single verified certificate identity to cfg scope.
@@ -91,7 +104,11 @@ func (r *Receiver) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	defer r.mu.Unlock()
 	var entry Entry
 	status := 201
-	if saved, ok := r.store.Records[key]; ok {
+	if saved, ok, readErr := r.store.Read(key); ok {
+		if readErr != nil {
+			http.Error(w, "storage unavailable", 503)
+			return
+		}
 		if err = json.Unmarshal(saved, &entry); err != nil {
 			http.Error(w, "storage unavailable", 503)
 			return

@@ -1,33 +1,58 @@
-// Package storage implements a single-owner, bounded, synced file store.
-// Each record is atomically replaced; a failed sync is fatal to its caller.
+// Package storage implements a single-owner, bounded, synced WAL store.
+// Records are appended to numbered segments and recovered through a compact
+// in-memory index. Payload bytes are streamed from disk on demand.
 package storage
 
 import (
-	"crypto/sha256"
+	"encoding/binary"
 	"encoding/json"
 	"fmt"
+	"hash/crc32"
+	"io"
 	"os"
 	"path/filepath"
+	"sort"
+	"strings"
 	"syscall"
+	"time"
 )
 
 const Overhead = 4096
 const MaxRecord = 100 * 1024
+const segmentPrefix = "segment-"
+const segmentSuffix = ".wal"
+const segmentMaxBytes = 16 * 1024 * 1024
+const frameHeaderSize = 28
+
+const (
+	framePut   byte = 1
+	frameDelete byte = 2
+)
 
 var ErrFull = fmt.Errorf("store capacity or disk reserve reached")
 
-type record struct {
-	Key   string          `json:"key"`
-	Value json.RawMessage `json:"value"`
+type entry struct {
+	Segment  string
+	Offset   int64
+	KeyLen   uint32
+	ValueLen uint32
+	TotalSize int
 }
+
 type Store struct {
-	closed               bool
-	Dir                  string
-	Records              map[string]json.RawMessage
-	Bytes                int
-	maxRecords, maxBytes int
-	reserve              uint64
-	lock                 *os.File
+	closed        bool
+	Dir           string
+	Records       map[string]entry
+	Bytes         int
+	maxRecords    int
+	maxBytes      int
+	reserve       uint64
+	lock          *os.File
+	segments      map[string]*os.File
+	activeName    string
+	active        *os.File
+	activeSize    int64
+	nextSegmentID int
 }
 
 func Open(dir string, maxRecords, maxBytes int, reserve uint64) (s *Store, err error) {
@@ -50,9 +75,12 @@ func Open(dir string, maxRecords, maxBytes int, reserve uint64) (s *Store, err e
 		lock.Close()
 		return nil, fmt.Errorf("store already owned: %w", err)
 	}
-	s = &Store{Dir: dir, Records: map[string]json.RawMessage{}, maxRecords: maxRecords, maxBytes: maxBytes, reserve: reserve, lock: lock}
+	s = &Store{Dir: dir, Records: map[string]entry{}, maxRecords: maxRecords, maxBytes: maxBytes, reserve: reserve, lock: lock, segments: map[string]*os.File{}}
 	defer func() {
-		if err != nil {
+		if err != nil && s != nil {
+			for _, f := range s.segments {
+				f.Close()
+			}
 			lock.Close()
 		}
 	}()
@@ -60,49 +88,254 @@ func Open(dir string, maxRecords, maxBytes int, reserve uint64) (s *Store, err e
 	if err != nil {
 		return nil, err
 	}
+	var names []string
 	for _, entry := range entries {
 		if entry.Name() == ".lock" {
+			continue
+		}
+		if entry.Name() == ".pending" {
+			_ = os.Remove(filepath.Join(dir, entry.Name()))
 			continue
 		}
 		if !entry.Type().IsRegular() {
 			return nil, fmt.Errorf("unexpected store entry %s", entry.Name())
 		}
-		if entry.Name() == ".pending" {
-			if err = os.Remove(filepath.Join(dir, entry.Name())); err != nil {
-				return nil, err
+		if _, ok := parseSegment(entry.Name()); !ok {
+			return nil, fmt.Errorf("unexpected store entry %s", entry.Name())
+		}
+		names = append(names, entry.Name())
+	}
+	sort.Strings(names)
+	if len(names) == 0 {
+		name := segmentName(1)
+		path := filepath.Join(dir, name)
+		f, err := os.OpenFile(path, os.O_RDWR|os.O_CREATE|os.O_APPEND, 0600)
+		if err != nil {
+			return nil, err
+		}
+		s.segments[name] = f
+		s.activeName = name
+		s.active = f
+		s.activeSize = 0
+		s.nextSegmentID = 1
+		s.Bytes = 0
+		return s, nil
+	}
+	for i, name := range names {
+		path := filepath.Join(dir, name)
+		info, err := os.Stat(path)
+		if err != nil {
+			return nil, err
+		}
+		if info.Mode().Perm() != 0600 {
+			return nil, fmt.Errorf("invalid segment permissions")
+		}
+		flags := os.O_RDWR
+		if i == len(names)-1 {
+			flags |= os.O_CREATE
+		}
+		f, err := os.OpenFile(path, flags, 0600)
+		if err != nil {
+			return nil, err
+		}
+		s.segments[name] = f
+		if id, ok := parseSegment(name); ok && id > s.nextSegmentID {
+			s.nextSegmentID = id
+		}
+		if i == len(names)-1 {
+			s.activeName = name
+			s.active = f
+			s.activeSize = info.Size()
+		}
+		if err = s.replaySegment(name, f, i == len(names)-1); err != nil {
+			for _, seg := range s.segments {
+				seg.Close()
 			}
-			continue
-		}
-		info, err := entry.Info()
-		if err != nil {
+			lock.Close()
 			return nil, err
 		}
-		if info.Size() > MaxRecord || info.Mode().Perm() != 0600 {
-			return nil, fmt.Errorf("invalid record size/permissions")
-		}
-		raw, err := os.ReadFile(filepath.Join(dir, entry.Name()))
-		if err != nil {
+	}
+	if s.active == nil {
+		if err = s.openNextSegment(); err != nil {
+			for _, seg := range s.segments {
+				seg.Close()
+			}
+			lock.Close()
 			return nil, err
 		}
-		var r record
-		if err = json.Unmarshal(raw, &r); err != nil || r.Key == "" || !json.Valid(r.Value) || filename(r.Key) != entry.Name() {
-			return nil, fmt.Errorf("corrupt store record %s", entry.Name())
-		}
-		if _, exists := s.Records[r.Key]; exists {
-			return nil, fmt.Errorf("duplicate store key")
-		}
-		s.Records[r.Key] = r.Value
-		s.Bytes += len(raw) + Overhead
 	}
 	if len(s.Records) > maxRecords || s.Bytes > maxBytes {
 		return nil, ErrFull
 	}
 	return s, nil
 }
-func filename(key string) string { return fmt.Sprintf("%x.json", sha256.Sum256([]byte(key))) }
-func encoded(key string, value json.RawMessage) ([]byte, error) {
-	return json.Marshal(record{key, value})
+
+func segmentName(id int) string { return fmt.Sprintf("%s%06d%s", segmentPrefix, id, segmentSuffix) }
+
+func parseSegment(name string) (int, bool) {
+	if !strings.HasPrefix(name, segmentPrefix) || !strings.HasSuffix(name, segmentSuffix) {
+		return 0, false
+	}
+	var id int
+	if _, err := fmt.Sscanf(strings.TrimSuffix(strings.TrimPrefix(name, segmentPrefix), segmentSuffix), "%d", &id); err != nil || id < 1 {
+		return 0, false
+	}
+	return id, true
 }
+
+func (s *Store) openNextSegment() error {
+	s.nextSegmentID++
+	name := segmentName(s.nextSegmentID)
+	path := filepath.Join(s.Dir, name)
+	f, err := os.OpenFile(path, os.O_RDWR|os.O_CREATE|os.O_APPEND, 0600)
+	if err != nil {
+		return err
+	}
+	if s.active != nil {
+		_ = s.active.Sync()
+	}
+	s.segments[name] = f
+	s.activeName = name
+	s.active = f
+	info, err := f.Stat()
+	if err != nil {
+		return err
+	}
+	s.activeSize = info.Size()
+	return nil
+}
+
+func (s *Store) replaySegment(name string, file *os.File, tolerateTail bool) error {
+	var offset int64
+	for {
+		kind, size, key, value, err := readFrame(file, offset)
+		if err == io.EOF {
+			if tolerateTail && offset > 0 {
+				return file.Truncate(offset)
+			}
+			return nil
+		}
+		if err != nil {
+			if tolerateTail {
+				return file.Truncate(offset)
+			}
+			return fmt.Errorf("corrupt store segment %s: %w", name, err)
+		}
+		switch kind {
+		case framePut:
+			if key == "" || !json.Valid(value) {
+				if tolerateTail {
+					return file.Truncate(offset)
+				}
+				return fmt.Errorf("corrupt store segment %s", name)
+			}
+			if old, exists := s.Records[key]; exists {
+				s.Bytes -= old.TotalSize
+			}
+			logical := int(size) + Overhead
+			s.Records[key] = entry{Segment: name, Offset: offset, KeyLen: uint32(len(key)), ValueLen: uint32(len(value)), TotalSize: logical}
+			s.Bytes += logical
+		case frameDelete:
+			if old, exists := s.Records[key]; exists {
+				s.Bytes -= old.TotalSize
+				delete(s.Records, key)
+			}
+		default:
+			if tolerateTail {
+				return file.Truncate(offset)
+			}
+			return fmt.Errorf("corrupt store segment %s", name)
+		}
+		offset += size
+	}
+}
+
+func frameSize(keyLen, valueLen int) int { return frameHeaderSize + keyLen + valueLen }
+
+func readFrame(file *os.File, offset int64) (byte, int64, string, json.RawMessage, error) {
+	header := make([]byte, frameHeaderSize)
+	if _, err := file.ReadAt(header, offset); err != nil {
+		return 0, 0, "", nil, err
+	}
+	if string(header[:4]) != "HWAL" {
+		return 0, 0, "", nil, fmt.Errorf("bad frame magic")
+	}
+	kind := header[4]
+	keyLen := binary.LittleEndian.Uint32(header[16:20])
+	valueLen := binary.LittleEndian.Uint32(header[20:24])
+	want := binary.LittleEndian.Uint32(header[24:28])
+	body := make([]byte, int(keyLen)+int(valueLen))
+	if _, err := file.ReadAt(body, offset+frameHeaderSize); err != nil {
+		return 0, 0, "", nil, err
+	}
+	h := crc32.NewIEEE()
+	h.Write([]byte{kind})
+	h.Write(header[8:16])
+	h.Write(body)
+	if h.Sum32() != want {
+		return 0, 0, "", nil, fmt.Errorf("bad frame checksum")
+	}
+	key := string(body[:keyLen])
+	value := json.RawMessage(append([]byte(nil), body[keyLen:]...))
+	return kind, int64(frameHeaderSize + len(body)), key, value, nil
+}
+
+func writeFrame(file *os.File, kind byte, key string, value json.RawMessage) (int64, error) {
+	offset, err := file.Seek(0, io.SeekEnd)
+	if err != nil {
+		return 0, err
+	}
+	header := make([]byte, frameHeaderSize)
+	copy(header[:4], []byte("HWAL"))
+	header[4] = kind
+	timestamp := time.Now().UTC().UnixNano()
+	binary.LittleEndian.PutUint64(header[8:16], uint64(timestamp))
+	binary.LittleEndian.PutUint32(header[16:20], uint32(len(key)))
+	binary.LittleEndian.PutUint32(header[20:24], uint32(len(value)))
+	h := crc32.NewIEEE()
+	h.Write([]byte{kind})
+	var ts [8]byte
+	binary.LittleEndian.PutUint64(ts[:], uint64(timestamp))
+	h.Write(ts[:])
+	h.Write([]byte(key))
+	h.Write(value)
+	binary.LittleEndian.PutUint32(header[24:28], h.Sum32())
+	if _, err = file.Write(header); err != nil {
+		return 0, err
+	}
+	if _, err = file.Write([]byte(key)); err != nil {
+		return 0, err
+	}
+	if _, err = file.Write(value); err != nil {
+		return 0, err
+	}
+	if err = file.Sync(); err != nil {
+		return 0, err
+	}
+	return offset, nil
+}
+
+func (s *Store) recordValue(key string) (json.RawMessage, bool, error) {
+	meta, exists := s.Records[key]
+	if !exists {
+		return nil, false, nil
+	}
+	file := s.segments[meta.Segment]
+	if file == nil {
+		var err error
+		file, err = os.OpenFile(filepath.Join(s.Dir, meta.Segment), os.O_RDONLY, 0600)
+		if err != nil {
+			return nil, false, err
+		}
+		defer file.Close()
+	}
+	body := make([]byte, int(meta.ValueLen))
+	if _, err := file.ReadAt(body, meta.Offset+frameHeaderSize+int64(meta.KeyLen)); err != nil {
+		return nil, false, err
+	}
+	return json.RawMessage(append([]byte(nil), body...)), true, nil
+}
+
 func (s *Store) Available(extra int) error {
 	var stat syscall.Statfs_t
 	if err := syscall.Statfs(s.Dir, &stat); err != nil {
@@ -113,14 +346,7 @@ func (s *Store) Available(extra int) error {
 	}
 	return nil
 }
-func syncDir(dir string) error {
-	f, err := os.Open(dir)
-	if err != nil {
-		return err
-	}
-	defer f.Close()
-	return f.Sync()
-}
+
 func (s *Store) Put(key string, value json.RawMessage) error {
 	if s.closed {
 		return fmt.Errorf("store is closed")
@@ -128,77 +354,87 @@ func (s *Store) Put(key string, value json.RawMessage) error {
 	if key == "" || !json.Valid(value) {
 		return fmt.Errorf("invalid store record")
 	}
-	raw, err := encoded(key, value)
-	if err != nil {
-		return err
-	}
-	if len(raw) > MaxRecord {
+	if len(key)+len(value)+frameHeaderSize > MaxRecord {
 		return ErrFull
 	}
-	old, exists := s.Records[key]
-	oldSize := 0
-	if exists {
-		b, _ := encoded(key, old)
-		oldSize = len(b) + Overhead
-	}
-	newSize := len(raw) + Overhead
-	if (!exists && len(s.Records) >= s.maxRecords) || s.Bytes-oldSize+newSize > s.maxBytes {
+	if _, exists := s.Records[key]; !exists && len(s.Records) >= s.maxRecords {
 		return ErrFull
 	}
-	if err = s.Available(newSize); err != nil {
+	if err := s.Available(len(key) + len(value) + frameHeaderSize); err != nil {
 		return err
 	}
-	// O_NOFOLLOW prevents an unexpected temporary symlink from being followed.
-	fd, err := syscall.Open(filepath.Join(s.Dir, ".pending"), syscall.O_CREAT|syscall.O_TRUNC|syscall.O_WRONLY|syscall.O_NOFOLLOW, 0600)
+	if s.active == nil {
+		if err := s.openNextSegment(); err != nil {
+			return err
+		}
+	}
+	frameBytes := frameSize(len(key), len(value))
+	if s.activeSize+int64(frameBytes) > segmentMaxBytes {
+		if err := s.openNextSegment(); err != nil {
+			return err
+		}
+	}
+	if s.Bytes+frameBytes+Overhead > s.maxBytes {
+		return ErrFull
+	}
+	offset, err := writeFrame(s.active, framePut, key, value)
 	if err != nil {
 		return err
 	}
-	f := os.NewFile(uintptr(fd), "pending")
-	_, err = f.Write(raw)
-	if err == nil {
-		err = f.Sync()
+	s.activeSize += int64(frameBytes)
+	logical := frameBytes + Overhead
+	if old, exists := s.Records[key]; exists {
+		s.Bytes -= old.TotalSize
 	}
-	closeErr := f.Close()
-	if err == nil {
-		err = closeErr
-	}
-	if err != nil {
-		return err
-	}
-	if err = os.Rename(filepath.Join(s.Dir, ".pending"), filepath.Join(s.Dir, filename(key))); err != nil {
-		return err
-	}
-	if err = syncDir(s.Dir); err != nil {
-		return err
-	}
-	s.Records[key] = append(json.RawMessage(nil), value...)
-	s.Bytes += newSize - oldSize
+	s.Bytes += logical
+	s.Records[key] = entry{Segment: s.activeName, Offset: offset, KeyLen: uint32(len(key)), ValueLen: uint32(len(value)), TotalSize: logical}
 	return nil
 }
+
 func (s *Store) Delete(key string) error {
 	if s.closed {
 		return fmt.Errorf("store is closed")
 	}
-	old, exists := s.Records[key]
-	if !exists {
+	if _, exists := s.Records[key]; !exists {
 		return nil
 	}
-	if err := os.Remove(filepath.Join(s.Dir, filename(key))); err != nil {
+	if s.active == nil {
+		if err := s.openNextSegment(); err != nil {
+			return err
+		}
+	}
+	frameBytes := frameSize(len(key), 0)
+	if s.activeSize+int64(frameBytes) > segmentMaxBytes {
+		if err := s.openNextSegment(); err != nil {
+			return err
+		}
+	}
+	if s.Bytes+frameBytes+Overhead > s.maxBytes {
+		return ErrFull
+	}
+	if _, err := writeFrame(s.active, frameDelete, key, nil); err != nil {
 		return err
 	}
-	if err := syncDir(s.Dir); err != nil {
-		return err
+	s.activeSize += int64(frameBytes)
+	if old, exists := s.Records[key]; exists {
+		s.Bytes -= old.TotalSize
 	}
-	raw, _ := encoded(key, old)
-	s.Bytes -= len(raw) + Overhead
 	delete(s.Records, key)
 	return nil
 }
+
+func (s *Store) Read(key string) (json.RawMessage, bool, error) {
+	return s.recordValue(key)
+}
+
 func (s *Store) Close() error {
 	if s.closed {
 		return nil
 	}
 	s.closed = true
+	for _, segment := range s.segments {
+		segment.Close()
+	}
 	return s.lock.Close()
 }
 
