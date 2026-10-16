@@ -25,17 +25,17 @@ const segmentMaxBytes = 16 * 1024 * 1024
 const frameHeaderSize = 28
 
 const (
-	framePut   byte = 1
+	framePut    byte = 1
 	frameDelete byte = 2
 )
 
 var ErrFull = fmt.Errorf("store capacity or disk reserve reached")
 
 type entry struct {
-	Segment  string
-	Offset   int64
-	KeyLen   uint32
-	ValueLen uint32
+	Segment   string
+	Offset    int64
+	KeyLen    uint32
+	ValueLen  uint32
 	TotalSize int
 }
 
