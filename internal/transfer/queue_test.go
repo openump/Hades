@@ -202,4 +202,3 @@ func TestMultiAssetTransferIntake(t *testing.T) {
 		t.Fatalf("expected 4 admitted transfer records across 2 assets, got %v", q.Stats())
 	}
 }
-

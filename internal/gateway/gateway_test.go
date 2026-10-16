@@ -152,4 +152,3 @@ func TestMultiRegisterProfileDriverConfigDecodeAndEnvelope(t *testing.T) {
 		t.Fatal(signals)
 	}
 }
-

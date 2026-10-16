@@ -168,4 +168,3 @@ func TestMultiAssetCatalogNormalizationAndUnknownAssetRejection(t *testing.T) {
 		t.Fatal("expected unknown asset to be rejected")
 	}
 }
-

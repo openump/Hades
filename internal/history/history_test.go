@@ -219,4 +219,3 @@ func TestMultiAssetHistoryIntakeAndMapping(t *testing.T) {
 		t.Fatalf("expected 2 admitted records, got %v", a.Stats())
 	}
 }
-
