@@ -32,7 +32,7 @@ func run() error {
 	profile := flag.String("signal-profile", "temperature", "temperature, approved-numeric (simulator) or opcua-mock")
 	mapping := flag.String("mapping", "config/normalization/temperature.blobl", "trusted reading mapping")
 	quarantine := flag.String("quarantine", "runtime/quarantine", "private bounded quarantine")
-	records := flag.Int("queue-records", 4096, "volatile queue record limit")
+	records := flag.Int("queue-records", 4096, "bounded in-flight publication request limit")
 	timeout := flag.Duration("timeout", 0, "optional development run duration")
 	ingressWriters := flag.String("ingress-writers", "gateway-press-04", "comma-separated mTLS writer identities (CN/SAN, optional @asset_id scope)")
 	ingressReaders := flag.String("ingress-readers", "admin", "comma-separated mTLS reader identities for /health")
@@ -70,6 +70,9 @@ func run() error {
 	if cfg.TLS != nil && *serverCredentials == (transport.Paths{}) {
 		return fmt.Errorf("secure broker requires mTLS ingress credentials")
 	}
+	if _, err = transport.BrokerURL(*broker, cfg.TLS); err != nil {
+		return err
+	}
 	var engine *normalize.Engine
 	switch *profile {
 	case "temperature":
@@ -104,13 +107,12 @@ func run() error {
 		ctx, cancel = context.WithTimeout(ctx, *timeout)
 		defer cancel()
 	}
-	connectctx, cancel := context.WithTimeout(ctx, 10*time.Second)
-	defer cancel()
-	client, err := sample.Connect(connectctx, *broker, cfg, true)
-	if err != nil {
-		return err
-	}
-	defer client.Close()
+	var client *sample.Client // Owned only by the publication worker.
+	defer func() {
+		if client != nil {
+			client.Close()
+		}
+	}()
 	server := &http.Server{Addr: *listen, Handler: ingress, ReadHeaderTimeout: 3 * time.Second, ReadTimeout: 5 * time.Second, WriteTimeout: 5 * time.Second, IdleTimeout: 15 * time.Second, MaxHeaderBytes: 8192}
 	listener, err := net.Listen("tcp", *listen)
 	if err != nil {
@@ -139,10 +141,17 @@ func run() error {
 					topic = assetCfg.Prefix + "telemetry"
 				}
 			}
+			if client == nil {
+				var err error
+				client, err = sample.Connect(c, *broker, cfg, true)
+				if err != nil {
+					return err
+				}
+			}
 			return client.Publish(c, topic, p, false, 0)
 		})
 	}()
-	log.Printf("normalizer ready on %s; accepted work is volatile", *listen)
+	log.Printf("normalizer ready on %s; success requires MQTT PUBACK", *listen)
 	ticker := time.NewTicker(time.Second)
 	defer ticker.Stop()
 	output := json.NewEncoder(os.Stdout)

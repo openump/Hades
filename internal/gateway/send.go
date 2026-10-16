@@ -13,7 +13,7 @@ import (
 	"github.com/openump/Hades/internal/delivery"
 )
 
-// Submit owns one immutable volatile observation until explicit volatile admission.
+// Submit owns one immutable volatile observation until explicit MQTT broker acknowledgement.
 func Submit(ctx context.Context, client *http.Client, endpoint string, raw []byte) error {
 	return SubmitObserved(ctx, client, endpoint, raw, func() {})
 }
@@ -36,7 +36,7 @@ func SubmitObserved(ctx context.Context, client *http.Client, endpoint string, r
 				var receipt struct {
 					Acceptance string `json:"acceptance"`
 				}
-				if json.Unmarshal(body, &receipt) == nil && receipt.Acceptance == "accepted_volatile" {
+				if json.Unmarshal(body, &receipt) == nil && receipt.Acceptance == "accepted_broker_ack" {
 					return nil
 				}
 				// Ambiguous acceptance must not retire the original observation.

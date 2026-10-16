@@ -78,7 +78,7 @@ func TestRetryPreservesTheOriginalObservation(t *testing.T) {
 			return
 		}
 		w.WriteHeader(202)
-		w.Write([]byte(`{"acceptance":"accepted_volatile"}`))
+		w.Write([]byte(`{"acceptance":"accepted_broker_ack"}`))
 	}))
 	defer server.Close()
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
@@ -102,7 +102,7 @@ func TestLostAcceptanceBodyRetainsAndRetries(t *testing.T) {
 			return
 		}
 		w.WriteHeader(202)
-		w.Write([]byte(`{"acceptance":"accepted_volatile"}`))
+		w.Write([]byte(`{"acceptance":"accepted_broker_ack"}`))
 	}))
 	defer server.Close()
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
@@ -150,5 +150,18 @@ func TestMultiRegisterProfileDriverConfigDecodeAndEnvelope(t *testing.T) {
 	signals := p["signals"].(map[string]any)
 	if len(signals) != 2 || signals["hydraulic_pressure"].(map[string]any)["unit"] != "bar" {
 		t.Fatal(signals)
+	}
+}
+
+func TestVolatileAcceptanceCannotReleaseGatewayOwnership(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(202)
+		w.Write([]byte(`{"acceptance":"accepted_volatile"}`))
+	}))
+	defer server.Close()
+	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+	defer cancel()
+	if err := Submit(ctx, server.Client(), server.URL, []byte(`{"message_id":"immutable"}`)); err == nil {
+		t.Fatal("volatile receipt retired gateway ownership")
 	}
 }
