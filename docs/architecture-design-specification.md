@@ -63,7 +63,7 @@ flowchart LR
     end
 
     PLC -->|"Modbus FC03 (Loopback)"| GW
-    GW -->|"HTTPS POST (mTLS 1.3)\n202 accepted_volatile"| NORM
+    GW -->|"HTTPS POST (mTLS 1.3)\n202 accepted_broker_ack"| NORM
     NORM -.->|"Invalid / Overflow"| Q_DIR
     NORM -->|"MQTT QoS 1 Publish"| MQTT
     SIM -->|"MQTT QoS 1 Publish"| MQTT
@@ -126,7 +126,7 @@ sequenceDiagram
 
     GW->>NORM: HTTPS POST raw reading (mTLS)
     Note over NORM: Hold s.mu.Lock()<br/>Bloblang Map + Schema Validate<br/>Append to volatile s.pending (max 4,096)
-    NORM-->>GW: 202 Accepted {"acceptance":"accepted_volatile"}
+    NORM-->>GW: 202 Accepted {"acceptance":"accepted_broker_ack"}
     NORM->>MQTT: Publish QoS 1
     MQTT-->>NORM: PUBACK
     par Local History Path
@@ -250,7 +250,7 @@ flowchart LR
 | **Edge Storage Engine (`internal/storage`)** | Flat directory with up to `100,000` `<sha256>.json` files; 2 `fsync`s per `Put` (4–5 `fsync`s/observation in history) | Segmented append-only Write-Ahead Log (WAL) with group-commit `fsync` and lightweight state records (`pending` → `api_accepted`) | `Hades-026` |
 | **Memory Footprint Under Backlog** | Full JSON payloads duplicated in `Store.Records` + `history.Adapter.records` (~2x `256 MiB` in heap) | Compact in-memory index (`~64–96 bytes/record` = `<10 MiB` for 100k records); payloads streamed from WAL segments only on drain/export | `Hades-026` |
 | **Normalizer Concurrency** | Single `s.mu.Lock()` held across HTTP read, Bloblang mapping, schema validation, `O(N log N)` key sort, and disk `fsync` | Lock-free worker pool (16 concurrent Bloblang + schema validators); `O(1)` ring index for quarantine eviction; `/health` never blocked by I/O | `Hades-028` |
-| **Normalizer Ingress Durability** | Returns `202 accepted_volatile` after appending to volatile slice (`s.pending`); loses up to 4,096 items on restart if broker is down | Returns `2xx` only after bounded local WAL append (`accepted_durable`) or synchronous MQTT QoS 1 `PUBACK` (`accepted_broker_ack`), returning `503` on broker outage so gateway retries | `Hades-029` |
+| **Normalizer Ingress Durability** | Returns `202 accepted_broker_ack` after appending to volatile slice (`s.pending`); loses up to 4,096 items on restart if broker is down | Returns `2xx` only after bounded local WAL append (`accepted_durable`) or synchronous MQTT QoS 1 `PUBACK` (`accepted_broker_ack`), returning `503` on broker outage so gateway retries | `Hades-029` |
 | **Historian & Transfer Egress Drain** | 1 HTTP POST per single observation; inner retry loop sleeps up to 30s holding up the drain loop (Head-of-Line blocking) | Micro-batched HTTP POST (`500–1,000` Prometheus lines per request) and non-blocking per-batch retry backoff scheduler | `Hades-028` |
 | **Supervisor `/status` Integrity Check** | Synchronous full-binary SHA-256 read (`up to 256 MiB`) on every HTTP request to `live.sock` | Startup full SHA-256 verification cached with `os.Stat` (`dev`, `ino`, `size`, `mtime`, `ctime`, `uid`, `mode`); re-hashes only on metadata change or periodic background audit | `Hades-030` |
 
@@ -551,3 +551,7 @@ flowchart TD
 5. **Phase 5 — Brownfield `PLC4Go` Expansion & Guardrailed AI Actuation (`Hades-031`, `Hades-032`, `Hades-033`):**
    * Add the multi-tier universal PLC connectivity drivers (`gopcua`, `PLC4Go` for Siemens S7/Modbus/EtherNet-IP/ADS/BACnet, and persistent supervised Telegraf) with PLC scan-cycle protection guardrails (`Hades-031`), define the OpenUMP `command` / `command-receipt` / `actuation-policy` schemas and ACL boundaries (`Hades-032`), and deliver the isolated 5-Gate `hades-actuator` service with PLC staging mailbox and watchdog verification (`Hades-033`).
 
+
+## Hades-029 ingress boundary update
+
+The historical pre-MQTT volatile ingress gap described above is closed by the broker-ack option: HTTP 202 now follows successful QoS 1 PUBACK, and failures return 503 while the gateway retains the original reading. No local durable ingress spool is claimed. See [current guarantee](operations/ingress-acknowledgement.md).
