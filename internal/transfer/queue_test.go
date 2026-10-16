@@ -44,7 +44,7 @@ func TestSyncedOwnershipAndReceiptBoundary(t *testing.T) {
 	calls := 0
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
-	err = q.Drain(ctx, func(_ context.Context, got Record) error {
+	send := func(_ context.Context, got Record) error {
 		calls++
 		if string(got.Payload) != string(r.Payload) || got.Digest != r.Digest {
 			t.Fatal("immutable content changed")
@@ -53,7 +53,21 @@ func TestSyncedOwnershipAndReceiptBoundary(t *testing.T) {
 			return ErrReceipt
 		}
 		return nil
-	})
+	}
+	err = q.Drain(ctx, send)
+	if err != nil || calls != 1 {
+		t.Fatal("first attempt did not return", err, calls)
+	}
+	if q.retryAt.IsZero() {
+		t.Fatal("retry was not scheduled")
+	}
+	// Exercise the future-deadline branch without depending on random jitter or scheduler timing.
+	q.retryAt = time.Now().Add(time.Hour)
+	if err = q.Drain(ctx, send); err != nil || calls != 1 {
+		t.Fatal("retry ignored backoff", err, calls)
+	}
+	q.retryAt = time.Time{}
+	err = q.Drain(ctx, send)
 	if err != nil || calls != 2 || q.Stats()["pending"] != 0 || q.Stats()["receipt_errors"] != uint64(1) {
 		t.Fatal(err, calls, q.Stats())
 	}
@@ -85,6 +99,36 @@ func TestBoundsAndSuspendedOwnership(t *testing.T) {
 		t.Fatal(err)
 	}
 	if q.Stats()["pending"] != 1 {
+		t.Fatal(q.Stats())
+	}
+}
+
+func TestRetryAfterSchedulesWithoutBlocking(t *testing.T) {
+	cfg, r := fixture(t)
+	q, err := Open(cfg, t.TempDir()+"/queue", 2, 1048576)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer q.Close()
+	if err = q.Intake(r.Topic, r.Payload); err != nil {
+		t.Fatal(err)
+	}
+	clock := time.Now()
+	q.now = func() time.Time { return clock }
+	ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
+	defer cancel()
+	if err = q.Drain(ctx, func(context.Context, Record) error { return &RetryError{After: time.Minute} }); err != nil {
+		t.Fatal("retry blocked caller", err)
+	}
+	clock = clock.Add(59 * time.Second)
+	if err = q.Drain(context.Background(), func(context.Context, Record) error { t.Fatal("Retry-After ignored"); return nil }); err != nil {
+		t.Fatal(err)
+	}
+	clock = clock.Add(time.Second)
+	if err = q.Drain(context.Background(), func(context.Context, Record) error { return nil }); err != nil {
+		t.Fatal(err)
+	}
+	if q.Stats()["pending"] != 0 {
 		t.Fatal(q.Stats())
 	}
 }

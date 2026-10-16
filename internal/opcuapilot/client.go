@@ -2,6 +2,7 @@ package opcuapilot
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"github.com/awcullen/opcua/client"
 	"github.com/awcullen/opcua/ua"
@@ -37,13 +38,22 @@ func Dial(ctx context.Context, endpoint, pki, identity string) (*Reader, error) 
 	if _, err = Certificate(filepath.Join(pki, identity+".crt"), uri); err != nil {
 		return nil, err
 	}
-	c, err := client.Dial(ctx, endpoint, client.WithSecurityPolicyURI(Policy, ua.MessageSecurityModeSignAndEncrypt), client.WithClientCertificatePaths(filepath.Join(pki, identity+".crt"), filepath.Join(pki, identity+".key")), client.WithX509IdentityPaths(filepath.Join(pki, identity+".crt"), filepath.Join(pki, identity+".key")), client.WithTrustedCertificatesPaths(filepath.Join(pki, "server.crt"), ""), client.WithConnectTimeout(1500), client.WithTimeoutHint(500), client.WithSessionTimeout(10000))
-	if err != nil {
-		return nil, err
+	var c *client.Client
+	var res *ua.ReadResponse
+	for attempt := 0; attempt < 4; attempt++ {
+		c, err = client.Dial(ctx, endpoint, client.WithSecurityPolicyURI(Policy, ua.MessageSecurityModeSignAndEncrypt), client.WithClientCertificatePaths(filepath.Join(pki, identity+".crt"), filepath.Join(pki, identity+".key")), client.WithX509IdentityPaths(filepath.Join(pki, identity+".crt"), filepath.Join(pki, identity+".key")), client.WithTrustedCertificatesPaths(filepath.Join(pki, "server.crt"), ""), client.WithConnectTimeout(3000), client.WithTimeoutHint(2000), client.WithSessionTimeout(10000))
+		if err == nil {
+			res, err = c.Read(ctx, &ua.ReadRequest{NodesToRead: []ua.ReadValueID{{NodeID: ua.VariableIDServerNamespaceArray, AttributeID: ua.AttributeIDValue}}})
+			if err == nil {
+				break
+			}
+			c.Abort(context.Background())
+		}
+		if ctx.Err() != nil || (!errors.Is(err, ua.BadSecureChannelClosed) && !errors.Is(err, ua.BadRequestTimeout) && !errors.Is(err, ua.BadCommunicationError)) {
+			return nil, err
+		}
 	}
-	res, err := c.Read(ctx, &ua.ReadRequest{NodesToRead: []ua.ReadValueID{{NodeID: ua.VariableIDServerNamespaceArray, AttributeID: ua.AttributeIDValue}}})
 	if err != nil {
-		c.Abort(context.Background())
 		return nil, err
 	}
 	if len(res.Results) != 1 {
@@ -78,5 +88,7 @@ func (r *Reader) Read(ctx context.Context) ([]ua.DataValue, error) {
 func (r *Reader) Close() {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
-	r.Client.Abort(ctx)
+	if err := r.Client.Close(ctx); err != nil {
+		r.Client.Abort(ctx)
+	}
 }

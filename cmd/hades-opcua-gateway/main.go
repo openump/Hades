@@ -102,14 +102,14 @@ func run() error {
 	output := json.NewEncoder(os.Stdout)
 	fmt.Fprintln(os.Stderr, "opcua_gateway_ready")
 	for poll := 0; poll < *count; poll++ {
-		connect, cancel := context.WithTimeout(ctx, 2*time.Second)
+		connect, cancel := context.WithTimeout(ctx, 4*time.Second)
 		if reader == nil {
 			reader, err = opcuapilot.Dial(connect, *endpoint, *pki, "client")
 		}
 		cancel()
 		var values []ua.DataValue
 		if err == nil {
-			read, cancel := context.WithTimeout(ctx, 300*time.Millisecond)
+			read, cancel := context.WithTimeout(ctx, 500*time.Millisecond)
 			values, err = reader.Read(read)
 			cancel()
 		}

@@ -2,13 +2,12 @@
 package history
 
 import (
+	"container/heap"
 	"context"
 	"crypto/sha256"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"log"
-	"sort"
 	"sync"
 	"time"
 
@@ -38,6 +37,12 @@ type Record struct {
 	Skips    int       `json:"skips"`
 }
 type Adapter struct {
+	order                                                       pendingHeap
+	orderIndex                                                  map[string]*pendingItem
+	drainMu                                                     sync.Mutex
+	retryAt                                                     time.Time
+	retryAttempt                                                int
+	batchRecords, batchBytes                                    int
 	writeLatency                                                operations.Latency
 	validationFailures, storageFailures, capacityRefusals       uint64
 	writeCount                                                  uint64
@@ -59,7 +64,7 @@ func Open(cfg *sample.Config, dir string) (*Adapter, error) {
 	if err != nil {
 		return nil, err
 	}
-	a := &Adapter{cfg: cfg, store: store, records: map[string]Record{}, samples: map[string]string{}, pending: map[string]bool{}}
+	a := &Adapter{orderIndex: map[string]*pendingItem{}, batchRecords: 64, batchBytes: 1024 * 1024, cfg: cfg, store: store, records: map[string]Record{}, samples: map[string]string{}, pending: map[string]bool{}}
 	for key, raw := range store.Records {
 		var r Record
 		err = json.Unmarshal(raw, &r)
@@ -79,7 +84,7 @@ func Open(cfg *sample.Config, dir string) (*Adapter, error) {
 		}
 		a.records[key] = r
 		if r.State == "pending" {
-			a.pending[key] = true
+			a.enqueuePending(key, r)
 		}
 		for _, sampleKey := range keys {
 			if _, exists := a.samples[sampleKey]; exists {
@@ -185,7 +190,7 @@ func (a *Adapter) Intake(topic string, raw []byte) (string, error) {
 		return "", &StorageError{err}
 	}
 	a.records[key] = r
-	a.pending[key] = true
+	a.enqueuePending(key, r)
 	for _, sampleKey := range keys {
 		a.samples[sampleKey] = key
 	}
@@ -206,74 +211,123 @@ func (e *PermanentError) Error() string {
 	return fmt.Sprintf("historian HTTP %d: intake suspended", e.Status)
 }
 
-// Drain retries each pending record until API acceptance; callers can continue
-// intake concurrently. Permanent errors suspend ownership instead of deletion.
-func (a *Adapter) Drain(ctx context.Context, write func(context.Context, []byte) error) error {
-	a.mu.Lock()
-	ids := make([]string, 0, len(a.pending))
-	for id := range a.pending {
-		ids = append(ids, id)
+// ConfigureDrain bounds each request and each drain invocation.
+func (a *Adapter) ConfigureDrain(records, bytes int) error {
+	if records < 1 || records > 256 || bytes < 65536 || bytes > 1024*1024 {
+		return fmt.Errorf("batch limits: records 1..256, bytes 65536..1048576")
 	}
-	sort.Strings(ids)
-	a.mu.Unlock()
-	for _, id := range ids {
-		a.mu.Lock()
-		r := a.records[id]
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	a.batchRecords = records
+	a.batchBytes = bytes
+	return nil
+}
+
+// Drain makes at most one bounded HTTP request. Transient failures retain all
+// ownership and schedule a future attempt; callers keep polling without sleeps.
+// Ambiguous remote acceptance can replay samples (at-least-once API delivery).
+func (a *Adapter) Drain(ctx context.Context, write func(context.Context, []byte) error) error {
+	a.drainMu.Lock()
+	defer a.drainMu.Unlock()
+	if ctx.Err() != nil {
+		return ctx.Err()
+	}
+	a.mu.Lock()
+	if time.Now().Before(a.retryAt) {
 		a.mu.Unlock()
-		for attempt := 0; ; attempt++ {
-			if ctx.Err() != nil {
-				return ctx.Err()
-			}
-			err := WindowCheck(r.Payload, time.Now())
-			if err == nil {
-				started := time.Now()
-				err = write(ctx, append([]byte(nil), r.Lines...))
-				a.mu.Lock()
-				a.writeLatency.Observe(time.Since(started))
-				a.writeCount++
-				a.writeMS += float64(time.Since(started)) / float64(time.Millisecond)
-				a.mu.Unlock()
-			}
-			if err == nil {
-				r.State = "api_accepted"
-				r.Retired = time.Now().UTC()
-			} else {
-				var permanent *PermanentError
-				if errors.As(err, &permanent) {
-					r.State = "suspended"
-					r.Reason = err.Error()
-					log.Print(err)
-				} else {
-					a.mu.Lock()
-					a.retries++
-					a.mu.Unlock()
-					log.Printf("historian retry: %v", err)
-					if err = delivery.Pause(ctx, attempt); err != nil {
-						return err
-					}
-					continue
-				}
-			}
-			a.mu.Lock()
-			encoded, _ := json.Marshal(r)
-			err = a.store.Put(id, encoded)
-			if err == nil {
-				a.records[id] = r
-				delete(a.pending, id)
-				if r.State == "api_accepted" {
-					a.accepted++
-				}
-			}
-			a.mu.Unlock()
-			if err != nil {
-				return err
-			}
-			if r.State == "suspended" && a.Diagnostic != nil {
-				if err = a.Diagnostic(r.Topic, r.Payload, fmt.Errorf("%s", r.Reason)); err != nil {
-					return err
-				}
-			}
+		return nil
+	}
+	hasPending := len(a.pending) > 0
+	var body []byte
+	selected := make([]string, 0, a.batchRecords)
+	records := make([]Record, 0, a.batchRecords)
+	var invalid error
+	removed := make([]*pendingItem, 0, a.batchRecords)
+	for len(a.order) > 0 {
+		id := a.order[0].id
+		r := a.records[id]
+		if len(selected) >= a.batchRecords || len(body)+len(r.Lines) > a.batchBytes {
 			break
+		}
+		window := WindowCheck(r.Payload, time.Now())
+		if window != nil {
+			if len(selected) > 0 {
+				break
+			}
+			invalid = window
+		}
+		removed = append(removed, heap.Pop(&a.order).(*pendingItem))
+		selected = append(selected, id)
+		records = append(records, r)
+		body = append(body, r.Lines...)
+		if invalid != nil {
+			break
+		}
+	}
+	for _, item := range removed {
+		heap.Push(&a.order, item)
+	}
+	a.mu.Unlock()
+	if len(selected) == 0 {
+		if hasPending {
+			return fmt.Errorf("historian record exceeds configured batch bytes")
+		}
+		return nil
+	}
+	err := invalid
+	if err == nil {
+		started := time.Now()
+		err = write(ctx, body)
+		a.mu.Lock()
+		a.writeLatency.Observe(time.Since(started))
+		a.writeCount++
+		a.writeMS += float64(time.Since(started)) / float64(time.Millisecond)
+		a.mu.Unlock()
+	}
+	if ctx.Err() != nil {
+		return ctx.Err()
+	}
+	var permanent *PermanentError
+	if err != nil && !errors.As(err, &permanent) {
+		a.mu.Lock()
+		a.retries++
+		a.retryAt = time.Now().Add(max(time.Millisecond, delivery.Delay(a.retryAttempt)))
+		a.retryAttempt++
+		a.mu.Unlock()
+		return nil
+	}
+	a.mu.Lock()
+	a.retryAt = time.Time{}
+	a.retryAttempt = 0
+	a.mu.Unlock()
+	for i, r := range records {
+		if err == nil {
+			r.State = "api_accepted"
+			r.Retired = time.Now().UTC()
+		} else {
+			r.State = "suspended"
+			r.Reason = err.Error()
+		}
+		a.mu.Lock()
+		encoded, _ := json.Marshal(r)
+		storageErr := a.store.Put(selected[i], encoded)
+		if storageErr == nil {
+			a.records[selected[i]] = r
+			a.retirePending(selected[i])
+			if r.State == "api_accepted" {
+				a.accepted++
+			}
+		} else {
+			a.storageFailures++
+		}
+		a.mu.Unlock()
+		if storageErr != nil {
+			return storageErr
+		}
+		if r.State == "suspended" && a.Diagnostic != nil {
+			if diagnosticErr := a.Diagnostic(r.Topic, r.Payload, fmt.Errorf("%s", r.Reason)); diagnosticErr != nil {
+				return diagnosticErr
+			}
 		}
 	}
 	return nil
@@ -292,7 +346,7 @@ func (a *Adapter) Stats() map[string]any {
 			suspended++
 		}
 	}
-	return map[string]any{"records": len(a.records), "bytes": a.store.Bytes, "pending": pending, "oldest_pending_ms": oldestMS, "suspended": suspended, "admitted": a.admitted, "api_accepted": a.accepted, "duplicates": a.duplicates, "conflicts": a.conflicts, "skipped_values": a.skipped, "retries": a.retries, "validation_failures": a.validationFailures, "storage_failures": a.storageFailures, "capacity_refusals": a.capacityRefusals, "write_count": a.writeCount, "write_latency": a.writeLatency.Snapshot(), "write_ms_sum": a.writeMS, "storage": a.store.Stats(), "transfer_state": "not_observed_by_this_service"}
+	return map[string]any{"batch_limit_records": a.batchRecords, "batch_limit_bytes": a.batchBytes, "retry_at": a.retryAt, "records": len(a.records), "bytes": a.store.Bytes, "pending": pending, "oldest_pending_ms": oldestMS, "suspended": suspended, "admitted": a.admitted, "api_accepted": a.accepted, "duplicates": a.duplicates, "conflicts": a.conflicts, "skipped_values": a.skipped, "retries": a.retries, "validation_failures": a.validationFailures, "storage_failures": a.storageFailures, "capacity_refusals": a.capacityRefusals, "write_count": a.writeCount, "write_latency": a.writeLatency.Snapshot(), "write_ms_sum": a.writeMS, "storage": a.store.Stats(), "transfer_state": "not_observed_by_this_service"}
 }
 func (a *Adapter) Close() error {
 	a.mu.Lock()
@@ -316,7 +370,7 @@ func (a *Adapter) Resume(id string) error {
 		return err
 	}
 	a.records[key] = r
-	a.pending[key] = true
+	a.enqueuePending(key, r)
 	return nil
 }
 
