@@ -51,7 +51,7 @@ func Digest(m Manifest) string {
 }
 func fileHash(raw []byte) string { return fmt.Sprintf("%x", sha256.Sum256(raw)) }
 func Required(profile, metadata string) []string {
-	paths := []string{"config/normalization/temperature.blobl", "config/gateway/pilot.example.json", metadata, "schemas/v1/common.schema.json", "schemas/v1/telemetry.schema.json", "schemas/v1/metadata.schema.json", "schemas/v1/status.schema.json", "deploy/broker/Dockerfile", "deploy/historian/Dockerfile"}
+	paths := []string{"config/normalization/temperature.blobl", "config/gateway/pilot.example.json", metadata, "schemas/v1/common.schema.json", "schemas/v1/telemetry.schema.json", "schemas/v1/metadata.schema.json", "schemas/v1/status.schema.json", "schemas/v1/command.schema.json", "schemas/v1/command-receipt.schema.json", "schemas/v1/actuation-policy.schema.json", "deploy/broker/Dockerfile", "deploy/historian/Dockerfile"}
 	if profile == "secure" {
 		return append(paths, "deploy/compose.secure.yaml", "config/broker/security/mosquitto.conf", "config/broker/security/roles.json", "deploy/historian/Proxy.Dockerfile", "artifacts/hades-history-proxy")
 	}

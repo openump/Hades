@@ -156,7 +156,7 @@ func Run(root string, output io.Writer) error {
 		}
 		count++
 	}
-	for _, group := range []string{"telemetry", "context"} {
+	for _, group := range []string{"telemetry", "context", "control"} {
 		cases, err := fixtures(root, "examples/contracts/"+group+"/cases.json")
 		if err != nil {
 			return err
@@ -184,6 +184,6 @@ func Run(root string, output io.Writer) error {
 		}
 		count++
 	}
-	fmt.Fprintf(output, "conformance passed: four schemas, validated asset registry, %d fixtures; baseline unchanged\n", count)
+	fmt.Fprintf(output, "conformance passed: seven schemas, validated asset registry, %d fixtures; baseline unchanged\n", count)
 	return nil
 }

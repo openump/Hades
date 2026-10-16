@@ -1,0 +1,500 @@
+[
+  {
+    "name": "valid-command",
+    "kind": "command",
+    "payload": {
+      "schema_version": "1.0",
+      "command_id": "019a1234-5678-7000-8000-000000000032",
+      "issued_at_ms": 1792152000000,
+      "ttl_ms": 5000,
+      "policy_revision": 1,
+      "origin": {
+        "actor_id": "operator",
+        "autonomy_level": "L1",
+        "signature": {
+          "algorithm": "Ed25519",
+          "canonicalization": "RFC8785",
+          "key_id": "operator-key",
+          "value": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=="
+        }
+      },
+      "asset": "urn:openump:acme:berlin:press-04",
+      "target_parameter": "pressure_setpoint",
+      "target_value": 5,
+      "unit": "bar",
+      "preconditions": [
+        {
+          "measurement": "machine_state",
+          "operator": "eq",
+          "value": 1,
+          "unit": "1",
+          "max_age_ms": 1000
+        }
+      ]
+    },
+    "valid": true,
+    "error": "schema"
+  },
+  {
+    "name": "valid-actuation-policy",
+    "kind": "actuation-policy",
+    "payload": {
+      "schema_version": "1.0",
+      "policy_revision": 1,
+      "enterprise": "acme",
+      "site": "berlin",
+      "site_autonomy_level": "L1",
+      "assets": [
+        {
+          "asset": "urn:openump:acme:berlin:press-04",
+          "autonomy_level": "L1",
+          "allowed_origins": [
+            {
+              "actor_id": "operator",
+              "key_id": "operator-key"
+            }
+          ],
+          "parameters": {
+            "pressure_setpoint": {
+              "unit": "bar",
+              "min_value": 0,
+              "max_value": 10,
+              "max_delta_per_step": 1,
+              "cooldown_seconds": 5,
+              "required_preconditions": [
+                {
+                  "measurement": "machine_state",
+                  "operator": "eq",
+                  "value": 1,
+                  "unit": "1",
+                  "max_age_ms": 1000
+                }
+              ],
+              "mailbox": {
+                "proposed_value": "holding:100",
+                "request_sequence": "holding:101",
+                "watchdog_counter": "holding:102",
+                "active_value": "holding:103",
+                "reject_code": "holding:104"
+              }
+            }
+          }
+        }
+      ]
+    },
+    "valid": true,
+    "error": "schema"
+  },
+  {
+    "name": "valid-command-receipt",
+    "kind": "command-receipt",
+    "payload": {
+      "schema_version": "1.0",
+      "command_id": "019a1234-5678-7000-8000-000000000032",
+      "command_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+      "asset": "urn:openump:acme:berlin:press-04",
+      "target_parameter": "pressure_setpoint",
+      "policy_revision": 1,
+      "recorded_at_ms": 1792152000001,
+      "state": "AWAITING_OPERATOR_CONFIRMATION",
+      "terminal": false,
+      "pre_write_value": null,
+      "post_write_value": null,
+      "unit": "bar",
+      "gates": [
+        {
+          "gate": 1,
+          "result": "PASS",
+          "reason": "synthetic structural fixture"
+        },
+        {
+          "gate": 2,
+          "result": "PASS",
+          "reason": "synthetic structural fixture"
+        },
+        {
+          "gate": 3,
+          "result": "NOT_EVALUATED",
+          "reason": "synthetic structural fixture"
+        },
+        {
+          "gate": 4,
+          "result": "NOT_EVALUATED",
+          "reason": "synthetic structural fixture"
+        },
+        {
+          "gate": 5,
+          "result": "NOT_EVALUATED",
+          "reason": "synthetic structural fixture"
+        }
+      ],
+      "signature": {
+        "algorithm": "Ed25519",
+        "canonicalization": "RFC8785",
+        "key_id": "operator-key",
+        "value": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=="
+      }
+    },
+    "valid": true,
+    "error": "schema"
+  },
+  {
+    "name": "missing-preconditions",
+    "kind": "command",
+    "payload": {
+      "schema_version": "1.0",
+      "command_id": "019a1234-5678-7000-8000-000000000032",
+      "issued_at_ms": 1792152000000,
+      "ttl_ms": 5000,
+      "policy_revision": 1,
+      "origin": {
+        "actor_id": "operator",
+        "autonomy_level": "L1",
+        "signature": {
+          "algorithm": "Ed25519",
+          "canonicalization": "RFC8785",
+          "key_id": "operator-key",
+          "value": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=="
+        }
+      },
+      "asset": "urn:openump:acme:berlin:press-04",
+      "target_parameter": "pressure_setpoint",
+      "target_value": 5,
+      "unit": "bar",
+      "preconditions": []
+    },
+    "valid": false,
+    "error": "schema"
+  },
+  {
+    "name": "zero-ttl",
+    "kind": "command",
+    "payload": {
+      "schema_version": "1.0",
+      "command_id": "019a1234-5678-7000-8000-000000000032",
+      "issued_at_ms": 1792152000000,
+      "ttl_ms": 0,
+      "policy_revision": 1,
+      "origin": {
+        "actor_id": "operator",
+        "autonomy_level": "L1",
+        "signature": {
+          "algorithm": "Ed25519",
+          "canonicalization": "RFC8785",
+          "key_id": "operator-key",
+          "value": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=="
+        }
+      },
+      "asset": "urn:openump:acme:berlin:press-04",
+      "target_parameter": "pressure_setpoint",
+      "target_value": 5,
+      "unit": "bar",
+      "preconditions": [
+        {
+          "measurement": "machine_state",
+          "operator": "eq",
+          "value": 1,
+          "unit": "1",
+          "max_age_ms": 1000
+        }
+      ]
+    },
+    "valid": false,
+    "error": "schema"
+  },
+  {
+    "name": "unbounded-ttl",
+    "kind": "command",
+    "payload": {
+      "schema_version": "1.0",
+      "command_id": "019a1234-5678-7000-8000-000000000032",
+      "issued_at_ms": 1792152000000,
+      "ttl_ms": 60001,
+      "policy_revision": 1,
+      "origin": {
+        "actor_id": "operator",
+        "autonomy_level": "L1",
+        "signature": {
+          "algorithm": "Ed25519",
+          "canonicalization": "RFC8785",
+          "key_id": "operator-key",
+          "value": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=="
+        }
+      },
+      "asset": "urn:openump:acme:berlin:press-04",
+      "target_parameter": "pressure_setpoint",
+      "target_value": 5,
+      "unit": "bar",
+      "preconditions": [
+        {
+          "measurement": "machine_state",
+          "operator": "eq",
+          "value": 1,
+          "unit": "1",
+          "max_age_ms": 1000
+        }
+      ]
+    },
+    "valid": false,
+    "error": "schema"
+  },
+  {
+    "name": "non-v7",
+    "kind": "command",
+    "payload": {
+      "schema_version": "1.0",
+      "command_id": "019a1234-5678-4000-8000-000000000032",
+      "issued_at_ms": 1792152000000,
+      "ttl_ms": 5000,
+      "policy_revision": 1,
+      "origin": {
+        "actor_id": "operator",
+        "autonomy_level": "L1",
+        "signature": {
+          "algorithm": "Ed25519",
+          "canonicalization": "RFC8785",
+          "key_id": "operator-key",
+          "value": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=="
+        }
+      },
+      "asset": "urn:openump:acme:berlin:press-04",
+      "target_parameter": "pressure_setpoint",
+      "target_value": 5,
+      "unit": "bar",
+      "preconditions": [
+        {
+          "measurement": "machine_state",
+          "operator": "eq",
+          "value": 1,
+          "unit": "1",
+          "max_age_ms": 1000
+        }
+      ]
+    },
+    "valid": false,
+    "error": "schema"
+  },
+  {
+    "name": "unknown-field",
+    "kind": "command",
+    "payload": {
+      "schema_version": "1.0",
+      "command_id": "019a1234-5678-7000-8000-000000000032",
+      "issued_at_ms": 1792152000000,
+      "ttl_ms": 5000,
+      "policy_revision": 1,
+      "origin": {
+        "actor_id": "operator",
+        "autonomy_level": "L1",
+        "signature": {
+          "algorithm": "Ed25519",
+          "canonicalization": "RFC8785",
+          "key_id": "operator-key",
+          "value": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=="
+        }
+      },
+      "asset": "urn:openump:acme:berlin:press-04",
+      "target_parameter": "pressure_setpoint",
+      "target_value": 5,
+      "unit": "bar",
+      "preconditions": [
+        {
+          "measurement": "machine_state",
+          "operator": "eq",
+          "value": 1,
+          "unit": "1",
+          "max_age_ms": 1000
+        }
+      ],
+      "raw_register": "Q0.0"
+    },
+    "valid": false,
+    "error": "schema"
+  },
+  {
+    "name": "unsigned-command",
+    "kind": "command",
+    "payload": {
+      "schema_version": "1.0",
+      "command_id": "019a1234-5678-7000-8000-000000000032",
+      "issued_at_ms": 1792152000000,
+      "ttl_ms": 5000,
+      "policy_revision": 1,
+      "origin": {
+        "actor_id": "operator",
+        "autonomy_level": "L1"
+      },
+      "asset": "urn:openump:acme:berlin:press-04",
+      "target_parameter": "pressure_setpoint",
+      "target_value": 5,
+      "unit": "bar",
+      "preconditions": [
+        {
+          "measurement": "machine_state",
+          "operator": "eq",
+          "value": 1,
+          "unit": "1",
+          "max_age_ms": 1000
+        }
+      ]
+    },
+    "valid": false,
+    "error": "schema"
+  },
+  {
+    "name": "executed-without-readback",
+    "kind": "command-receipt",
+    "payload": {
+      "schema_version": "1.0",
+      "command_id": "019a1234-5678-7000-8000-000000000032",
+      "command_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+      "asset": "urn:openump:acme:berlin:press-04",
+      "target_parameter": "pressure_setpoint",
+      "policy_revision": 1,
+      "recorded_at_ms": 1792152000001,
+      "state": "EXECUTED",
+      "terminal": true,
+      "pre_write_value": null,
+      "post_write_value": null,
+      "unit": "bar",
+      "gates": [
+        {
+          "gate": 1,
+          "result": "PASS",
+          "reason": "synthetic structural fixture"
+        },
+        {
+          "gate": 2,
+          "result": "PASS",
+          "reason": "synthetic structural fixture"
+        },
+        {
+          "gate": 3,
+          "result": "NOT_EVALUATED",
+          "reason": "synthetic structural fixture"
+        },
+        {
+          "gate": 4,
+          "result": "NOT_EVALUATED",
+          "reason": "synthetic structural fixture"
+        },
+        {
+          "gate": 5,
+          "result": "NOT_EVALUATED",
+          "reason": "synthetic structural fixture"
+        }
+      ],
+      "signature": {
+        "algorithm": "Ed25519",
+        "canonicalization": "RFC8785",
+        "key_id": "operator-key",
+        "value": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=="
+      }
+    },
+    "valid": false,
+    "error": "schema"
+  },
+  {
+    "name": "confirmation-is-not-terminal",
+    "kind": "command-receipt",
+    "payload": {
+      "schema_version": "1.0",
+      "command_id": "019a1234-5678-7000-8000-000000000032",
+      "command_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+      "asset": "urn:openump:acme:berlin:press-04",
+      "target_parameter": "pressure_setpoint",
+      "policy_revision": 1,
+      "recorded_at_ms": 1792152000001,
+      "state": "AWAITING_OPERATOR_CONFIRMATION",
+      "terminal": true,
+      "pre_write_value": null,
+      "post_write_value": null,
+      "unit": "bar",
+      "gates": [
+        {
+          "gate": 1,
+          "result": "PASS",
+          "reason": "synthetic structural fixture"
+        },
+        {
+          "gate": 2,
+          "result": "PASS",
+          "reason": "synthetic structural fixture"
+        },
+        {
+          "gate": 3,
+          "result": "NOT_EVALUATED",
+          "reason": "synthetic structural fixture"
+        },
+        {
+          "gate": 4,
+          "result": "NOT_EVALUATED",
+          "reason": "synthetic structural fixture"
+        },
+        {
+          "gate": 5,
+          "result": "NOT_EVALUATED",
+          "reason": "synthetic structural fixture"
+        }
+      ],
+      "signature": {
+        "algorithm": "Ed25519",
+        "canonicalization": "RFC8785",
+        "key_id": "operator-key",
+        "value": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=="
+      }
+    },
+    "valid": false,
+    "error": "schema"
+  },
+  {
+    "name": "physical-output-mailbox",
+    "kind": "actuation-policy",
+    "payload": {
+      "schema_version": "1.0",
+      "policy_revision": 1,
+      "enterprise": "acme",
+      "site": "berlin",
+      "site_autonomy_level": "L1",
+      "assets": [
+        {
+          "asset": "urn:openump:acme:berlin:press-04",
+          "autonomy_level": "L1",
+          "allowed_origins": [
+            {
+              "actor_id": "operator",
+              "key_id": "operator-key"
+            }
+          ],
+          "parameters": {
+            "pressure_setpoint": {
+              "unit": "bar",
+              "min_value": 0,
+              "max_value": 10,
+              "max_delta_per_step": 1,
+              "cooldown_seconds": 5,
+              "required_preconditions": [
+                {
+                  "measurement": "machine_state",
+                  "operator": "eq",
+                  "value": 1,
+                  "unit": "1",
+                  "max_age_ms": 1000
+                }
+              ],
+              "mailbox": {
+                "proposed_value": "Q0.0",
+                "request_sequence": "holding:101",
+                "watchdog_counter": "holding:102",
+                "active_value": "holding:103",
+                "reject_code": "holding:104"
+              }
+            }
+          }
+        }
+      ]
+    },
+    "valid": false,
+    "error": "schema"
+  }
+]

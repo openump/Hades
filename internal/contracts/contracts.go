@@ -49,8 +49,8 @@ func New(files fs.FS) (*Validator, error) {
 	if err != nil {
 		return nil, err
 	}
-	if len(paths) != 4 {
-		return nil, fmt.Errorf("expected four v1 schema resources, found %d", len(paths))
+	if len(paths) != 4 && len(paths) != 7 {
+		return nil, fmt.Errorf("expected four telemetry or seven telemetry/control v1 schema resources, found %d", len(paths))
 	}
 	seen := map[string]bool{}
 	for _, path := range paths {
@@ -79,7 +79,11 @@ func New(files fs.FS) (*Validator, error) {
 		}
 	}
 	v := &Validator{schemas: map[string]*jsonschema.Schema{}}
-	for _, kind := range []string{"common", "telemetry", "metadata", "status"} {
+	kinds := []string{"common", "telemetry", "metadata", "status"}
+	if len(paths) == 7 {
+		kinds = append(kinds, "command", "command-receipt", "actuation-policy")
+	}
+	for _, kind := range kinds {
 		schema, err := c.Compile("urn:openump:schema:1.0:" + kind)
 		if err != nil {
 			return nil, fmt.Errorf("%s: %w", kind, err)
@@ -210,7 +214,7 @@ func checkSurrogates(raw []byte) error {
 	return nil
 }
 func (v *Validator) Validate(kind string, raw []byte) (map[string]any, error) {
-	if kind != "telemetry" && kind != "metadata" && kind != "status" {
+	if kind == "common" || v.schemas[kind] == nil {
 		return nil, fail("schema", "unsupported message type %q", kind)
 	}
 	value, err := Decode(raw)
@@ -223,6 +227,16 @@ func (v *Validator) Validate(kind string, raw []byte) (map[string]any, error) {
 	object := value.(map[string]any)
 	if kind == "metadata" {
 		if err := metadataSemantics(object); err != nil {
+			return nil, err
+		}
+	}
+	if kind == "actuation-policy" {
+		if err := policySemantics(object); err != nil {
+			return nil, err
+		}
+	}
+	if kind == "command-receipt" {
+		if err := receiptSemantics(object); err != nil {
 			return nil, err
 		}
 	}

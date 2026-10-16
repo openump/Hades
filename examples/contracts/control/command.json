@@ -1,0 +1,30 @@
+{
+  "schema_version": "1.0",
+  "command_id": "019a1234-5678-7000-8000-000000000032",
+  "issued_at_ms": 1792152000000,
+  "ttl_ms": 5000,
+  "policy_revision": 1,
+  "origin": {
+    "actor_id": "operator",
+    "autonomy_level": "L1",
+    "signature": {
+      "algorithm": "Ed25519",
+      "canonicalization": "RFC8785",
+      "key_id": "operator-key",
+      "value": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=="
+    }
+  },
+  "asset": "urn:openump:acme:berlin:press-04",
+  "target_parameter": "pressure_setpoint",
+  "target_value": 5,
+  "unit": "bar",
+  "preconditions": [
+    {
+      "measurement": "machine_state",
+      "operator": "eq",
+      "value": 1,
+      "unit": "1",
+      "max_age_ms": 1000
+    }
+  ]
+}

@@ -1,0 +1,214 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:openump:schema:1.0:actuation-policy",
+  "type": "object",
+  "properties": {
+    "schema_version": {
+      "const": "1.0"
+    },
+    "policy_revision": {
+      "$ref": "urn:openump:schema:1.0:common#/$defs/revision"
+    },
+    "enterprise": {
+      "$ref": "urn:openump:schema:1.0:common#/$defs/segment"
+    },
+    "site": {
+      "$ref": "urn:openump:schema:1.0:common#/$defs/segment"
+    },
+    "site_autonomy_level": {
+      "enum": [
+        "L0",
+        "L1",
+        "L2",
+        "L3"
+      ]
+    },
+    "assets": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 32,
+      "items": {
+        "type": "object",
+        "properties": {
+          "asset": {
+            "$ref": "urn:openump:schema:1.0:common#/$defs/asset_id"
+          },
+          "autonomy_level": {
+            "enum": [
+              "L0",
+              "L1",
+              "L2",
+              "L3"
+            ]
+          },
+          "allowed_origins": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 16,
+            "uniqueItems": true,
+            "items": {
+              "type": "object",
+              "properties": {
+                "actor_id": {
+                  "$ref": "urn:openump:schema:1.0:common#/$defs/segment"
+                },
+                "key_id": {
+                  "$ref": "urn:openump:schema:1.0:common#/$defs/segment"
+                }
+              },
+              "required": [
+                "actor_id",
+                "key_id"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "parameters": {
+            "type": "object",
+            "minProperties": 1,
+            "maxProperties": 32,
+            "propertyNames": {
+              "$ref": "urn:openump:schema:1.0:common#/$defs/measurement_name"
+            },
+            "additionalProperties": {
+              "type": "object",
+              "properties": {
+                "unit": {
+                  "$ref": "urn:openump:schema:1.0:common#/$defs/unit"
+                },
+                "min_value": {
+                  "type": "number",
+                  "minimum": -1000000000000.0,
+                  "maximum": 1000000000000.0
+                },
+                "max_value": {
+                  "type": "number",
+                  "minimum": -1000000000000.0,
+                  "maximum": 1000000000000.0
+                },
+                "max_delta_per_step": {
+                  "type": "number",
+                  "exclusiveMinimum": 0,
+                  "maximum": 1000000000000.0
+                },
+                "cooldown_seconds": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 86400
+                },
+                "required_preconditions": {
+                  "type": "array",
+                  "minItems": 1,
+                  "maxItems": 16,
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "measurement": {
+                        "$ref": "urn:openump:schema:1.0:common#/$defs/measurement_name"
+                      },
+                      "operator": {
+                        "enum": [
+                          "eq",
+                          "ne",
+                          "lt",
+                          "le",
+                          "gt",
+                          "ge"
+                        ]
+                      },
+                      "value": {
+                        "type": "number",
+                        "minimum": -1000000000000.0,
+                        "maximum": 1000000000000.0
+                      },
+                      "unit": {
+                        "$ref": "urn:openump:schema:1.0:common#/$defs/unit"
+                      },
+                      "max_age_ms": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "maximum": 60000
+                      }
+                    },
+                    "required": [
+                      "measurement",
+                      "operator",
+                      "value",
+                      "unit",
+                      "max_age_ms"
+                    ],
+                    "additionalProperties": false
+                  }
+                },
+                "mailbox": {
+                  "type": "object",
+                  "properties": {
+                    "proposed_value": {
+                      "type": "string",
+                      "pattern": "^(holding:[0-9]{1,5}|db:[0-9]{1,5}:byte:[0-9]{1,6}|ua:[A-Za-z0-9_.:-]{1,128})$(?![\\s\\S])",
+                      "maxLength": 140
+                    },
+                    "request_sequence": {
+                      "type": "string",
+                      "pattern": "^(holding:[0-9]{1,5}|db:[0-9]{1,5}:byte:[0-9]{1,6}|ua:[A-Za-z0-9_.:-]{1,128})$(?![\\s\\S])",
+                      "maxLength": 140
+                    },
+                    "watchdog_counter": {
+                      "type": "string",
+                      "pattern": "^(holding:[0-9]{1,5}|db:[0-9]{1,5}:byte:[0-9]{1,6}|ua:[A-Za-z0-9_.:-]{1,128})$(?![\\s\\S])",
+                      "maxLength": 140
+                    },
+                    "active_value": {
+                      "type": "string",
+                      "pattern": "^(holding:[0-9]{1,5}|db:[0-9]{1,5}:byte:[0-9]{1,6}|ua:[A-Za-z0-9_.:-]{1,128})$(?![\\s\\S])",
+                      "maxLength": 140
+                    },
+                    "reject_code": {
+                      "type": "string",
+                      "pattern": "^(holding:[0-9]{1,5}|db:[0-9]{1,5}:byte:[0-9]{1,6}|ua:[A-Za-z0-9_.:-]{1,128})$(?![\\s\\S])",
+                      "maxLength": 140
+                    }
+                  },
+                  "required": [
+                    "proposed_value",
+                    "request_sequence",
+                    "watchdog_counter",
+                    "active_value",
+                    "reject_code"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "required": [
+                "unit",
+                "min_value",
+                "max_value",
+                "max_delta_per_step",
+                "cooldown_seconds",
+                "required_preconditions",
+                "mailbox"
+              ],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": [
+          "asset",
+          "autonomy_level",
+          "allowed_origins",
+          "parameters"
+        ],
+        "additionalProperties": false
+      }
+    }
+  },
+  "required": [
+    "schema_version",
+    "policy_revision",
+    "enterprise",
+    "site",
+    "site_autonomy_level",
+    "assets"
+  ],
+  "additionalProperties": false
+}

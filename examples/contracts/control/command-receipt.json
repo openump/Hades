@@ -1,0 +1,47 @@
+{
+  "schema_version": "1.0",
+  "command_id": "019a1234-5678-7000-8000-000000000032",
+  "command_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+  "asset": "urn:openump:acme:berlin:press-04",
+  "target_parameter": "pressure_setpoint",
+  "policy_revision": 1,
+  "recorded_at_ms": 1792152000001,
+  "state": "AWAITING_OPERATOR_CONFIRMATION",
+  "terminal": false,
+  "pre_write_value": null,
+  "post_write_value": null,
+  "unit": "bar",
+  "gates": [
+    {
+      "gate": 1,
+      "result": "PASS",
+      "reason": "synthetic structural fixture"
+    },
+    {
+      "gate": 2,
+      "result": "PASS",
+      "reason": "synthetic structural fixture"
+    },
+    {
+      "gate": 3,
+      "result": "NOT_EVALUATED",
+      "reason": "synthetic structural fixture"
+    },
+    {
+      "gate": 4,
+      "result": "NOT_EVALUATED",
+      "reason": "synthetic structural fixture"
+    },
+    {
+      "gate": 5,
+      "result": "NOT_EVALUATED",
+      "reason": "synthetic structural fixture"
+    }
+  ],
+  "signature": {
+    "algorithm": "Ed25519",
+    "canonicalization": "RFC8785",
+    "key_id": "operator-key",
+    "value": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=="
+  }
+}
