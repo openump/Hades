@@ -1,9 +1,10 @@
-# Multi-context reference workloads (Hades-025)
+# Multi-context and OPC UA pilot capacity workloads (Hades-022 / Hades-025)
 
 Run from the repository with Go, Python dependencies from requirements-dev.txt,
 and a working Docker daemon:
 
 ```sh
+./scripts/benchmark-stack --opcua-pilot --count 8 --host-label my-disposable-host --output artifacts/stack-capacity/opcua-pilot
 ./scripts/benchmark-stack --assets 2 --measurements 2 --count 8 --burst-seconds 1 --host-label my-disposable-host --output artifacts/stack-capacity/two-assets
 ./scripts/benchmark-stack --assets 4 --measurements 4 --count 8 --burst-seconds 1 --rate 8 --burst-rate 24 --envelope-bytes 4096 --host-label my-disposable-host --output artifacts/stack-capacity/four-assets
 ./scripts/benchmark-stack --assets 2 --count 4 --no-transfer --host-label my-disposable-host --output artifacts/stack-capacity/disabled
@@ -57,7 +58,7 @@ normalized payload bytes and source IDs/timestamps are compared against local
 and durable remote records. Numeric historian timestamps/values are also queried.
 Malformed JSON and an unapproved context must fail at the actual ingress.
 
-Bounds: 2–8 assets, 1–32 measurements per asset, 4–1000 observations per asset, steady rate ≤100/s, burst ≤200/s,
+Bounds: `--opcua-pilot` fixes 1 asset (`press-04`), 3 reviewed signals (`motor_temperature`, `cycle_counter`, `machine_state` at 1 Hz polls = 3 observations/s), and 4–200 poll cycles (`12..600` observations) through the pinned read-only `hades-opcua-gateway` and `hades-opcua-mock` (`Aes256_Sha256_RsaPss`, `SignAndEncrypt`) with source ledger cross-check. Synthetic multi-context mode bounds 2–8 assets, 1–32 measurements per asset, 4–1000 observations per asset, steady rate ≤100/s, burst ≤200/s,
 512–60000 raw bytes, 60–900 seconds, and 64–2048 MiB private run logical file
 budget (default 512 MiB). Scheduling must fit half the wall-clock budget. Sampling
 reports a bound violation; a current HTTP/readiness operation may finish before
@@ -77,11 +78,14 @@ sums logical file lengths. Directory overhead differs between these methods. Spa
 unknown. Native component version output must match the expected pins, and binary digests
 and normalizer Go build/dependency information are retained.
 
-Use the sizing worksheet's actual bytes/record, pending occupancy, replay rate
-and reserve/headroom as inputs to [retention sizing](../../docs/operations/retention-sizing.md).
-Short-run startup/segment overhead makes extrapolated retention uncertain. These
-runs establish functional reference coverage only. Hades-022 target-host capacity,
-OPC UA acquisition and Hades-023 operator sign-off remain separate gates.
+Use the sizing worksheet's actual bytes/record, pending occupancy, replay rate,
+reserve/headroom, and `tier2_reference_ipc_model` (VictoriaMetrics 30d/90d retention,
+transfer 7d outage capacity vs v1 `100,000`-record / `256 MiB` caps, history 7d
+`api_accepted` dedup store window, and SSD endurance write-amplification bounds)
+as inputs to [retention sizing](../../docs/operations/retention-sizing.md) and
+[capacity report](../../docs/operations/capacity-report.md).
+Short-run startup/segment overhead makes extrapolated retention uncertain.
+Physical Tier 2 IPC validation and Hades-023 operator sign-off remain separate gates.
 
 The existing `hades-capacity` intake-only microbenchmark keeps its separate scope.
 Processing distributions use fixed disjoint millisecond buckets in normalizer

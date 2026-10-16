@@ -152,14 +152,16 @@ func run() error {
 			payload := map[string]any{"schema_version": "1.0", "asset_id": cfg.Metadata["asset_id"], "metadata_revision": cfg.Metadata["metadata_revision"], "message_id": sample.UUID(), "observed_at": stamp.UTC().Format(sample.Timestamp), "ingested_at": time.Now().UTC().Format(sample.Timestamp), "source": map[string]any{"gateway_id": cfg.Metadata["acquisition"].(map[string]any)["gateway_id"], "protocol": "opc-ua", "boot_id": boot, "sequence": sequence, "clock_origin": origin, "clock_uncertainty_ms": nil}, "signals": map[string]any{signal.Name: reading}, "extensions": ext}
 			raw, _ := json.Marshal(payload)
 			sequence++
+			submitStart := time.Now()
 			if err := gateway.SubmitObserved(ctx, sink, *ingress, raw, func() { retries.Add(1) }); err != nil {
 				if ctx.Err() != nil {
 					return cancelled(ctx)
 				}
 				return err
 			}
+			httpMS := float64(time.Since(submitStart)) / float64(time.Millisecond)
 			admitted.Add(1)
-			if err := output.Encode(map[string]any{"type": "gateway_admitted", "payload": payload, "boundary": "accepted_volatile"}); err != nil {
+			if err := output.Encode(map[string]any{"type": "gateway_admitted", "payload": payload, "boundary": "accepted_volatile", "http_ms": httpMS}); err != nil {
 				return err
 			}
 		}
