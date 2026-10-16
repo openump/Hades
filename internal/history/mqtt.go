@@ -3,6 +3,7 @@ package history
 import (
 	"context"
 	"crypto/sha256"
+	"errors"
 	"fmt"
 	"log"
 	"net/url"
@@ -110,6 +111,13 @@ func (a *Adapter) Subscribe(ctx context.Context, address string, diagnostic func
 			return true, err
 		}
 		if err = event.Client.Ack(packet); err != nil {
+			// Intake/diagnostic ownership is already synced. The pinned client
+			// clears its ACK tracker on disconnect; keep the reconnect worker
+			// alive and let any redelivery use the existing immutable dedup path.
+			if errors.Is(err, paho.ErrPacketNotFound) {
+				log.Print("MQTT ACK tracker reset after owned intake; awaiting reconnect/redelivery")
+				return true, nil
+			}
 			fail(err)
 		}
 		return true, err
