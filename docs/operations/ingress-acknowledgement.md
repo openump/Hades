@@ -27,9 +27,10 @@ charging payload bytes plus 4096 bytes bookkeeping per record. The existing
 without publication. Dropping an unacknowledged wait leaves retry ownership at
 the gateway; it does not silently retire that observation.
 
-Ingress can start and expose health with the broker offline. The worker connects
-lazily on the first publication request and subsequently uses the pinned MQTT
-client's reconnect behavior. No ingress record is persisted: `spool_records` and
+Ingress can start and expose health with the broker offline. In the background,
+the worker first attempts a bounded startup connection to publish retained
+metadata for consumer readiness. If unavailable, connection is retried on the next
+publication request, using the pinned MQTT client's reconnect behavior. No ingress record is persisted: `spool_records` and
 `spool_bytes` are zero. Diagnostic quarantine remains independently bounded on disk.
 
 ## Health and evidence boundaries

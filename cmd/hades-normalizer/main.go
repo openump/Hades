@@ -134,6 +134,11 @@ func run() error {
 	}
 	go func() {
 		defer close(workerDone)
+		// Publish retained metadata before consumers wait for context readiness,
+		// without blocking HTTP startup when the broker is unavailable.
+		warmctx, warmcancel := context.WithTimeout(ctx, 4*time.Second)
+		client, _ = sample.Connect(warmctx, *broker, cfg, true)
+		warmcancel()
 		errors <- ingress.Run(ctx, func(c context.Context, p []byte) error {
 			topic := cfg.Prefix + "telemetry"
 			if obj, err := cfg.Validator.Validate("telemetry", p); err == nil {
