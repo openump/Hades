@@ -171,6 +171,7 @@ jobs:
         run: python -m pip install -r requirements-dev.txt
       - name: Installed Linux lifecycle and multi-context outage workload
         run: |
+          ./scripts/benchmark-stack --systemd --opcua-pilot --count 8 --host-label github-ubuntu-24.04 --output artifacts/stack-capacity/opcua-pilot
           ./scripts/benchmark-stack --systemd --assets 2 --measurements 2 --count 8 --burst-seconds 1 --host-label github-ubuntu-24.04 --output artifacts/stack-capacity/two-assets
           ./scripts/benchmark-stack --systemd --assets 4 --measurements 4 --count 8 --burst-seconds 1 --rate 8 --burst-rate 24 --envelope-bytes 4096 --host-label github-ubuntu-24.04 --output artifacts/stack-capacity/four-assets
           ./scripts/benchmark-stack --assets 2 --count 4 --no-transfer --host-label github-ubuntu-24.04 --output artifacts/stack-capacity/disabled-transfer
