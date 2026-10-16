@@ -109,7 +109,7 @@ func run() error {
 		cancel()
 		var values []ua.DataValue
 		if err == nil {
-			read, cancel := context.WithTimeout(ctx, 300*time.Millisecond)
+			read, cancel := context.WithTimeout(ctx, 500*time.Millisecond)
 			values, err = reader.Read(read)
 			cancel()
 		}
