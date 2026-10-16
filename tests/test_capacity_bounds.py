@@ -17,6 +17,8 @@ class CapacityBoundsTests(unittest.TestCase):
         cases = [
             ['--count', '-4', '--burst-seconds', '1'],
             ['--assets', '0', '--burst-seconds', '1'],
+            ['--assets', '1'],
+            ['--opcua-pilot', '--count', '201'],
             ['--envelope-bytes', '65537'],
             ['--count', '1000', '--rate', '.01'],
             ['--measurements', '65'],
