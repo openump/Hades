@@ -31,6 +31,15 @@ func TestLiveIdentityLogsAndShutdown(t *testing.T) {
 	}
 	t.Cleanup(func() { os.RemoveAll(dir) })
 	cfg := Config{Revision: "test-a", Binary: binary, BinarySHA256: fmt.Sprintf("%x", sha256.Sum256(raw)), Args: []string{"-test.run=^TestChild$", "hades-child"}, Directory: dir, State: dir + "/state", Ready: "child-ready", Files: map[string]string{}, LogBytes: 512}
+	artifact := filepath.Join(dir, "approved.conf")
+	if err = os.WriteFile(artifact, []byte("reviewed"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	digest, err := hashFile(artifact)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg.Files[artifact] = digest
 	path := dir + "/service.json"
 	raw, _ = json.Marshal(cfg)
 	os.WriteFile(path, raw, 0600)
@@ -73,6 +82,17 @@ func TestLiveIdentityLogsAndShutdown(t *testing.T) {
 	}
 	if _, err := Probe(context.Background(), cfg); err != nil {
 		t.Fatal(err)
+	}
+	for range 20 {
+		if _, err = Probe(context.Background(), cfg); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err = os.WriteFile(artifact, []byte("tampered"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = Probe(context.Background(), cfg); err == nil {
+		t.Fatal("live status accepted artifact tampering")
 	}
 	time.Sleep(100 * time.Millisecond)
 	cancel()
