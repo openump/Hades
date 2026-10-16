@@ -43,7 +43,7 @@ def validate_payload(kind, raw):
     from jsonschema import Draft202012Validator, FormatChecker
     from referencing import Registry, Resource
 
-    if kind not in ('telemetry', 'metadata', 'status'):
+    if kind not in ('telemetry', 'metadata', 'status', 'command', 'command-receipt', 'actuation-policy'):
         raise ValueError('unsupported message type')
     if not isinstance(raw, bytes) or len(raw) > 65536:
         raise ValueError('payload must be bytes of at most 65536 bytes')
@@ -99,6 +99,12 @@ def validate_payload(kind, raw):
         raise ValueError(f'{list(error.absolute_path)}: {error.message}')
     if kind == "metadata":
         validate_metadata_semantics(payload)
+    if kind == "actuation-policy":
+        from tools.control_contracts import validate_policy
+        validate_policy(payload)
+    if kind == "command-receipt":
+        from tools.control_contracts import validate_receipt
+        validate_receipt(payload)
     return payload
 
 

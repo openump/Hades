@@ -1,0 +1,44 @@
+{
+  "schema_version": "1.0",
+  "policy_revision": 1,
+  "enterprise": "acme",
+  "site": "berlin",
+  "site_autonomy_level": "L1",
+  "assets": [
+    {
+      "asset": "urn:openump:acme:berlin:press-04",
+      "autonomy_level": "L1",
+      "allowed_origins": [
+        {
+          "actor_id": "operator",
+          "key_id": "operator-key"
+        }
+      ],
+      "parameters": {
+        "pressure_setpoint": {
+          "unit": "bar",
+          "min_value": 0,
+          "max_value": 10,
+          "max_delta_per_step": 1,
+          "cooldown_seconds": 5,
+          "required_preconditions": [
+            {
+              "measurement": "machine_state",
+              "operator": "eq",
+              "value": 1,
+              "unit": "1",
+              "max_age_ms": 1000
+            }
+          ],
+          "mailbox": {
+            "proposed_value": "holding:100",
+            "request_sequence": "holding:101",
+            "watchdog_counter": "holding:102",
+            "active_value": "holding:103",
+            "reject_code": "holding:104"
+          }
+        }
+      }
+    }
+  ]
+}

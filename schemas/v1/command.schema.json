@@ -1,0 +1,217 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:openump:schema:1.0:command",
+  "type": "object",
+  "properties": {
+    "schema_version": {
+      "const": "1.0"
+    },
+    "command_id": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$(?![\\s\\S])",
+      "maxLength": 36
+    },
+    "issued_at_ms": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 9007199254740991
+    },
+    "ttl_ms": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 60000
+    },
+    "policy_revision": {
+      "$ref": "urn:openump:schema:1.0:common#/$defs/revision"
+    },
+    "origin": {
+      "type": "object",
+      "properties": {
+        "actor_id": {
+          "$ref": "urn:openump:schema:1.0:common#/$defs/segment"
+        },
+        "autonomy_level": {
+          "enum": [
+            "L0",
+            "L1",
+            "L2",
+            "L3"
+          ]
+        },
+        "signature": {
+          "type": "object",
+          "properties": {
+            "algorithm": {
+              "const": "Ed25519"
+            },
+            "canonicalization": {
+              "const": "RFC8785"
+            },
+            "key_id": {
+              "$ref": "urn:openump:schema:1.0:common#/$defs/segment"
+            },
+            "value": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9+/]{86}==$(?![\\s\\S])",
+              "minLength": 88,
+              "maxLength": 88
+            }
+          },
+          "required": [
+            "algorithm",
+            "canonicalization",
+            "key_id",
+            "value"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "actor_id",
+        "autonomy_level",
+        "signature"
+      ],
+      "additionalProperties": false
+    },
+    "asset": {
+      "$ref": "urn:openump:schema:1.0:common#/$defs/asset_id"
+    },
+    "target_parameter": {
+      "$ref": "urn:openump:schema:1.0:common#/$defs/measurement_name"
+    },
+    "target_value": {
+      "type": "number",
+      "minimum": -1000000000000.0,
+      "maximum": 1000000000000.0
+    },
+    "unit": {
+      "$ref": "urn:openump:schema:1.0:common#/$defs/unit"
+    },
+    "preconditions": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 16,
+      "items": {
+        "type": "object",
+        "properties": {
+          "measurement": {
+            "$ref": "urn:openump:schema:1.0:common#/$defs/measurement_name"
+          },
+          "operator": {
+            "enum": [
+              "eq",
+              "ne",
+              "lt",
+              "le",
+              "gt",
+              "ge"
+            ]
+          },
+          "value": {
+            "type": "number",
+            "minimum": -1000000000000.0,
+            "maximum": 1000000000000.0
+          },
+          "unit": {
+            "$ref": "urn:openump:schema:1.0:common#/$defs/unit"
+          },
+          "max_age_ms": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 60000
+          }
+        },
+        "required": [
+          "measurement",
+          "operator",
+          "value",
+          "unit",
+          "max_age_ms"
+        ],
+        "additionalProperties": false
+      }
+    }
+  },
+  "required": [
+    "schema_version",
+    "command_id",
+    "issued_at_ms",
+    "ttl_ms",
+    "policy_revision",
+    "origin",
+    "asset",
+    "target_parameter",
+    "target_value",
+    "unit",
+    "preconditions"
+  ],
+  "additionalProperties": false,
+  "$defs": {
+    "signature": {
+      "type": "object",
+      "properties": {
+        "algorithm": {
+          "const": "Ed25519"
+        },
+        "canonicalization": {
+          "const": "RFC8785"
+        },
+        "key_id": {
+          "$ref": "urn:openump:schema:1.0:common#/$defs/segment"
+        },
+        "value": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9+/]{86}==$(?![\\s\\S])",
+          "minLength": 88,
+          "maxLength": 88
+        }
+      },
+      "required": [
+        "algorithm",
+        "canonicalization",
+        "key_id",
+        "value"
+      ],
+      "additionalProperties": false
+    },
+    "precondition": {
+      "type": "object",
+      "properties": {
+        "measurement": {
+          "$ref": "urn:openump:schema:1.0:common#/$defs/measurement_name"
+        },
+        "operator": {
+          "enum": [
+            "eq",
+            "ne",
+            "lt",
+            "le",
+            "gt",
+            "ge"
+          ]
+        },
+        "value": {
+          "type": "number",
+          "minimum": -1000000000000.0,
+          "maximum": 1000000000000.0
+        },
+        "unit": {
+          "$ref": "urn:openump:schema:1.0:common#/$defs/unit"
+        },
+        "max_age_ms": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 60000
+        }
+      },
+      "required": [
+        "measurement",
+        "operator",
+        "value",
+        "unit",
+        "max_age_ms"
+      ],
+      "additionalProperties": false
+    }
+  }
+}

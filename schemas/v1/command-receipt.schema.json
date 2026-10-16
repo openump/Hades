@@ -1,0 +1,204 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:openump:schema:1.0:command-receipt",
+  "type": "object",
+  "properties": {
+    "schema_version": {
+      "const": "1.0"
+    },
+    "command_id": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$(?![\\s\\S])",
+      "maxLength": 36
+    },
+    "command_sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$(?![\\s\\S])",
+      "maxLength": 64
+    },
+    "asset": {
+      "$ref": "urn:openump:schema:1.0:common#/$defs/asset_id"
+    },
+    "target_parameter": {
+      "$ref": "urn:openump:schema:1.0:common#/$defs/measurement_name"
+    },
+    "policy_revision": {
+      "$ref": "urn:openump:schema:1.0:common#/$defs/revision"
+    },
+    "recorded_at_ms": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 9007199254740991
+    },
+    "state": {
+      "enum": [
+        "SHADOW_LOGGED",
+        "AWAITING_OPERATOR_CONFIRMATION",
+        "EXECUTED",
+        "REJECTED_EXPIRED_TTL",
+        "REJECTED_SAFETY_BOUNDS",
+        "REJECTED_PRECONDITION_FAILED",
+        "PLC_INTERLOCK_REFUSED",
+        "TIMEOUT"
+      ]
+    },
+    "terminal": {
+      "type": "boolean"
+    },
+    "pre_write_value": {
+      "anyOf": [
+        {
+          "type": "number",
+          "minimum": -1000000000000.0,
+          "maximum": 1000000000000.0
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "post_write_value": {
+      "anyOf": [
+        {
+          "type": "number",
+          "minimum": -1000000000000.0,
+          "maximum": 1000000000000.0
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "unit": {
+      "$ref": "urn:openump:schema:1.0:common#/$defs/unit"
+    },
+    "gates": {
+      "type": "array",
+      "minItems": 5,
+      "maxItems": 5,
+      "items": {
+        "type": "object",
+        "properties": {
+          "gate": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 5
+          },
+          "result": {
+            "enum": [
+              "PASS",
+              "FAIL",
+              "NOT_EVALUATED"
+            ]
+          },
+          "reason": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256
+          }
+        },
+        "required": [
+          "gate",
+          "result",
+          "reason"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "signature": {
+      "$ref": "urn:openump:schema:1.0:command#/$defs/signature"
+    }
+  },
+  "required": [
+    "schema_version",
+    "command_id",
+    "command_sha256",
+    "asset",
+    "target_parameter",
+    "policy_revision",
+    "recorded_at_ms",
+    "state",
+    "terminal",
+    "pre_write_value",
+    "post_write_value",
+    "unit",
+    "gates",
+    "signature"
+  ],
+  "additionalProperties": false,
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "state": {
+            "const": "EXECUTED"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "pre_write_value": {
+            "type": "number",
+            "minimum": -1000000000000.0,
+            "maximum": 1000000000000.0
+          },
+          "post_write_value": {
+            "type": "number",
+            "minimum": -1000000000000.0,
+            "maximum": 1000000000000.0
+          },
+          "terminal": {
+            "const": true
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "state": {
+            "const": "AWAITING_OPERATOR_CONFIRMATION"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "terminal": {
+            "const": false
+          },
+          "post_write_value": {
+            "type": "null"
+          }
+        }
+      },
+      "else": {
+        "properties": {
+          "terminal": {
+            "const": true
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "state": {
+            "enum": [
+              "SHADOW_LOGGED",
+              "REJECTED_EXPIRED_TTL",
+              "REJECTED_SAFETY_BOUNDS",
+              "REJECTED_PRECONDITION_FAILED"
+            ]
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "post_write_value": {
+            "type": "null"
+          }
+        }
+      }
+    }
+  ]
+}
