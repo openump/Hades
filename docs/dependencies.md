@@ -1,6 +1,6 @@
 # Reference dependency inventory
 
-Checked on 13 October 2026 for Hades-002. These are selected versions for the first implementation, not a production security certification. The project license remains pending in ADR-0001.
+Checked on 13 October 2026 for Hades-002. These are selected versions for the first implementation, not a production security certification. Hades's original project sources are licensed under `Apache-2.0` ([ADR-0001](decisions/0001-license-policy.md)).
 
 | Responsibility | Selected artifact | License | Architecture evidence | Required capability and maintenance evidence |
 | --- | --- | --- | --- | --- |

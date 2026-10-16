@@ -2,7 +2,7 @@
 
 Hades is the industrial edge stack of OpenUMP (Open Universal Manufacturing Protocol). It acquires read-only machine observations, normalizes them, publishes contextualized data over MQTT, and supports local numeric history, append-only segmented WAL durability, outbound cloud transfer, and write-control-plane contracts.
 
-This repository contains the [white paper](WHITEPAPER.md), the complete software MVP reference implementation (`Hades-001` through `Hades-023`), the OPC UA software pilot (`hades-opcua-mock` + `hades-opcua-gateway`), and the whole-stack capacity and Tier 2 IPC retention qualification package. Production physical-site rollout remains gated on project license selection ([ADR-0001](docs/decisions/0001-license-policy.md)), physical Tier 2 IPC hardware validation, production PKI, and explicit operator sign-off ([MVP evaluation package](docs/releases/mvp-evaluation.md)).
+This repository contains the [white paper](WHITEPAPER.md), the complete software MVP reference implementation (`Hades-001` through `Hades-023`), the OPC UA software pilot (`hades-opcua-mock` + `hades-opcua-gateway`), and the whole-stack capacity and Tier 2 IPC retention qualification package, licensed under **Apache License 2.0** ([LICENSE](LICENSE), [ADR-0001](docs/decisions/0001-license-policy.md)). The Software Pilot MVP baseline is signed off in the [MVP evaluation package](docs/releases/mvp-evaluation.md); physical plant commissioning remains gated on site-specific PLC/IPC hardware validation and production PKI.
 
 ## Implementation language
 
@@ -50,9 +50,9 @@ Run `./scripts/check-contracts` for the offline Go conformance CLI across all se
 
 Implementation tickets live in [Hermes](https://github.com/openump/Hermes/blob/main/plans/hades/PROJECT_PLAN.md). Reference their stable `Hades-` IDs in commits and implementation PRs. See [CONTRIBUTING.md](CONTRIBUTING.md) for verification and decision conventions.
 
-## License status
+## License
 
-The owner has not yet selected a project license. No open-source license grant is asserted by this repository until that decision is recorded and a `LICENSE` file is added. See [ADR-0001](docs/decisions/0001-license-policy.md). The intended open-source reference stack requires explicit review of each dependency's exact edition and license.
+Hades is licensed under the **Apache License 2.0** ([LICENSE](LICENSE)). See [ADR-0001](docs/decisions/0001-license-policy.md) and [dependency notices](docs/dependencies.md) for third-party dependency licenses and redistribution requirements.
 
 ## Architecture and operations index
 

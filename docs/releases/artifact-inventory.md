@@ -39,10 +39,7 @@ credentials, private archives, and site data stay outside Git.
 | `hades-service` | `./cmd/hades-service` | Digest-bound native systemd supervisor and pre-start verifier |
 | `hades-capacity` | `./cmd/hades-capacity` | Reference and whole-stack capacity/outage/retention benchmark harness |
 
-See [dependency inventory and notices](../dependencies.md). The project license
-remains unselected ([ADR-0001](../decisions/0001-license-policy.md)); dependency notices and transitive redistribution
-review remain release gates. The dated dependency inventory's early capability
-notes are historical; use linked implementation/CI evidence for current tests.
+See [dependency inventory and notices](../dependencies.md). Hades original sources are licensed under `Apache-2.0` ([LICENSE](../../LICENSE), [ADR-0001](../decisions/0001-license-policy.md)); preserve upstream dependency notices and transitive SBOMs when redistributing binaries. The dated dependency inventory's early capability notes are historical; use linked implementation/CI evidence for current tests.
 
 For each actual build record: source commit, `go version`, OS/architecture,
 `go version -m <binary>`, `shasum -a 256 <binary>`, Docker image IDs/RepoDigests,
