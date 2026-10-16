@@ -78,34 +78,37 @@ func Load(path string) (Config, error) {
 	return cfg, err
 }
 func hashFile(path string) (string, error) {
-	st, err := os.Lstat(path)
+	before, err := artifactIdentity(path)
+	if err != nil || !filepath.IsAbs(path) {
+		return "", fmt.Errorf("artifact must be absolute bounded regular file: %v", err)
+	}
+	fd, err := syscall.Open(path, syscall.O_RDONLY|syscall.O_NOFOLLOW, 0)
 	if err != nil {
 		return "", err
 	}
-	if !filepath.IsAbs(path) || !st.Mode().IsRegular() || st.Size() > 512*1024*1024 {
-		return "", fmt.Errorf("artifact must be absolute bounded regular file")
-	}
-	file, err := os.Open(path)
-	if err != nil {
-		return "", err
-	}
+	file := os.NewFile(uintptr(fd), path)
 	defer file.Close()
 	hasher := sha256.New()
 	if _, err = io.Copy(hasher, io.LimitReader(file, 512*1024*1024+1)); err != nil {
 		return "", err
 	}
+	after, err := artifactIdentity(path)
+	if err != nil || before != after {
+		return "", fmt.Errorf("artifact changed during hashing")
+	}
 	return fmt.Sprintf("%x", hasher.Sum(nil)), nil
 }
-func Validate(cfg Config) error {
+func Validate(cfg Config) error { return validate(cfg, hashFile) }
+func validate(cfg Config, hash func(string) (string, error)) error {
 	if !identifier.MatchString(cfg.Revision) || !filepath.IsAbs(cfg.State) || !filepath.IsAbs(cfg.Directory) || cfg.State == "/" || len(cfg.Ready) < 1 || len(cfg.Ready) > 128 || cfg.LogBytes < 256 || cfg.LogBytes > 5*1024*1024 || len(cfg.Args) > 128 || len(cfg.Files) > 32 {
 		return fmt.Errorf("invalid bounded service configuration")
 	}
-	binary, err := hashFile(cfg.Binary)
+	binary, err := hash(cfg.Binary)
 	if err != nil || !checksum.MatchString(cfg.BinarySHA256) || binary != cfg.BinarySHA256 {
 		return fmt.Errorf("service binary digest mismatch")
 	}
 	for path, want := range cfg.Files {
-		got, err := hashFile(path)
+		got, err := hash(path)
 		if err != nil || !checksum.MatchString(want) || got != want {
 			return fmt.Errorf("referenced artifact digest mismatch: %s", path)
 		}
@@ -146,6 +149,9 @@ func (o *output) Write(raw []byte) (int, error) {
 	return n, nil
 }
 func Run(ctx context.Context, path, expected string) error {
+	return run(ctx, path, expected, 60*time.Second, hashFile)
+}
+func run(ctx context.Context, path, expected string, interval time.Duration, hash func(string) (string, error)) error {
 	cfg, err := Load(path)
 	if err != nil {
 		return err
@@ -153,7 +159,8 @@ func Run(ctx context.Context, path, expected string) error {
 	if Digest(cfg) != expected {
 		return fmt.Errorf("service definition digest mismatch")
 	}
-	if err = Validate(cfg); err != nil {
+	integrity, err := newIntegrity(cfg, hash)
+	if err != nil {
 		return err
 	}
 	if err = os.MkdirAll(cfg.State, 0700); err != nil {
@@ -217,7 +224,7 @@ func Run(ctx context.Context, path, expected string) error {
 			http.Error(w, "definition changed", 409)
 			return
 		}
-		if err = Validate(cfg); err != nil {
+		if err = integrity.check(false); err != nil {
 			http.Error(w, "artifact changed", 409)
 			return
 		}
@@ -230,6 +237,9 @@ func Run(ctx context.Context, path, expected string) error {
 	served := make(chan error, 1)
 	go func() { served <- server.Serve(listener) }()
 	defer server.Close()
+	sweepctx, stopSweep := context.WithCancel(ctx)
+	defer stopSweep()
+	go integrity.sweep(sweepctx, interval)
 	startup := time.NewTimer(30 * time.Second)
 	defer startup.Stop()
 	stopChild := func() {
