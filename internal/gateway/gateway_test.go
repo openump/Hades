@@ -114,3 +114,42 @@ func TestLostAcceptanceBodyRetainsAndRetries(t *testing.T) {
 		t.Fatal(calls)
 	}
 }
+func TestMultiRegisterProfileDriverConfigDecodeAndEnvelope(t *testing.T) {
+	profile := Profile{
+		MetricName: "hades_press",
+		SlaveID:    2,
+		Registers: []RegisterMapping{
+			{Name: "temperature", Address: 0, DataType: "UINT16", ByteOrder: "AB", Scale: 1.0, Unit: "deciCel"},
+			{Name: "hydraulic_pressure", Address: 1, DataType: "UINT16", ByteOrder: "AB", Scale: 1.0, Unit: "bar"},
+		},
+	}
+	conf, err := DriverConfigForProfile("tcp://127.0.0.1:1502", profile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(conf, `name = "hydraulic_pressure"`) || !strings.Contains(conf, `slave_id = 2`) {
+		t.Fatal(conf)
+	}
+	raw := []byte(`{"name":"hades_press","fields":{"temperature":672,"hydraulic_pressure":145},"tags":{},"timestamp":1791979200000}`)
+	values, _, err := DecodeReadingsForProfile(raw, profile)
+	if err != nil || values["temperature"] != 672 || values["hydraulic_pressure"] != 145 {
+		t.Fatal(values, err)
+	}
+	cfg, err := sample.LoadContext("../..", "../../examples/site/metadata.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	envRaw, err := EnvelopeForProfile(cfg, profile, values, "", sample.UUID(), 1, time.Now().UTC())
+	if err != nil {
+		t.Fatal(err)
+	}
+	var p map[string]any
+	if err := json.Unmarshal(envRaw, &p); err != nil {
+		t.Fatal(err)
+	}
+	signals := p["signals"].(map[string]any)
+	if len(signals) != 2 || signals["hydraulic_pressure"].(map[string]any)["unit"] != "bar" {
+		t.Fatal(signals)
+	}
+}
+

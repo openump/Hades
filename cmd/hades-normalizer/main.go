@@ -28,12 +28,14 @@ func run() error {
 	broker := flag.String("broker", "mqtt://127.0.0.1:1883", "local MQTT address")
 	listen := flag.String("listen", "127.0.0.1:8081", "loopback HTTP ingress")
 	root := flag.String("root", ".", "repository root")
-	config := flag.String("config", "examples/site/metadata.json", "approved development metadata")
+	config := flag.String("config", "examples/site/metadata.json", "approved development metadata (comma-separated for multi-asset catalog)")
 	profile := flag.String("signal-profile", "temperature", "temperature, approved-numeric (simulator) or opcua-mock")
 	mapping := flag.String("mapping", "config/normalization/temperature.blobl", "trusted reading mapping")
 	quarantine := flag.String("quarantine", "runtime/quarantine", "private bounded quarantine")
 	records := flag.Int("queue-records", 4096, "volatile queue record limit")
 	timeout := flag.Duration("timeout", 0, "optional development run duration")
+	ingressWriters := flag.String("ingress-writers", "gateway-press-04", "comma-separated mTLS writer identities (CN/SAN, optional @asset_id scope)")
+	ingressReaders := flag.String("ingress-readers", "admin", "comma-separated mTLS reader identities for /health")
 	serverCredentials := &transport.Paths{}
 	flag.StringVar(&serverCredentials.CA, "ingress-ca", "", "ingress client CA")
 	flag.StringVar(&serverCredentials.Cert, "ingress-cert", "", "ingress server certificate")
@@ -49,6 +51,10 @@ func run() error {
 	host, _, err := net.SplitHostPort(*listen)
 	if err != nil || (host != "127.0.0.1" && host != "::1") {
 		return fmt.Errorf("ingress must bind a loopback IP")
+	}
+	policy, err := transport.NewIngressPolicy(transport.ParseCSVIdentities(*ingressWriters), transport.ParseCSVIdentities(*ingressReaders))
+	if err != nil {
+		return err
 	}
 	cfg, err := sample.LoadContext(*root, *config)
 	if err == nil && *profile == "temperature" {
@@ -89,6 +95,7 @@ func run() error {
 	if err != nil {
 		return err
 	}
+	ingress.IngressPolicy = policy
 	defer ingress.Close()
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
@@ -118,14 +125,22 @@ func run() error {
 			return err
 		}
 		server.TLSConfig = tlsConfig
-		server.Handler = transport.Ingress(ingress)
+		server.Handler = policy.Wrap(ingress)
 		go func() { errors <- server.ServeTLS(listener, "", "") }()
 	} else {
 		go func() { errors <- server.Serve(listener) }()
 	}
 	go func() {
 		defer close(workerDone)
-		errors <- ingress.Run(ctx, func(c context.Context, p []byte) error { return client.Publish(c, cfg.Prefix+"telemetry", p, false, 0) })
+		errors <- ingress.Run(ctx, func(c context.Context, p []byte) error {
+			topic := cfg.Prefix + "telemetry"
+			if obj, err := cfg.Validator.Validate("telemetry", p); err == nil {
+				if assetCfg, err := cfg.ResolveAsset(obj["asset_id"], obj["metadata_revision"]); err == nil {
+					topic = assetCfg.Prefix + "telemetry"
+				}
+			}
+			return client.Publish(c, topic, p, false, 0)
+		})
 	}()
 	log.Printf("normalizer ready on %s; accepted work is volatile", *listen)
 	ticker := time.NewTicker(time.Second)

@@ -4,12 +4,17 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"os"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/openump/Hades/internal/sample"
 )
+
+func writeTestFile(path string, data []byte) error {
+	return os.WriteFile(path, data, 0o600)
+}
 
 func fixture(t *testing.T) (*sample.Config, []byte) {
 	t.Helper()
@@ -149,3 +154,69 @@ func TestOutOfRetentionRemainsOwned(t *testing.T) {
 		t.Fatal(a.Stats())
 	}
 }
+func TestMultiAssetHistoryIntakeAndMapping(t *testing.T) {
+	secondPath := t.TempDir() + "/oven-01.metadata.json"
+	secondMeta := []byte(`{
+  "schema_version": "1.0",
+  "message_id": "019a1234-5678-7000-8000-000000000020",
+  "asset_id": "urn:openump:acme:berlin:oven-01",
+  "metadata_revision": 1,
+  "published_at": "2026-10-13T13:00:00.000Z",
+  "display_name": "Curing Oven",
+  "asset_type": "curing-oven",
+  "hierarchy": {
+    "enterprise": "acme",
+    "site": "berlin",
+    "area": "heat-treat",
+    "line": "line-02",
+    "asset": "oven-01"
+  },
+  "acquisition": {
+    "gateway_id": "gateway-oven-01",
+    "protocol": "simulator",
+    "expected_status_interval_ms": 1000
+  },
+  "measurements": {
+    "chamber_pressure": {
+      "display_name": "Chamber pressure",
+      "type": "number",
+      "unit": "kPa",
+      "expected_interval_ms": 1000,
+      "valid_range": {
+        "minimum": 80,
+        "maximum": 250
+      }
+    }
+  },
+  "relationships": []
+}`)
+	if err := writeTestFile(secondPath, secondMeta); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := sample.LoadContext("../..", "../../examples/site/metadata.json,"+secondPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	a, err := Open(cfg, t.TempDir()+"/intake")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer a.Close()
+	assets := cfg.Assets()
+	if len(assets) != 2 {
+		t.Fatalf("expected 2 assets, got %d", len(assets))
+	}
+	for _, asset := range assets {
+		obs, err := asset.Observation("normal", 1, sample.UUID(), time.Now().UTC().Add(-time.Second))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if state, err := a.Intake(asset.Prefix+"telemetry", obs); err != nil || state != "accepted_synced" {
+			t.Fatalf("intake failed for %s: %v (%s)", asset.Prefix, err, state)
+		}
+	}
+	if a.Stats()["admitted"].(uint64) != 2 {
+		t.Fatalf("expected 2 admitted records, got %v", a.Stats())
+	}
+}
+

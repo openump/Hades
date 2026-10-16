@@ -14,9 +14,17 @@ import (
 type Reader struct {
 	Client    *client.Client
 	Namespace uint16
+	Signals   []Signal
 }
 
 func Dial(ctx context.Context, endpoint, pki, identity string) (*Reader, error) {
+	return DialWithSignals(ctx, endpoint, pki, identity, Signals[:])
+}
+
+func DialWithSignals(ctx context.Context, endpoint, pki, identity string, signals []Signal) (*Reader, error) {
+	if len(signals) == 0 {
+		signals = Signals[:]
+	}
 	if err := ValidateEndpoint(endpoint); err != nil {
 		return nil, err
 	}
@@ -64,23 +72,32 @@ func Dial(ctx context.Context, endpoint, pki, identity string) (*Reader, error) 
 	if ok {
 		for index, uri := range namespaces {
 			if uri == NamespaceURI {
-				return &Reader{c, uint16(index)}, nil
+				return &Reader{Client: c, Namespace: uint16(index), Signals: append([]Signal(nil), signals...)}, nil
 			}
 		}
 	}
 	c.Abort(context.Background())
 	return nil, fmt.Errorf("approved namespace unavailable")
 }
+
+func (r *Reader) activeSignals() []Signal {
+	if len(r.Signals) == 0 {
+		return Signals[:]
+	}
+	return r.Signals
+}
+
 func (r *Reader) Read(ctx context.Context) ([]ua.DataValue, error) {
-	nodes := make([]ua.ReadValueID, 0, len(Signals))
-	for _, signal := range Signals {
+	sigs := r.activeSignals()
+	nodes := make([]ua.ReadValueID, 0, len(sigs))
+	for _, signal := range sigs {
 		nodes = append(nodes, ua.ReadValueID{NodeID: ua.NodeIDString{NamespaceIndex: r.Namespace, ID: signal.Node}, AttributeID: ua.AttributeIDValue})
 	}
 	response, err := r.Client.Read(ctx, &ua.ReadRequest{MaxAge: 0, TimestampsToReturn: ua.TimestampsToReturnBoth, NodesToRead: nodes})
 	if err != nil {
 		return nil, err
 	}
-	if len(response.Results) != len(Signals) {
+	if len(response.Results) != len(sigs) {
 		return nil, fmt.Errorf("unexpected read result cardinality")
 	}
 	return response.Results, nil

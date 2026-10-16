@@ -141,7 +141,8 @@ func identity(p map[string]any) string {
 	return p["asset_id"].(string) + "/" + p["message_id"].(string)
 }
 func (a *Adapter) validate(topic string, raw []byte) (map[string]any, error) {
-	if topic != a.cfg.Prefix+"telemetry" {
+	assetCfg, kind, err := a.cfg.ResolveTopic(topic)
+	if err != nil || kind != "telemetry" {
 		return nil, fmt.Errorf("unexpected telemetry topic")
 	}
 	p, err := a.cfg.Validator.Validate("telemetry", raw)
@@ -151,7 +152,7 @@ func (a *Adapter) validate(topic string, raw []byte) (map[string]any, error) {
 	if err = a.cfg.Registry.ValidateTopic(topic, p["asset_id"].(string)); err != nil {
 		return nil, err
 	}
-	if err = contracts.ValidateContext(p, a.cfg.Metadata); err != nil {
+	if err = contracts.ValidateContext(p, assetCfg.Metadata); err != nil {
 		return nil, err
 	}
 	return p, nil
@@ -394,8 +395,19 @@ func (a *Adapter) Close() error {
 func (a *Adapter) Resume(id string) error {
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	key := a.cfg.Metadata["asset_id"].(string) + "/" + id
+	key := id
 	r, exists := a.records[key]
+	if !exists {
+		for _, asset := range a.cfg.Assets() {
+			candidate := asset.Metadata["asset_id"].(string) + "/" + id
+			if rec, ok := a.records[candidate]; ok {
+				key = candidate
+				r = rec
+				exists = true
+				break
+			}
+		}
+	}
 	if !exists || r.State != "suspended" {
 		return fmt.Errorf("message is not suspended")
 	}

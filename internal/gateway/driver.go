@@ -22,9 +22,20 @@ func (b *boundedOutput) Write(p []byte) (int, error) {
 	return b.Buffer.Write(p)
 }
 
-type Driver struct{ Binary, Config string }
+type Driver struct {
+	Binary, Config string
+	Profile        Profile
+}
 
 func OpenDriver(ctx context.Context, binary, endpoint string) (*Driver, error) {
+	return OpenDriverForProfile(ctx, binary, endpoint, DefaultLabProfile())
+}
+
+func OpenDriverForProfile(ctx context.Context, binary, endpoint string, profile Profile) (*Driver, error) {
+	p, err := validateProfile(profile)
+	if err != nil {
+		return nil, err
+	}
 	if binary == "" {
 		return nil, fmt.Errorf("explicit Telegraf binary required")
 	}
@@ -40,7 +51,7 @@ func OpenDriver(ctx context.Context, binary, endpoint string) (*Driver, error) {
 	if !strings.HasPrefix(strings.TrimSpace(output.String()), "Telegraf 1.40.2 ") {
 		return nil, fmt.Errorf("driver must be pinned Telegraf 1.40.2")
 	}
-	config, err := DriverConfig(endpoint)
+	config, err := DriverConfigForProfile(endpoint, p)
 	if err != nil {
 		return nil, err
 	}
@@ -57,9 +68,17 @@ func OpenDriver(ctx context.Context, binary, endpoint string) (*Driver, error) {
 		os.Remove(file.Name())
 		return nil, err
 	}
-	return &Driver{binary, file.Name()}, nil
+	return &Driver{Binary: binary, Config: file.Name(), Profile: p}, nil
 }
-func (d *Driver) Read(ctx context.Context) (*uint16, time.Time, string) {
+
+func (d *Driver) activeProfile() Profile {
+	if len(d.Profile.Registers) == 0 {
+		return DefaultLabProfile()
+	}
+	return d.Profile
+}
+
+func (d *Driver) ReadMap(ctx context.Context) (map[string]uint16, time.Time, string) {
 	attempt, done := context.WithTimeout(ctx, 2*time.Second)
 	defer done()
 	cmd := exec.CommandContext(attempt, d.Binary, "--config", d.Config, "--once", "--input-filter", "modbus", "--output-filter", "file")
@@ -74,10 +93,35 @@ func (d *Driver) Read(ctx context.Context) (*uint16, time.Time, string) {
 		}
 		return nil, time.Now().UTC(), reason
 	}
-	n, stamp, err := DecodeReading(bytes.TrimSpace(output.Bytes()))
+	values, stamp, err := DecodeReadingsForProfile(bytes.TrimSpace(output.Bytes()), d.activeProfile())
 	if err != nil {
 		return nil, time.Now().UTC(), "invalid-or-missing-reading"
 	}
-	return &n, stamp, ""
+	return values, stamp, ""
 }
+
+func (d *Driver) Read(ctx context.Context) (*uint16, time.Time, string) {
+	values, stamp, reason := d.ReadMap(ctx)
+	if values == nil {
+		return nil, stamp, reason
+	}
+	p := d.activeProfile()
+	v := values[p.Registers[0].Name]
+	return &v, stamp, ""
+}
+
+func (d *Driver) Poll(ctx context.Context) (map[string]Reading, time.Time, string) {
+	values, stamp, reason := d.ReadMap(ctx)
+	p := d.activeProfile()
+	out := make(map[string]Reading, len(p.Registers))
+	for _, reg := range p.Registers {
+		if v, ok := values[reg.Name]; ok && values != nil {
+			out[reg.Name] = Reading{Value: v, Unit: reg.Unit, Quality: "good"}
+		} else {
+			out[reg.Name] = Reading{Value: nil, Unit: reg.Unit, Quality: "bad", Reason: reason}
+		}
+	}
+	return out, stamp, reason
+}
+
 func (d *Driver) Close() error { return os.Remove(d.Config) }

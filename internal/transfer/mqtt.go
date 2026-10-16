@@ -8,6 +8,7 @@ import (
 	"github.com/openump/Hades/internal/storage"
 	"log"
 	"net/url"
+	"strings"
 	"sync"
 	"time"
 
@@ -46,9 +47,12 @@ func (a *Queue) Subscribe(ctx context.Context, address string, diagnostic func(s
 		default:
 		}
 	}
-	topic := a.cfg.Prefix + "telemetry"
-	topics := []string{topic, a.cfg.Prefix + "metadata", a.cfg.Prefix + "status"}
-	hash := sha256.Sum256([]byte(topic))
+	assets := a.cfg.Assets()
+	topics := make([]string, 0, len(assets)*3)
+	for _, asset := range assets {
+		topics = append(topics, asset.Prefix+"telemetry", asset.Prefix+"metadata", asset.Prefix+"status")
+	}
+	hash := sha256.Sum256([]byte(a.cfg.Prefix + "telemetry"))
 	id := fmt.Sprintf("hades-transfer-%x", hash[:12])
 	options := autopaho.ClientConfig{TlsCfg: a.cfg.TLS, ServerUrls: []*url.URL{u}, KeepAlive: 10, SessionExpiryInterval: 86400, CleanStartOnInitialConnection: false, ConnectTimeout: 5 * time.Second, ReconnectBackoff: func(attempt int) time.Duration {
 		return delivery.Delay(attempt)
@@ -68,12 +72,12 @@ func (a *Queue) Subscribe(ctx context.Context, address string, diagnostic func(s
 		go func() {
 			subctx, done := context.WithTimeout(owner, 5*time.Second)
 			defer done()
-			subscriptions := make([]paho.SubscribeOptions, 0, 3)
+			subscriptions := make([]paho.SubscribeOptions, 0, len(topics))
 			for _, topic := range topics {
 				subscriptions = append(subscriptions, paho.SubscribeOptions{Topic: topic, QoS: 1, RetainAsPublished: true})
 			}
 			ack, err := m.Subscribe(subctx, &paho.Subscribe{Subscriptions: subscriptions})
-			if err == nil && len(ack.Reasons) != 3 {
+			if err == nil && len(ack.Reasons) != len(subscriptions) {
 				err = fmt.Errorf("transfer subscription rejected")
 			}
 			if err == nil {
@@ -89,7 +93,7 @@ func (a *Queue) Subscribe(ctx context.Context, address string, diagnostic func(s
 	options.OnPublishReceived = []func(paho.PublishReceived) (bool, error){func(event paho.PublishReceived) (bool, error) {
 		packet := event.Packet
 		var err error
-		if packet.Retain && packet.Topic == topic {
+		if packet.Retain && strings.HasSuffix(packet.Topic, "/telemetry") {
 			err = fmt.Errorf("retained telemetry rejected")
 		} else {
 			err = a.Intake(packet.Topic, packet.Payload)

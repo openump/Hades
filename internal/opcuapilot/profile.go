@@ -19,12 +19,15 @@ const Policy = ua.SecurityPolicyURIAes256Sha256RsaPss
 type Signal struct {
 	Name, Node, Unit string
 	Type             ua.NodeID
+	Min, Max         *float64
 }
 
+func floatPtr(v float64) *float64 { return &v }
+
 var Signals = [...]Signal{
-	{"motor_temperature", "Temperature", "Cel", ua.DataTypeIDDouble},
-	{"cycle_counter", "CycleCounter", "1", ua.DataTypeIDUInt32},
-	{"machine_state", "MachineState", "1", ua.DataTypeIDUInt16},
+	{Name: "motor_temperature", Node: "Temperature", Unit: "Cel", Type: ua.DataTypeIDDouble, Min: floatPtr(-40), Max: floatPtr(150)},
+	{Name: "cycle_counter", Node: "CycleCounter", Unit: "1", Type: ua.DataTypeIDUInt32},
+	{Name: "machine_state", Node: "MachineState", Unit: "1", Type: ua.DataTypeIDUInt16, Min: floatPtr(0), Max: floatPtr(2)},
 }
 
 func ValidateEndpoint(endpoint string) error {
@@ -38,6 +41,19 @@ func ValidateEndpoint(endpoint string) error {
 		return fmt.Errorf("software pilot requires literal loopback opc.tcp://IP:port")
 	}
 	return nil
+}
+
+func inBounds(v float64, min, max *float64) bool {
+	if math.IsNaN(v) || math.IsInf(v, 0) {
+		return false
+	}
+	if min != nil && v < *min {
+		return false
+	}
+	if max != nil && v > *max {
+		return false
+	}
+	return true
 }
 
 // One envelope per node preserves that node's timestamp. OPC UA source time wins,
@@ -72,19 +88,47 @@ func MapValue(signal Signal, value ua.DataValue, now time.Time) (map[string]any,
 	if uint32(value.StatusCode)&0x80000000 != 0 {
 		return reading, stamp, origin, ext
 	}
+	minBound, maxBound := signal.Min, signal.Max
+	if minBound == nil && maxBound == nil {
+		switch signal.Name {
+		case "motor_temperature":
+			minBound, maxBound = floatPtr(-40), floatPtr(150)
+		case "machine_state":
+			minBound, maxBound = floatPtr(0), floatPtr(2)
+		}
+	}
 	var number any
-	switch signal.Name {
-	case "motor_temperature":
-		if n, ok := value.Value.(float64); ok && !math.IsNaN(n) && !math.IsInf(n, 0) && n >= -40 && n <= 150 {
+	switch signal.Type {
+	case ua.DataTypeIDDouble:
+		if n, ok := value.Value.(float64); ok && inBounds(n, minBound, maxBound) {
 			number = n
 		}
-	case "cycle_counter":
-		if n, ok := value.Value.(uint32); ok {
+	case ua.DataTypeIDFloat:
+		if n, ok := value.Value.(float32); ok && inBounds(float64(n), minBound, maxBound) {
+			number = float64(n)
+		}
+	case ua.DataTypeIDUInt32:
+		if n, ok := value.Value.(uint32); ok && inBounds(float64(n), minBound, maxBound) {
 			number = n
 		}
-	case "machine_state":
-		if n, ok := value.Value.(uint16); ok && n <= 2 {
+	case ua.DataTypeIDUInt16:
+		if n, ok := value.Value.(uint16); ok && inBounds(float64(n), minBound, maxBound) {
 			number = n
+		}
+	default:
+		switch signal.Name {
+		case "motor_temperature":
+			if n, ok := value.Value.(float64); ok && inBounds(n, minBound, maxBound) {
+				number = n
+			}
+		case "cycle_counter":
+			if n, ok := value.Value.(uint32); ok && inBounds(float64(n), minBound, maxBound) {
+				number = n
+			}
+		case "machine_state":
+			if n, ok := value.Value.(uint16); ok && inBounds(float64(n), minBound, maxBound) {
+				number = n
+			}
 		}
 	}
 	if number == nil {
