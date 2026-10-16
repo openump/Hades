@@ -1,6 +1,7 @@
 package supervisor
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"sync"
@@ -103,4 +104,23 @@ func (c *integrity) check(force bool) (err error) {
 		c.files[path] = verifiedArtifact{after, verified.digest}
 	}
 	return nil
+}
+
+// A slow filesystem must not prevent the supervision loop forwarding shutdown.
+// One worker bounds concurrent sweeps; an in-progress OS read may finish after
+// cancellation, but no new sweep starts once the lifecycle context is canceled.
+func (c *integrity) sweep(ctx context.Context, interval time.Duration) {
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			if ctx.Err() != nil {
+				return
+			}
+			c.check(true)
+		}
+	}
 }

@@ -149,6 +149,9 @@ func (o *output) Write(raw []byte) (int, error) {
 	return n, nil
 }
 func Run(ctx context.Context, path, expected string) error {
+	return run(ctx, path, expected, 60*time.Second, hashFile)
+}
+func run(ctx context.Context, path, expected string, interval time.Duration, hash func(string) (string, error)) error {
 	cfg, err := Load(path)
 	if err != nil {
 		return err
@@ -156,7 +159,7 @@ func Run(ctx context.Context, path, expected string) error {
 	if Digest(cfg) != expected {
 		return fmt.Errorf("service definition digest mismatch")
 	}
-	integrity, err := newIntegrity(cfg, hashFile)
+	integrity, err := newIntegrity(cfg, hash)
 	if err != nil {
 		return err
 	}
@@ -234,8 +237,9 @@ func Run(ctx context.Context, path, expected string) error {
 	served := make(chan error, 1)
 	go func() { served <- server.Serve(listener) }()
 	defer server.Close()
-	integrityTick := time.NewTicker(60 * time.Second)
-	defer integrityTick.Stop()
+	sweepctx, stopSweep := context.WithCancel(ctx)
+	defer stopSweep()
+	go integrity.sweep(sweepctx, interval)
 	startup := time.NewTimer(30 * time.Second)
 	defer startup.Stop()
 	stopChild := func() {
@@ -265,8 +269,6 @@ func Run(ctx context.Context, path, expected string) error {
 		case err = <-served:
 			stopChild()
 			return err
-		case <-integrityTick.C:
-			integrity.check(true) // Latch failure for all subsequent status probes.
 		case <-startup.C:
 			out.mu.Lock()
 			ready := state.Ready

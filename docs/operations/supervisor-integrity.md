@@ -13,9 +13,11 @@ ownership fail even if the file content is unchanged. Content tampering, missing
 files and symlinks produce HTTP 409; `hades-service status` reports the service as
 unhealthy. A changed file cannot establish a new trusted digest.
 
-A 60-second supervisor ticker also rehashes all reviewed artifacts even when
+A separate worker with a 60-second ticker also rehashes all reviewed artifacts even when
 metadata appears unchanged. The cache mutex serializes probes and these sweeps;
-a probe coinciding with a full sweep may wait for it. Ordinary unchanged probes
+a probe coinciding with a full sweep may wait for it. A slow sweep does not block the child supervision/shutdown loop. An OS read
+already in progress can finish after cancellation; at most one sweep runs.
+Ordinary unchanged probes
 perform no binary/config payload reads. Startup and standalone `Validate` always
 perform full verification; there is no global or cross-process cache.
 

@@ -121,3 +121,61 @@ func TestChangedArtifactAndUnsafeUnitRejected(t *testing.T) {
 		t.Fatal("unit injection accepted")
 	}
 }
+
+func TestSlowIntegritySweepDoesNotBlockShutdown(t *testing.T) {
+	binary, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	digest, err := hashFile(binary)
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir, err := os.MkdirTemp("/tmp", "hsvc-sweep-")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(dir)
+	cfg := Config{Revision: "test-sweep", Binary: binary, BinarySHA256: digest, Args: []string{"-test.run=^TestChild$", "hades-child"}, Directory: dir, State: dir + "/state", Ready: "child-ready", LogBytes: 512}
+	raw, err := json.Marshal(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	path := dir + "/service.json"
+	if err = os.WriteFile(path, raw, 0600); err != nil {
+		t.Fatal(err)
+	}
+	entered, release, hashed := make(chan struct{}), make(chan struct{}), make(chan struct{})
+	calls := 0
+	hash := func(path string) (string, error) {
+		calls++
+		if calls == 2 {
+			close(entered)
+			<-release
+			defer close(hashed)
+		}
+		return hashFile(path)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	done := make(chan error, 1)
+	go func() { done <- run(ctx, path, Digest(cfg), 10*time.Millisecond, hash) }()
+	select {
+	case <-entered:
+	case <-time.After(5 * time.Second):
+		t.Fatal("sweep did not start")
+	}
+	cancel()
+	select {
+	case err = <-done:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(2 * time.Second):
+		close(release)
+		<-hashed
+		t.Fatal("slow sweep blocked shutdown")
+	}
+	close(release)
+	<-hashed
+}
