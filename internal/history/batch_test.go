@@ -3,15 +3,15 @@ package history
 import (
 	"bytes"
 	"context"
-	"crypto/sha256"
 	"encoding/json"
 	"fmt"
-	"os"
-	"path/filepath"
+	"reflect"
 	"testing"
 	"time"
+	"unsafe"
 
 	"github.com/openump/Hades/internal/sample"
+	"github.com/openump/Hades/internal/storage"
 )
 
 func TestBatchBoundsFIFOAndAmbiguousReplay(t *testing.T) {
@@ -156,25 +156,22 @@ func TestAcceptedBatchSurvivesPartialLocalRetirement(t *testing.T) {
 			t.Fatal(e)
 		}
 	}
-	// Make only the second atomic retirement rename fail, after remote acceptance.
-	blocked := filepath.Join(a.store.Dir, fmt.Sprintf("%x.json", sha256.Sum256([]byte(ids[1]))))
+	// Make only the second atomic retirement write exceed the remaining WAL budget.
+	retired, err := a.loadRecord(ids[0], a.records[ids[0]])
+	if err != nil {
+		t.Fatal(err)
+	}
+	retired.State = "api_accepted"
+	retired.Retired = time.Now().UTC()
+	encoded, _ := json.Marshal(retired)
+	storeMaxBytes := reflect.ValueOf(a.store).Elem().FieldByName("maxBytes")
+	frameBytes := len(ids[0]) + len(encoded) + 28 + storage.Overhead
+	reflect.NewAt(storeMaxBytes.Type(), unsafe.Pointer(storeMaxBytes.UnsafeAddr())).Elem().SetInt(int64(a.store.Bytes + frameBytes + 1))
 	err = a.Drain(context.Background(), func(context.Context, []byte) error {
-		if e := os.Rename(blocked, blocked+".saved"); e != nil {
-			t.Fatal(e)
-		}
-		if e := os.Mkdir(blocked, 0700); e != nil {
-			t.Fatal(e)
-		}
 		return nil
 	})
 	if err == nil || a.records[ids[0]].State != "api_accepted" || len(a.pending) != 2 {
 		t.Fatal("partial retirement lost ownership", err, a.Stats())
-	}
-	if e := os.Remove(blocked); e != nil {
-		t.Fatal(e)
-	}
-	if e := os.Rename(blocked+".saved", blocked); e != nil {
-		t.Fatal(e)
 	}
 	dir := a.store.Dir
 	a.Close()

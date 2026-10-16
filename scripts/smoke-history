@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
 """Fixture -> Go/Bento normalizer -> MQTT -> synced Go adapter -> VictoriaMetrics."""
-import datetime, json, os, pathlib, subprocess, tempfile, time, urllib.request, urllib.parse
+import datetime, json, os, pathlib, subprocess, sys, tempfile, time, urllib.request, urllib.parse
 root=pathlib.Path(__file__).resolve().parents[1];os.chdir(root)
+sys.path.insert(0, str(root))
+from scripts.wal_store import load_values
 for tool in ('hades-normalizer','hades-history','hades-consumer'):
  subprocess.run(['go','build','-o',f'artifacts/{tool}',f'./cmd/{tool}'],check=True)
 port=os.environ.get('HADES_MQTT_PORT','1883');vmport=os.environ.get('HADES_VM_PORT','8428');base=f'http://127.0.0.1:{vmport}'
@@ -40,7 +42,7 @@ with tempfile.TemporaryDirectory(prefix='hades-history-') as scratch:
   history=subprocess.Popen(['artifacts/hades-history','-broker',f'mqtt://127.0.0.1:{port}','-historian',base,'-intake',scratch+'/intake','-quarantine',scratch+'/quarantine'],stdout=stdout,stderr=logs);children.append(history)
   wait_for(lambda:'"type":"history_ready"' in pathlib.Path(stdout.name).read_text(),'history subscription')
  def records():
-  return [json.load(open(p))['value'] for p in pathlib.Path(scratch+'/intake').glob('*.json')]
+  return load_values(scratch+'/intake')
  try:
   start_vm();start_history()
   if interop:
@@ -108,7 +110,7 @@ with tempfile.TemporaryDirectory(prefix='hades-history-') as scratch:
    assert {x['quality'] for x in left}=={'good','uncertain','bad'}
    print('interoperability: independent Go/Paho and Python/Mosquitto agree on identity/value/unit/time/quality, duplicate and stale fixtures')
   conflict=json.loads(normalized);conflict['ingested_at']='2026-10-14T12:00:01.000Z';publish(json.dumps(conflict).encode())
-  wait_for(lambda:len(list(pathlib.Path(scratch+'/quarantine').glob('*.json')))==1,'conflict quarantine')
+  wait_for(lambda:len(load_values(scratch+'/quarantine'))==1,'conflict quarantine')
   assert len(records())==(4 if interop else 3)
   selector='hades_observation_value{asset_id="urn:openump:acme:berlin:press-04",measurement="motor_temperature",unit="Cel",metadata_revision="1"}'
   expected_ms=int(round(datetime.datetime.fromisoformat(payloads[0]['observed_at'].replace('Z','+00:00')).timestamp()*1000))

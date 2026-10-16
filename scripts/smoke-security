@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
 """Positive/negative mTLS, MQTT ACL, HTTP role and root-rotation checks."""
-import datetime,hashlib,json,os,pathlib,ssl,subprocess,tempfile,time,urllib.request,urllib.error,urllib.parse
+import datetime,hashlib,json,os,pathlib,ssl,subprocess,sys,tempfile,time,urllib.request,urllib.error,urllib.parse
 import socket,socketserver,struct,threading,uuid
 root=pathlib.Path(__file__).resolve().parents[1];os.chdir(root)
+sys.path.insert(0, str(root))
+from scripts.wal_store import load_values
 ot_lab=os.environ.get('HADES_TEST_OT_GATEWAY')=='1'
 opc_lab=os.environ.get('HADES_TEST_OPCUA')=='1'
 expected_count=30 if opc_lab else 4 if ot_lab else 1
@@ -191,19 +193,19 @@ with tempfile.TemporaryDirectory(prefix='hades-security-') as scratch:
    fixture['observed_at']=(datetime.datetime.now(datetime.timezone.utc)-datetime.timedelta(seconds=1)).isoformat(timespec='milliseconds').replace('+00:00','Z');fixture['ingested_at']=fixture['observed_at']
    http('/observations','gateway-press-04',202,data=json.dumps(fixture).encode(),port='18083')
   assert consumer.wait(timeout=40)==0,pathlib.Path(logs.name).read_text()[-4000:]
-  def accepted():return any(json.load(open(p))['value']['state']=='api_accepted' for p in pathlib.Path(scratch+'/intake').glob('*.json'))
+  def accepted():return any(r['state']=='api_accepted' for r in load_values(scratch+'/intake'))
   wait(accepted,'TLS synced history and API acceptance')
-  def transferred():return [json.load(open(p))['value']['record'] for p in pathlib.Path(scratch+'/receiver').glob('*.json') if json.load(open(p))['value']['record']['topic'].endswith('/telemetry')]
-  wait(lambda:len(transferred())==expected_count and not list(pathlib.Path(scratch+'/transfer').glob('*.json')),'TLS durable transfer receipt retirement')
-  local_payloads={json.load(open(p))['value']['payload'] for p in pathlib.Path(scratch+'/intake').glob('*.json')}
+  def transferred():return [r['record'] for r in load_values(scratch+'/receiver') if r['record']['topic'].endswith('/telemetry')]
+  wait(lambda:len(transferred())==expected_count and not load_values(scratch+'/transfer'),'TLS durable transfer receipt retirement')
+  local_payloads={r['payload'] for r in load_values(scratch+'/intake')}
   assert {r['payload'] for r in transferred()}==local_payloads
   transfer.terminate();assert transfer.wait(timeout=10)==0
   print('transfer: scoped mTLS broker-to-receiver path preserved exact payloads and retired only after durable receipts')
   if opc_lab:
-   wait(lambda:len(list(pathlib.Path(scratch+'/intake').glob('*.json')))==30 and all(json.load(open(p))['value']['state']=='api_accepted' for p in pathlib.Path(scratch+'/intake').glob('*.json')),'OPC UA history completion')
-   opc_scenario.verify([json.load(open(p))['value'] for p in pathlib.Path(scratch+'/intake').glob('*.json')],transferred(),consumerout.name)
+   wait(lambda:len(load_values(scratch+'/intake'))==30 and all(r['state']=='api_accepted' for r in load_values(scratch+'/intake')),'OPC UA history completion')
+   opc_scenario.verify(load_values(scratch+'/intake'),transferred(),consumerout.name)
   if ot_lab:
-   wait(lambda:len(list(pathlib.Path(scratch+'/intake').glob('*.json')))==4 and all(json.load(open(p))['value']['state']=='api_accepted' for p in pathlib.Path(scratch+'/intake').glob('*.json')),'lab history retirement')
+   wait(lambda:len(load_values(scratch+'/intake'))==4 and all(r['state']=='api_accepted' for r in load_values(scratch+'/intake')),'lab history retirement')
    received=[json.loads(line) for line in pathlib.Path(consumerout.name).read_text().splitlines() if json.loads(line)['type']=='telemetry']
    assert [e['value'] for e in received]==[67.2,None,None,67.2],received
    assert [e['message_id'] for e in received]==[e['message_id'] for e in events]

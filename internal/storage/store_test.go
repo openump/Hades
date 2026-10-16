@@ -8,11 +8,11 @@ import (
 
 func TestSyncedBoundsAndExclusiveRestart(t *testing.T) {
 	dir := t.TempDir() + "/store"
-	s, err := Open(dir, 2, 10000, 0)
+	s, err := Open(dir, 2, 20000, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err = Open(dir, 2, 10000, 0); err == nil {
+	if _, err = Open(dir, 2, 20000, 0); err == nil {
 		t.Fatal("second owner accepted")
 	}
 	if err = s.Put("one", json.RawMessage(`{"value":1}`)); err != nil {
@@ -25,7 +25,7 @@ func TestSyncedBoundsAndExclusiveRestart(t *testing.T) {
 		t.Fatal("record limit ignored")
 	}
 	s.Close()
-	s, err = Open(dir, 2, 10000, 0)
+	s, err = Open(dir, 2, 20000, 0)
 	if err != nil {
 		t.Fatal(err)
 	}

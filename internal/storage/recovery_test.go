@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"strings"
 	"testing"
 	"time"
 )
@@ -32,7 +33,7 @@ func TestRecoveryStoreChild(t *testing.T) {
 }
 func TestRecoveryStoreSIGKILLAndReserveRefusal(t *testing.T) {
 	dir := t.TempDir() + "/intake"
-	cmd := exec.Command(os.Args[0], "-test.run=^TestRecoveryStoreChild$")
+	cmd := exec.Command(os.Args[0], "-test.v", "-test.run=^TestRecoveryStoreChild$")
 	cmd.Env = append(os.Environ(), "HADES_STORE_CHILD="+dir)
 	output, err := cmd.StdoutPipe()
 	if err != nil {
@@ -46,8 +47,12 @@ func TestRecoveryStoreSIGKILLAndReserveRefusal(t *testing.T) {
 	ready := make(chan string, 1)
 	go func() {
 		scanner := bufio.NewScanner(output)
-		if scanner.Scan() {
-			ready <- scanner.Text()
+		for scanner.Scan() {
+			line := scanner.Text()
+			if line == "synced-id" {
+				ready <- line
+				return
+			}
 		}
 	}()
 	select {
@@ -65,7 +70,8 @@ func TestRecoveryStoreSIGKILLAndReserveRefusal(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer s.Close()
-	if string(s.Records["synced-id"]) != `{"original":true}` {
+	raw, ok, err := s.Read("synced-id")
+	if err != nil || !ok || string(raw) != `{"original":true}` {
 		t.Fatal(s.Records)
 	}
 	s.reserve = ^uint64(0) - 100000
@@ -101,17 +107,18 @@ func TestRecoveryCapacityAndDiagnosticEviction(t *testing.T) {
 	t.Log(`RECOVERY {"scenario":"bounded-quarantine","produced_records":4,"retained_records":2,"evicted_records":2}`)
 }
 func TestRecoveryCapacityRefusesNewest(t *testing.T) {
-	s, err := Open(t.TempDir()+"/intake", 2, 20000, 0)
+	s, err := Open(t.TempDir()+"/intake", 2, 30000, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer s.Close()
+	payload := json.RawMessage(fmt.Sprintf("%q", strings.Repeat("x", 8192)))
 	for _, id := range []string{"owned-1", "owned-2"} {
-		if err = s.Put(id, json.RawMessage(`{}`)); err != nil {
+		if err = s.Put(id, payload); err != nil {
 			t.Fatal(err)
 		}
 	}
-	if err = s.Put("refused-3", json.RawMessage(`{}`)); !errors.Is(err, ErrFull) {
+	if err = s.Put("refused-3", payload); !errors.Is(err, ErrFull) {
 		t.Fatal(err)
 	}
 	if len(s.Records) != 2 {

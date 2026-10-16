@@ -69,7 +69,10 @@ func Open(dir string, run Runner) (*Manager, error) {
 }
 func (m *Manager) Close() error { return m.store.Close() }
 func (m *Manager) Active() (Manifest, error) {
-	raw, ok := m.store.Records["active"]
+	raw, ok, err := m.store.Read("active")
+	if err != nil {
+		return Manifest{}, err
+	}
 	if !ok {
 		return Manifest{}, fmt.Errorf("no committed active revision")
 	}

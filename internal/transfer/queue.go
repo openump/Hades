@@ -58,6 +58,49 @@ type Queue struct {
 	admitted, delivered, duplicates, conflicts, drops, droppedBytes, retries, receiptErrors, storageErrors uint64
 }
 
+func (q *Queue) loadRecord(id string, cached Record) (Record, error) {
+	if len(cached.Payload) != 0 {
+		return cached, nil
+	}
+	raw, ok, err := q.store.Read(id)
+	if err != nil || !ok {
+		if err == nil {
+			err = fmt.Errorf("corrupt transfer record")
+		}
+		return Record{}, err
+	}
+	var full Record
+	if err = json.Unmarshal(raw, &full); err != nil {
+		return Record{}, err
+	}
+	return full, nil
+}
+
+func mergeRecord(base, overlay Record) Record {
+	if overlay.Topic != "" {
+		base.Topic = overlay.Topic
+	}
+	if len(overlay.Payload) != 0 {
+		base.Payload = overlay.Payload
+	}
+	if overlay.ID != "" {
+		base.ID = overlay.ID
+	}
+	if overlay.Digest != "" {
+		base.Digest = overlay.Digest
+	}
+	if !overlay.Accepted.IsZero() {
+		base.Accepted = overlay.Accepted
+	}
+	if overlay.State != "" {
+		base.State = overlay.State
+	}
+	if overlay.Reason != "" {
+		base.Reason = overlay.Reason
+	}
+	return base
+}
+
 func Digest(topic string, raw []byte) string {
 	return fmt.Sprintf("%x", sha256.Sum256(append([]byte(topic+"\x00"), raw...)))
 }
@@ -99,7 +142,15 @@ func Open(cfg *sample.Config, dir string, maxRecords, maxBytes int) (*Queue, err
 		return nil, err
 	}
 	q := &Queue{now: time.Now, cfg: cfg, store: s, records: map[string]Record{}}
-	for id, raw := range s.Records {
+	for id := range s.Records {
+		raw, ok, err := s.Read(id)
+		if err != nil || !ok {
+			if err == nil {
+				err = fmt.Errorf("corrupt transfer record")
+			}
+			s.Close()
+			return nil, err
+		}
 		var r Record
 		if err = json.Unmarshal(raw, &r); err == nil {
 			var p map[string]any
@@ -112,6 +163,7 @@ func Open(cfg *sample.Config, dir string, maxRecords, maxBytes int) (*Queue, err
 			s.Close()
 			return nil, err
 		}
+		r.Payload = nil
 		q.records[id] = r
 	}
 	return q, nil
@@ -147,17 +199,27 @@ func (q *Queue) Intake(topic string, raw []byte) error {
 		}
 		return &StorageError{err}
 	}
+	r.Payload = nil
 	q.records[id] = r
 	q.admitted++
 	return nil
 }
 func (q *Queue) change(r Record) error {
-	raw, _ := json.Marshal(r)
+	full := r
+	if len(full.Payload) == 0 {
+		stored, err := q.loadRecord(r.ID, r)
+		if err != nil {
+			return err
+		}
+		full = mergeRecord(stored, r)
+	}
+	raw, _ := json.Marshal(full)
 	if err := q.store.Put(r.ID, raw); err != nil {
 		q.storageErrors++
 		return err
 	}
-	q.records[r.ID] = r
+	full.Payload = nil
+	q.records[r.ID] = full
 	return nil
 }
 
@@ -200,12 +262,16 @@ func (q *Queue) Drain(ctx context.Context, send func(context.Context, Record) er
 	for _, id := range ids {
 		q.mu.Lock()
 		r := q.records[id]
+		full, err := q.loadRecord(id, r)
 		q.mu.Unlock()
+		if err != nil {
+			return err
+		}
 		if q.now().Sub(r.Accepted) > 72*time.Hour {
 			q.mu.Lock()
-			r.State = "suspended"
-			r.Reason = "replay_window_requires_reconciliation"
-			err := q.change(r)
+			full.State = "suspended"
+			full.Reason = "replay_window_requires_reconciliation"
+			err := q.change(full)
 			q.mu.Unlock()
 			if err != nil {
 				return err
@@ -215,7 +281,7 @@ func (q *Queue) Drain(ctx context.Context, send func(context.Context, Record) er
 		if ctx.Err() != nil {
 			return ctx.Err()
 		}
-		err := send(ctx, r)
+		err = send(ctx, full)
 		q.mu.Lock()
 		if err == nil {
 			err = q.store.Delete(id)
@@ -240,9 +306,9 @@ func (q *Queue) Drain(ctx context.Context, send func(context.Context, Record) er
 		}
 		var permanent *PermanentError
 		if errors.As(err, &permanent) {
-			r.State = "suspended"
-			r.Reason = permanent.Error()
-			err = q.change(r)
+			full.State = "suspended"
+			full.Reason = permanent.Error()
+			err = q.change(full)
 			q.mu.Unlock()
 			if err != nil {
 				return err
@@ -279,10 +345,14 @@ func (q *Queue) Resume(id string) error {
 	if !ok || r.State != "suspended" {
 		return fmt.Errorf("no suspended transfer identity")
 	}
-	r.State = "pending"
-	r.Reason = ""
-	r.Accepted = time.Now().UTC()
-	return q.change(r)
+	full, err := q.loadRecord(id, r)
+	if err != nil {
+		return err
+	}
+	full.State = "pending"
+	full.Reason = ""
+	full.Accepted = time.Now().UTC()
+	return q.change(full)
 }
 func (q *Queue) Stats() map[string]any {
 	q.mu.Lock()

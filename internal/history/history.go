@@ -59,13 +59,39 @@ type Adapter struct {
 	retries, duplicates, conflicts, skipped, admitted, accepted uint64
 }
 
+func (a *Adapter) loadRecord(id string, cached Record) (Record, error) {
+	if len(cached.Payload) != 0 {
+		return cached, nil
+	}
+	raw, ok, err := a.store.Read(id)
+	if err != nil || !ok {
+		if err == nil {
+			err = fmt.Errorf("missing intake record")
+		}
+		return Record{}, err
+	}
+	var full Record
+	if err = json.Unmarshal(raw, &full); err != nil {
+		return Record{}, err
+	}
+	return full, nil
+}
+
 func Open(cfg *sample.Config, dir string) (*Adapter, error) {
 	store, err := storage.Open(dir, 100000, 256*1024*1024, 128*1024*1024)
 	if err != nil {
 		return nil, err
 	}
 	a := &Adapter{orderIndex: map[string]*pendingItem{}, batchRecords: 64, batchBytes: 1024 * 1024, cfg: cfg, store: store, records: map[string]Record{}, samples: map[string]string{}, pending: map[string]bool{}}
-	for key, raw := range store.Records {
+	for key := range store.Records {
+		raw, ok, err := store.Read(key)
+		if err != nil || !ok {
+			if err == nil {
+				err = fmt.Errorf("missing intake record")
+			}
+			store.Close()
+			return nil, err
+		}
 		var r Record
 		err = json.Unmarshal(raw, &r)
 		if err != nil || (r.State != "pending" && r.State != "api_accepted" && r.State != "suspended") || r.Accepted.IsZero() || (r.State == "api_accepted" && r.Retired.IsZero()) {
@@ -82,6 +108,7 @@ func Open(cfg *sample.Config, dir string) (*Adapter, error) {
 			store.Close()
 			return nil, fmt.Errorf("intake digest/mapping mismatch")
 		}
+		r.Payload = nil
 		a.records[key] = r
 		if r.State == "pending" {
 			a.enqueuePending(key, r)
@@ -189,6 +216,7 @@ func (a *Adapter) Intake(topic string, raw []byte) (string, error) {
 		}
 		return "", &StorageError{err}
 	}
+	r.Payload = nil
 	a.records[key] = r
 	a.enqueuePending(key, r)
 	for _, sampleKey := range keys {
@@ -246,10 +274,15 @@ func (a *Adapter) Drain(ctx context.Context, write func(context.Context, []byte)
 	for len(a.order) > 0 {
 		id := a.order[0].id
 		r := a.records[id]
+		full, err := a.loadRecord(id, r)
+		if err != nil {
+			a.mu.Unlock()
+			return err
+		}
 		if len(selected) >= a.batchRecords || len(body)+len(r.Lines) > a.batchBytes {
 			break
 		}
-		window := WindowCheck(r.Payload, time.Now())
+		window := WindowCheck(full.Payload, time.Now())
 		if window != nil {
 			if len(selected) > 0 {
 				break
@@ -258,7 +291,7 @@ func (a *Adapter) Drain(ctx context.Context, write func(context.Context, []byte)
 		}
 		removed = append(removed, heap.Pop(&a.order).(*pendingItem))
 		selected = append(selected, id)
-		records = append(records, r)
+		records = append(records, full)
 		body = append(body, r.Lines...)
 		if invalid != nil {
 			break
@@ -312,7 +345,9 @@ func (a *Adapter) Drain(ctx context.Context, write func(context.Context, []byte)
 		encoded, _ := json.Marshal(r)
 		storageErr := a.store.Put(selected[i], encoded)
 		if storageErr == nil {
-			a.records[selected[i]] = r
+			compact := r
+			compact.Payload = nil
+			a.records[selected[i]] = compact
 			a.retirePending(selected[i])
 			if r.State == "api_accepted" {
 				a.accepted++
@@ -364,13 +399,18 @@ func (a *Adapter) Resume(id string) error {
 	if !exists || r.State != "suspended" {
 		return fmt.Errorf("message is not suspended")
 	}
-	r.State = "pending"
-	raw, _ := json.Marshal(r)
+	full, err := a.loadRecord(key, r)
+	if err != nil {
+		return err
+	}
+	full.State = "pending"
+	raw, _ := json.Marshal(full)
 	if err := a.store.Put(key, raw); err != nil {
 		return err
 	}
-	a.records[key] = r
-	a.enqueuePending(key, r)
+	full.Payload = nil
+	a.records[key] = full
+	a.enqueuePending(key, full)
 	return nil
 }
 
