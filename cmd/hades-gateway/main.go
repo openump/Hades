@@ -60,25 +60,43 @@ func run() error {
 	if err != nil {
 		return err
 	}
-	definition, ok := cfg.Metadata["measurements"].(map[string]any)["motor_temperature"].(map[string]any)
-	if !ok || len(cfg.Metadata["measurements"].(map[string]any)) != 1 || definition["type"] != "number" || definition["unit"] != "Cel" || cfg.Metadata["acquisition"].(map[string]any)["protocol"] != "modbus-tcp" {
+	if _, ok := cfg.Metadata["measurements"].(map[string]any)["motor_temperature"].(map[string]any); !ok {
 		return fmt.Errorf("unsupported lab metadata")
 	}
-	interval := time.Duration(sample.Num(definition["expected_interval_ms"])) * time.Millisecond
-	if interval < time.Second || interval > time.Hour {
-		return fmt.Errorf("lab poll interval must be 1s..1h")
-	}
+	interval := cfg.Interval
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
-	driver, err := gateway.OpenDriver(ctx, *binary, *source)
+	statusEncoder := json.NewEncoder(os.Stdout)
+	gatewayID := cfg.Metadata["acquisition"].(map[string]any)["gateway_id"].(string)
+	opened, err := gateway.OpenConfiguredDriver(ctx, cfg, *source, gateway.DriverOptions{
+		PollInterval: interval,
+		ReadTimeout:  2 * time.Second,
+		GatewayID:    gatewayID,
+		StatusReporter: func(event gateway.ProducerStatusEvent) {
+			_ = statusEncoder.Encode(map[string]any{
+				"type":        "producer_status",
+				"gateway_id":  event.GatewayID,
+				"endpoint":    event.Endpoint,
+				"state":       event.State,
+				"reason":      event.Reason,
+				"reported_at": event.At.UTC().Format(sample.Timestamp),
+			})
+		},
+	}, gateway.FactoryOptions{TelegrafBinary: *binary})
 	if err != nil {
 		return err
+	}
+	driver, ok := opened.(*gateway.Driver)
+	if !ok {
+		opened.Close()
+		return fmt.Errorf("configured driver for modbus-tcp did not return a Telegraf implementation")
 	}
 	defer driver.Close()
 	client := &http.Client{Timeout: 5 * time.Second, Transport: &http.Transport{TLSClientConfig: tlsConfig, Proxy: nil, ResponseHeaderTimeout: 3 * time.Second}, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
 	defer client.CloseIdleConnections()
 	var acquired, failures, admitted, retries, pending, latencyUS atomic.Uint64
 	healthDone := make(chan struct{})
+	encoder := json.NewEncoder(os.Stdout)
 	defer close(healthDone)
 	go func() {
 		ticker := time.NewTicker(time.Second)
@@ -94,7 +112,6 @@ func run() error {
 		}
 	}()
 	boot := sample.UUID()
-	encoder := json.NewEncoder(os.Stdout)
 	for sequence := 0; sequence < *count; sequence++ {
 		started := time.Now()
 		value, observed, reason := driver.Read(ctx)
@@ -113,8 +130,9 @@ func run() error {
 		if err != nil {
 			return err
 		}
-		// Bound the acquisition copy to exactly one pending envelope. No new device
-		// read occurs until admission; a restart loses this unsaved observation.
+		// Bound the unsaved acquisition copy to exactly one pending envelope. The
+		// persistent driver may continue polling in the background, but only the
+		// latest unsaved observation is retained before admission.
 		pending.Store(1)
 		if err = gateway.SubmitObserved(ctx, client, *ingress, raw, func() { retries.Add(1) }); err != nil {
 			if ctx.Err() != nil {

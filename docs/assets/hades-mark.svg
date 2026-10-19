@@ -1,0 +1,86 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256" fill="none">
+  <defs>
+    <clipPath id="hd-hex-clip">
+      <polygon points="128,12 228,70 228,186 128,244 28,186 28,70"/>
+    </clipPath>
+
+    <!-- Deep Forge Obsidian Chassis -->
+    <linearGradient id="hd-bg" x1="24" y1="14" x2="232" y2="242" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#18151C"/>
+      <stop offset="55%" stop-color="#0D0B10"/>
+      <stop offset="100%" stop-color="#070609"/>
+    </linearGradient>
+
+    <!-- Molten Forge Core Glow -->
+    <radialGradient id="hd-glow" cx="128" cy="118" r="96" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#FF5500" stop-opacity="0.24"/>
+      <stop offset="60%" stop-color="#FFB800" stop-opacity="0.08"/>
+      <stop offset="100%" stop-color="#FF5500" stop-opacity="0"/>
+    </radialGradient>
+
+    <!-- Rim Border Gradient -->
+    <linearGradient id="hd-border" x1="28" y1="12" x2="228" y2="244" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#FFB800" stop-opacity="0.9"/>
+      <stop offset="50%" stop-color="#FF5500" stop-opacity="0.55"/>
+      <stop offset="100%" stop-color="#991B1B" stop-opacity="0.85"/>
+    </linearGradient>
+
+    <!-- Bident Left & Right Prong Gradients -->
+    <linearGradient id="hd-ember-left" x1="68" y1="44" x2="108" y2="168" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#FDE047"/>
+      <stop offset="35%" stop-color="#FF7A00"/>
+      <stop offset="100%" stop-color="#DC2626"/>
+    </linearGradient>
+    <linearGradient id="hd-ember-right" x1="148" y1="44" x2="188" y2="168" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#FBBF24"/>
+      <stop offset="40%" stop-color="#EA580C"/>
+      <stop offset="100%" stop-color="#991B1B"/>
+    </linearGradient>
+
+    <!-- Brushed Titanium Steel Crossbar & Anvil -->
+    <linearGradient id="hd-steel" x1="64" y1="112" x2="192" y2="208" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#F8FAFC"/>
+      <stop offset="45%" stop-color="#CBD5E1"/>
+      <stop offset="100%" stop-color="#475569"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Outer Hexagonal Bastion Shield -->
+  <polygon points="128,12 228,70 228,186 128,244 28,186 28,70" fill="url(#hd-bg)"/>
+
+  <!-- Ambient Forge Glow (Clipped to Hexagon) -->
+  <g clip-path="url(#hd-hex-clip)">
+    <circle cx="128" cy="118" r="96" fill="url(#hd-glow)"/>
+  </g>
+
+  <polygon points="128,12 228,70 228,186 128,244 28,186 28,70" fill="none" stroke="url(#hd-border)" stroke-width="5" stroke-linejoin="round"/>
+
+  <!-- Inner Segmented WAL Perimeter -->
+  <polygon points="128,28 214,78 214,178 128,228 42,178 42,78" fill="none" stroke="#27272A" stroke-width="1.5"/>
+  <polygon points="128,38 205,83 205,173 128,218 51,173 51,83" fill="none" stroke="#3F3F46" stroke-width="1.2" stroke-dasharray="8 5"/>
+
+  <!-- Hades Geometric Bident + "H" Prongs (Dual Redundant Channels) -->
+  <!-- Left Prong with Barbed Spear Tip -->
+  <path d="M84 46 L108 68 L108 164 L84 164 L84 72 L68 85 L68 62 Z" fill="url(#hd-ember-left)"/>
+  <!-- Right Prong with Barbed Spear Tip -->
+  <path d="M172 46 L188 62 L188 85 L172 72 L172 164 L148 164 L148 68 Z" fill="url(#hd-ember-right)"/>
+
+  <!-- 5-Gate Deterministic Safety Engine Rungs (Central Channel) -->
+  <g stroke="#FFB800" stroke-width="3.2" stroke-linecap="round">
+    <line x1="118" y1="72" x2="138" y2="72"/>
+    <line x1="118" y1="86" x2="138" y2="86"/>
+    <line x1="118" y1="100" x2="138" y2="100"/>
+    <line x1="118" y1="144" x2="138" y2="144"/>
+    <line x1="118" y1="158" x2="138" y2="158"/>
+  </g>
+
+  <!-- Titanium Crossbar Bridge (Forms the H of Hades & Bident Guard) -->
+  <polygon points="72,113 184,113 172,131 84,131" fill="url(#hd-steel)"/>
+
+  <!-- Grounded Shopfloor Anvil / Bident Socket Base -->
+  <polygon points="66,172 190,172 174,191 142,191 128,210 114,191 82,191" fill="url(#hd-steel)"/>
+
+  <!-- Central Deterministic Safety Lock Diamond -->
+  <polygon points="128,108 142,122 128,136 114,122" fill="#09090D" stroke="#FFB800" stroke-width="3.5" stroke-linejoin="round"/>
+  <circle cx="128" cy="122" r="4" fill="#FF5500"/>
+</svg>

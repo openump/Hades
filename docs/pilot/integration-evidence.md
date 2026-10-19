@@ -23,15 +23,20 @@ or conformance-baseline refresh are needed.
 
 ## Runtime behavior
 
-One `--once` Telegraf process gathers each scheduled reading. This is a bounded
-lab integration approach, not a measured production gateway optimization. The
-wrapper checks exact driver version, caps stdout at 64 KiB/stderr at 4 KiB,
-accepts exactly one configured metric/field, and rejects ambiguous values/times.
-The generated config permits no writes, discovery, other plugins or busy retries.
-Device requests time out at 200 ms; the complete driver invocation is capped at
-2 seconds. Polls never overlap or catch up in bursts; minimum interval is one
-second. A timeout, exception, missing metric or driver failure creates null/bad
-quality with a bounded reason, never a zero or an old successful value.
+One supervised Telegraf 1.40.2 sidecar stays alive for the whole acquisition
+session and streams one reviewed JSON metric batch per configured interval to
+the Go wrapper over its standard output. This removes per-poll child-process
+creation and preserves one PLC-side session instead of reopening the endpoint on
+every tick. The wrapper still checks exact driver version, caps stderr at 4 KiB,
+accepts exactly one configured metric/field batch, and rejects ambiguous
+values/times. The generated config permits no writes, discovery, other plugins
+or busy retries. Device requests time out at 200 ms, gateway reads are capped at
+2 seconds, and per-endpoint scan protection enforces a token budget, max-1
+in-flight request, and exponential backoff on repeated timeout/error conditions.
+A timeout, exception, missing metric or driver failure creates null/bad quality
+with a bounded reason and emits `producer_status` degradation/offline events;
+the gateway never fabricates zeroes or silently reuses stale success values as
+fresh reads.
 
 Successful observation time is the Telegraf gateway metric timestamp at
 millisecond resolution. Failures use gateway UTC completion time; neither is a

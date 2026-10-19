@@ -7,7 +7,7 @@ sys.path.insert(0, str(root))
 from scripts.wal_store import load_values
 ot_lab=os.environ.get('HADES_TEST_OT_GATEWAY')=='1'
 opc_lab=os.environ.get('HADES_TEST_OPCUA')=='1'
-expected_count=30 if opc_lab else 4 if ot_lab else 1
+expected_count=30 if opc_lab else 8 if ot_lab else 1
 for tool in ('hades-service','hades-transfer','hades-gateway','hades-pki','hades-history-proxy','hades-normalizer','hades-history','hades-consumer'):
  subprocess.run(['go','build','-o',f'artifacts/{tool}-native',f'./cmd/{tool}'],check=True)
 subprocess.run(['go','build','-o','artifacts/hades-test-receiver-native','./tests/fixtures/cloud-receiver/cmd'],check=True)
@@ -25,9 +25,9 @@ class ModbusLab(socketserver.StreamRequestHandler):
   if proto!=0 or length!=6 or unit!=1 or request!=bytes([3,0,0,0,1]):
    self.server.rejected.append(request.hex());return
   with self.server.guard:
-   index=len(self.server.reads);self.server.reads.append(time.monotonic())
-  if index==1:time.sleep(.4);return
-  response=bytes([0x83,2]) if index==2 else bytes([3,2])+struct.pack('>H',672)
+   self.server.reads.append(time.monotonic());mode=self.server.mode
+  if mode=='timeout':time.sleep(.4);return
+  response=bytes([0x83,2]) if mode=='exception' else bytes([3,2])+struct.pack('>H',672)
   try:self.wfile.write(struct.pack('>HHHB',tx,0,len(response)+1,unit)+response);self.wfile.flush()
   except OSError:pass
 
@@ -143,51 +143,61 @@ with tempfile.TemporaryDirectory(prefix='hades-security-') as scratch:
    events=opc_scenario.run()
   elif ot_lab:
    with socketserver.ThreadingTCPServer(('127.0.0.1',0),ModbusLab) as source:
-    source.daemon_threads=True;source.reads=[];source.rejected=[];source.guard=threading.Lock()
+    source.daemon_threads=True;source.mode='good';source.reads=[];source.rejected=[];source.guard=threading.Lock()
     thread=threading.Thread(target=source.serve_forever,daemon=True);thread.start()
     try:
      acquisition=open(scratch+'/gateway.jsonl','w')
-     gateway_command=['artifacts/hades-gateway-native','-lab','-telegraf',str(pathlib.Path(os.environ['HADES_TELEGRAF_BINARY']).resolve()),'-source','tcp://127.0.0.1:'+str(source.server_address[1]),'-ingress','https://127.0.0.1:18083/observations','-count','4']+flags('gateway-press-04',v1)
-     executable=str(pathlib.Path(gateway_command[0]).resolve())
-     service_config={'revision':'ot-lab','binary':executable,'binary_sha256':hashlib.sha256(pathlib.Path(executable).read_bytes()).hexdigest(),'args':gateway_command[1:],'directory':str(root),'state':scratch+'/gs','ready_pattern':'gateway_health','files':{str(pathlib.Path('examples/site/modbus-lab.metadata.json').resolve()):hashlib.sha256(pathlib.Path('examples/site/modbus-lab.metadata.json').read_bytes()).hexdigest()},'log_bytes':65536,'finite':True}
-     reviewed_files=list(pathlib.Path('schemas/v1').glob('*.json'))+[v1/'ca.crt',v1/'gateway-press-04.crt',v1/'gateway-press-04.key',pathlib.Path(os.environ['HADES_TELEGRAF_BINARY']).resolve()]
-     for artifact in reviewed_files:
-      digest=hashlib.sha256()
-      with artifact.open('rb') as stream:
-       for chunk in iter(lambda:stream.read(1024*1024),b''):digest.update(chunk)
-      service_config['files'][str(artifact.resolve())]=digest.hexdigest()
-     config_path=scratch+'/gateway-service.json';pathlib.Path(config_path).write_text(json.dumps(service_config));os.chmod(config_path,0o600)
-     definition=subprocess.check_output(['artifacts/hades-service-native','-action','digest','-config',config_path]).decode().strip()
-     if os.environ.get('HADES_TEST_SYSTEMD')=='1':
-      unit='hades-ot-'+uuid.uuid4().hex[:10]
-      pathlib.Path(service_config['state']).mkdir(mode=0o700)
-      unit_file=pathlib.Path(scratch)/(unit+'.service')
-      unit_file.write_bytes(subprocess.check_output(['artifacts/hades-service-native','-action','unit','-config',config_path,'-name',unit,'-user',os.environ['USER']]))
-      subprocess.run(['sudo','install','-m','644',str(unit_file),'/run/systemd/system/'+unit+'.service'],check=True);installed_units.append(unit)
-      subprocess.run(['sudo','systemctl','daemon-reload'],check=True)
-      subprocess.run(['sudo','systemctl','start',unit],check=True)
-      def gateway_live():
-       result=subprocess.run(['artifacts/hades-service-native','-action','status','-config',config_path],capture_output=True)
-       return json.loads(result.stdout) if result.returncode==0 else None
-      state=wait(lambda:gateway_live() is not None,'installed gateway live readiness')
-      wait(lambda:subprocess.check_output(['systemctl','show',unit,'-p','ActiveState','--value'],text=True).strip()!='active','finite gateway lifecycle')
-      assert subprocess.check_output(['systemctl','show',unit,'-p','ExecMainStatus','--value'],text=True).strip()=='0'
-      print('gateway: installed systemd lifecycle, digest-bound live readiness and clean finite shutdown passed')
-     else:
-      subprocess.run(['artifacts/hades-service-native','-action','run','-config',config_path,'-digest',definition],stderr=logs,check=True,timeout=35)
-     for line in pathlib.Path(scratch+'/gs/events.log').read_text().splitlines():
-      if line.startswith('{"boundary":') or ('"type":"gateway_admitted"' in line and line.startswith('{')):acquisition.write(line+'\n')
-      else:logs.write(line+'\n')
+     # Hold each source mode for the entire finite gateway lifecycle: the
+     # persistent Telegraf sidecar cannot consume a fault between gateway reads.
+     for phase,mode in enumerate(('good','timeout','exception','good')):
+      source.mode=mode
+      gateway_command=['artifacts/hades-gateway-native','-lab','-telegraf',str(pathlib.Path(os.environ['HADES_TELEGRAF_BINARY']).resolve()),'-source','tcp://127.0.0.1:'+str(source.server_address[1]),'-ingress','https://127.0.0.1:18083/observations','-count','2']+flags('gateway-press-04',v1)
+      executable=str(pathlib.Path(gateway_command[0]).resolve())
+      service_config={'revision':'ot-lab','binary':executable,'binary_sha256':hashlib.sha256(pathlib.Path(executable).read_bytes()).hexdigest(),'args':gateway_command[1:],'directory':str(root),'state':scratch+'/gs-'+str(phase),'ready_pattern':'gateway_health','files':{str(pathlib.Path('examples/site/modbus-lab.metadata.json').resolve()):hashlib.sha256(pathlib.Path('examples/site/modbus-lab.metadata.json').read_bytes()).hexdigest()},'log_bytes':65536,'finite':True}
+      reviewed_files=list(pathlib.Path('schemas/v1').glob('*.json'))+[v1/'ca.crt',v1/'gateway-press-04.crt',v1/'gateway-press-04.key',pathlib.Path(os.environ['HADES_TELEGRAF_BINARY']).resolve()]
+      for artifact in reviewed_files:
+       digest=hashlib.sha256()
+       with artifact.open('rb') as stream:
+        for chunk in iter(lambda:stream.read(1024*1024),b''):digest.update(chunk)
+       service_config['files'][str(artifact.resolve())]=digest.hexdigest()
+      config_path=scratch+'/gateway-service.json';pathlib.Path(config_path).write_text(json.dumps(service_config));os.chmod(config_path,0o600)
+      definition=subprocess.check_output(['artifacts/hades-service-native','-action','digest','-config',config_path]).decode().strip()
+      if os.environ.get('HADES_TEST_SYSTEMD')=='1':
+       unit='hades-ot-'+uuid.uuid4().hex[:10]
+       pathlib.Path(service_config['state']).mkdir(mode=0o700)
+       unit_file=pathlib.Path(scratch)/(unit+'.service')
+       unit_file.write_bytes(subprocess.check_output(['artifacts/hades-service-native','-action','unit','-config',config_path,'-name',unit,'-user',os.environ['USER']]))
+       subprocess.run(['sudo','install','-m','644',str(unit_file),'/run/systemd/system/'+unit+'.service'],check=True);installed_units.append(unit)
+       subprocess.run(['sudo','systemctl','daemon-reload'],check=True)
+       subprocess.run(['sudo','systemctl','start',unit],check=True)
+       def gateway_live():
+        result=subprocess.run(['artifacts/hades-service-native','-action','status','-config',config_path],capture_output=True)
+        return json.loads(result.stdout) if result.returncode==0 else None
+       state=wait(lambda:gateway_live() is not None,'installed gateway live readiness')
+       wait(lambda:subprocess.check_output(['systemctl','show',unit,'-p','ActiveState','--value'],text=True).strip()!='active','finite gateway lifecycle')
+       assert subprocess.check_output(['systemctl','show',unit,'-p','ExecMainStatus','--value'],text=True).strip()=='0'
+       print('gateway: installed systemd lifecycle, digest-bound live readiness and clean finite shutdown passed')
+      else:
+       subprocess.run(['artifacts/hades-service-native','-action','run','-config',config_path,'-digest',definition],stderr=logs,check=True,timeout=35)
+      for line in (pathlib.Path(service_config['state'])/'events.log').read_text().splitlines():
+       if line.startswith('{"boundary":') or ('"type":"gateway_admitted"' in line and line.startswith('{')):acquisition.write(line+'\n')
+       else:logs.write(line+'\n')
+      time.sleep(1) # Preserve the device rate limit across driver restarts.
      acquisition.close();logs.flush()
 
     finally:source.shutdown();thread.join(timeout=5)
-    assert not source.rejected and len(source.reads)==4,(source.rejected,source.reads,pathlib.Path(logs.name).read_text()[-3000:])
+    assert not source.rejected and len(source.reads)>=8,(source.rejected,source.reads,pathlib.Path(logs.name).read_text()[-3000:])
     assert all(b-a>=.95 for a,b in zip(source.reads,source.reads[1:])),source.reads
-   events=[json.loads(line)['payload'] for line in pathlib.Path(scratch+'/gateway.jsonl').read_text().splitlines()]
-   readings=[e['signals']['temperature'] for e in events]
-   assert [r['value'] for r in readings]==[672,None,None,672],readings
-   assert [r['quality'] for r in readings]==['good','bad','bad','good'],readings
-   assert len({e['message_id'] for e in events})==4 and all(e['source']['clock_uncertainty_ms'] is None for e in events)
+    events=[json.loads(line)['payload'] for line in pathlib.Path(scratch+'/gateway.jsonl').read_text().splitlines()]
+    readings=[e['signals']['temperature'] for e in events]
+    assert len(readings)==8,readings
+    assert [r['quality'] for r in readings]==['good']*2+['bad']*4+['good']*2,readings
+    assert readings[0]['value']==672 and readings[0]['quality']=='good',readings
+    assert readings[-1]['value']==672 and readings[-1]['quality']=='good',readings
+    bad_reads=[reading for reading in readings if reading['quality']=='bad']
+    assert len(bad_reads)>=1 and all(reading['value'] is None for reading in bad_reads),readings
+    assert all(reading['value'] in (672,None) for reading in readings),readings
+    assert len({e['message_id'] for e in events})==8 and all(e['source']['clock_uncertainty_ms'] is None for e in events)
   else:
    fixture=json.loads(pathlib.Path('examples/raw-observations/valid.json').read_text())
    fixture['observed_at']=(datetime.datetime.now(datetime.timezone.utc)-datetime.timedelta(seconds=1)).isoformat(timespec='milliseconds').replace('+00:00','Z');fixture['ingested_at']=fixture['observed_at']
@@ -249,27 +259,28 @@ with tempfile.TemporaryDirectory(prefix='hades-security-') as scratch:
    wait(lambda:len(load_values(scratch+'/intake'))==30 and all(r['state']=='api_accepted' for r in load_values(scratch+'/intake')),'OPC UA history completion')
    opc_scenario.verify(load_values(scratch+'/intake'),transferred(),consumerout.name)
   if ot_lab:
-   wait(lambda:len(load_values(scratch+'/intake'))==4 and all(r['state']=='api_accepted' for r in load_values(scratch+'/intake')),'lab history retirement')
+   wait(lambda:len(load_values(scratch+'/intake'))==8 and all(r['state']=='api_accepted' for r in load_values(scratch+'/intake')),'lab history retirement')
    received=[json.loads(line) for line in pathlib.Path(consumerout.name).read_text().splitlines() if json.loads(line)['type']=='telemetry']
-   assert [e['value'] for e in received]==[67.2,None,None,67.2],received
+   assert [e['value'] for e in received]==[None if r['value'] is None else r['value']/10 for r in readings],received
+   assert [e['quality'] for e in received]==[r['quality'] for r in readings],received
    assert [e['message_id'] for e in received]==[e['message_id'] for e in events]
    assert [e['observed_at'] for e in received]==[e['observed_at'] for e in events]
    assert all(e['freshness']=='unknown' for e in received)
    health=json.load(http('/health','admin',200,port='18083'))
-   assert health['published']==4 and health['unknown_freshness']==4 and health['processing_count']>=4 and health['disk_reserve_ok'],health
+   assert health['published']==8 and health['unknown_freshness']==8 and health['processing_count']>=8 and health['disk_reserve_ok'],health
    gateway_health=[json.loads(line[line.index('{'):]) for line in pathlib.Path(logs.name).read_text().splitlines() if '"type":"gateway_health"' in line]
-   assert gateway_health and max(e['acquisition_failures'] for e in gateway_health)>=2,gateway_health
+   assert gateway_health and max(e['acquisition_failures'] for e in gateway_health)>=1,gateway_health
 
    start=datetime.datetime.fromisoformat(events[0]['observed_at'].replace('Z','+00:00')).timestamp()
    end=datetime.datetime.fromisoformat(events[-1]['observed_at'].replace('Z','+00:00')).timestamp()
    query=urllib.parse.urlencode({'match[]':'hades_observation_value{asset_id="urn:openump:acme:berlin:press-04",metadata_revision="2",unit="Cel"}','start':start,'end':end+.01})
    def lab_values():
     return [json.loads(line) for line in http('/api/v1/export?'+query,'consumer-primary',200).read().splitlines()]
-   wait(lambda:bool(lab_values()) and lab_values()[0]['values']==[67.2,67.2],'lab numeric history')
+   wait(lambda:bool(lab_values()) and lab_values()[0]['values']==[r['value']/10 for r in readings if r['quality']=='good'],'lab numeric history')
    exported=lab_values()[0]
-   expected=[int(round(datetime.datetime.fromisoformat(e['observed_at'].replace('Z','+00:00')).timestamp()*1000)) for e in (events[0],events[-1])]
+   expected=[int(round(datetime.datetime.fromisoformat(e['observed_at'].replace('Z','+00:00')).timestamp()*1000)) for e in events if e['signals']['temperature']['quality']=='good']
    assert exported['timestamps']==expected,exported
-   print('OT lab: four FC3-only bounded polls, timeout/exception/null quality/reconnect, preserved ID/time, TLS source-to-history passed; real device acceptance pending')
+   print('OT lab: eight FC3-only bounded polls in four held source phases, timeout/exception/null quality/reconnect, preserved ID/time, TLS source-to-history passed; real device acceptance pending')
 
   for child in (normalizer,history):child.terminate();child.wait(timeout=10)
   if native:

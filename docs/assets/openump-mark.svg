@@ -1,0 +1,97 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256" fill="none">
+  <defs>
+    <clipPath id="ou-hex-clip">
+      <polygon points="128,12 228,70 228,186 128,244 28,186 28,70"/>
+    </clipPath>
+
+    <!-- Deep Obsidian Chassis Gradient -->
+    <linearGradient id="ou-bg" x1="24" y1="14" x2="232" y2="242" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#131C2E"/>
+      <stop offset="55%" stop-color="#0B101B"/>
+      <stop offset="100%" stop-color="#060911"/>
+    </linearGradient>
+
+    <!-- Ambient Core Glow -->
+    <radialGradient id="ou-glow-cyan" cx="128" cy="84" r="88" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#00E5FF" stop-opacity="0.22"/>
+      <stop offset="100%" stop-color="#00E5FF" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="ou-glow-amber" cx="128" cy="172" r="88" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#FF6B00" stop-opacity="0.20"/>
+      <stop offset="100%" stop-color="#FF6B00" stop-opacity="0"/>
+    </radialGradient>
+
+    <!-- Dual-Tone Rim Gradient -->
+    <linearGradient id="ou-border" x1="30" y1="18" x2="226" y2="238" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#00E5FF" stop-opacity="0.85"/>
+      <stop offset="48%" stop-color="#334155" stop-opacity="0.45"/>
+      <stop offset="100%" stop-color="#FF6B00" stop-opacity="0.85"/>
+    </linearGradient>
+
+    <!-- Cloud IT Upper Isometric Facets (Electric Cyan) -->
+    <linearGradient id="ou-cyan-left" x1="68" y1="48" x2="128" y2="112" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#67E8F9"/>
+      <stop offset="100%" stop-color="#0284C7"/>
+    </linearGradient>
+    <linearGradient id="ou-cyan-right" x1="128" y1="48" x2="188" y2="112" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#22D3EE"/>
+      <stop offset="100%" stop-color="#0369A1"/>
+    </linearGradient>
+
+    <!-- Edge OT Lower U-Conduit Facets (Molten Amber) -->
+    <linearGradient id="ou-amber-left" x1="68" y1="108" x2="128" y2="204" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#FDBA74"/>
+      <stop offset="35%" stop-color="#FF7A00"/>
+      <stop offset="100%" stop-color="#C2410C"/>
+    </linearGradient>
+    <linearGradient id="ou-amber-right" x1="128" y1="108" x2="188" y2="204" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#FB923C"/>
+      <stop offset="50%" stop-color="#EA580C"/>
+      <stop offset="100%" stop-color="#9A3412"/>
+    </linearGradient>
+
+    <!-- Central Unified Namespace Conduit -->
+    <linearGradient id="ou-core" x1="128" y1="70" x2="128" y2="186" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#38BDF8"/>
+      <stop offset="50%" stop-color="#F8FAFC"/>
+      <stop offset="100%" stop-color="#FF7A00"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Outer Precision Hexagonal Chassis -->
+  <polygon points="128,12 228,70 228,186 128,244 28,186 28,70" fill="url(#ou-bg)"/>
+
+  <!-- Ambient Lighting Layers (Clipped to Hexagon) -->
+  <g clip-path="url(#ou-hex-clip)">
+    <circle cx="128" cy="84" r="88" fill="url(#ou-glow-cyan)"/>
+    <circle cx="128" cy="172" r="88" fill="url(#ou-glow-amber)"/>
+  </g>
+
+  <polygon points="128,12 228,70 228,186 128,244 28,186 28,70" fill="none" stroke="url(#ou-border)" stroke-width="5" stroke-linejoin="round"/>
+
+  <!-- Inner Telemetry Calibration Ring -->
+  <polygon points="128,28 214,78 214,178 128,228 42,178 42,78" fill="none" stroke="#1E293B" stroke-width="1.5"/>
+  <polygon points="128,38 205,83 205,173 128,218 51,173 51,83" fill="none" stroke="#334155" stroke-width="1" stroke-dasharray="5 5"/>
+
+  <!-- Upper Cloud / IT Arch (Faceted Left & Right Isometric Wings) -->
+  <path d="M68 82 L128 47 L128 73 L92 94 L92 103 L68 117 Z" fill="url(#ou-cyan-left)"/>
+  <path d="M128 47 L188 82 L188 117 L164 103 L164 94 L128 73 Z" fill="url(#ou-cyan-right)"/>
+
+  <!-- Lower Edge / OT U-Frame Foundation (Faceted Left & Right Isometric Arms) -->
+  <path d="M68 107 L92 121 L92 157 L128 178 L128 206 L68 171 Z" fill="url(#ou-amber-left)"/>
+  <path d="M188 107 L188 171 L128 206 L128 178 L164 157 L164 121 Z" fill="url(#ou-amber-right)"/>
+
+  <!-- Bidirectional Data Bus Spine -->
+  <line x1="128" y1="80" x2="128" y2="170" stroke="url(#ou-core)" stroke-width="6" stroke-linecap="round"/>
+
+  <!-- Central Unified Namespace Hexagonal Kernel -->
+  <polygon points="128,104 149,116 149,140 128,152 107,140 107,116" fill="#0B101B" stroke="#F8FAFC" stroke-width="4" stroke-linejoin="round"/>
+  <polygon points="128,114 140,121 140,135 128,142 116,135 116,121" fill="url(#ou-core)"/>
+
+  <!-- ISA-95 / OpenUMP 5-Level Hierarchy Nodes -->
+  <circle cx="128" cy="47" r="3.5" fill="#E0F2FE"/>
+  <circle cx="68" cy="82" r="3" fill="#7DD3FC"/>
+  <circle cx="188" cy="82" r="3" fill="#7DD3FC"/>
+  <circle cx="68" cy="171" r="3" fill="#FED7AA"/>
+  <circle cx="188" cy="171" r="3" fill="#FED7AA"/>
+</svg>

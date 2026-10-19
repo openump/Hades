@@ -26,10 +26,12 @@ fixtures remain regression tests; their results do not qualify OPC UA.
 | Lifecycle | Reproducible start/stop/reset, private credentials, bounded logs/state and cleanup of only owned test resources |
 
 No implementation, endpoint, certificate policy or package version is implied
-by this selection. Existing Go gateway code is Modbus/lab-specific and needs an
-OPC UA path. Follow ADR-0003 for deployed custom code; evaluate upstream server
-and client capabilities before selecting dependencies. Avoid a new platform
-runtime without recording its maintenance/resource tradeoff.
+by this selection. Hades now includes a native Go OPC UA gateway path for the
+approved software-pilot node map, alongside the lab Modbus fixture and guarded
+brownfield driver abstraction. Follow ADR-0003 for deployed custom code;
+evaluate upstream server and client capabilities before selecting dependencies.
+Avoid a new platform runtime without recording its maintenance/resource
+tradeoff.
 
 ## Acceptance boundary
 
