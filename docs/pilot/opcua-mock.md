@@ -72,7 +72,7 @@ Connection attempt budget is two seconds; read budget is 300 ms (SDK service hin
 resolves namespaces again. There is no reconnect loop outside the poll schedule.
 A poll may retain up to three volatile observations while submitting one at a
 time. Original bytes/IDs/timestamps are reused across HTTP retry. Polling pauses
-under ingress backpressure. `accepted_volatile` is not durable acquisition;
+under ingress backpressure. `accepted_broker_ack` requires PUBACK but is not durable acquisition;
 process restart may lose the current poll. Periodic bounded-supervisor diagnostics
 report polls, transport failures, bad readings, admission and ingress retries.
 

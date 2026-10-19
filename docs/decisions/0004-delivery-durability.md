@@ -37,3 +37,7 @@ The [delivery specification](../protocol/delivery.md) contains ownership transit
 ## Tracking
 
 [Hades-007](https://github.com/openump/Hermes/issues/7)
+
+## Hades-029 amendment — 16 October 2026
+
+The implemented ingress boundary is now synchronous bounded broker PUBACK before HTTP 202 (`accepted_broker_ack`), rather than volatile queue admission. HTTP failures retain gateway ownership. No new durable ingress spool or end-to-end durability claim is introduced. See [implementation guarantee](../operations/ingress-acknowledgement.md).

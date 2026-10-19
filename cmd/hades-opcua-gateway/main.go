@@ -150,7 +150,7 @@ func run() error {
 			}
 			httpMS := float64(time.Since(submitStart)) / float64(time.Millisecond)
 			admitted.Add(1)
-			if err := output.Encode(map[string]any{"type": "gateway_admitted", "payload": json.RawMessage(raw), "boundary": "accepted_volatile", "http_ms": httpMS}); err != nil {
+			if err := output.Encode(map[string]any{"type": "gateway_admitted", "payload": json.RawMessage(raw), "boundary": "accepted_broker_ack", "http_ms": httpMS}); err != nil {
 				return err
 			}
 		}
