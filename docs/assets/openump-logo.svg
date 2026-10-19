@@ -1,0 +1,71 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 680 180" width="680" height="180" fill="none">
+  <defs>
+    <linearGradient id="oul-bg" x1="16" y1="12" x2="164" y2="168" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#131C2E"/>
+      <stop offset="100%" stop-color="#060911"/>
+    </linearGradient>
+    <linearGradient id="oul-border" x1="20" y1="16" x2="160" y2="164" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#00E5FF" stop-opacity="0.85"/>
+      <stop offset="50%" stop-color="#334155" stop-opacity="0.45"/>
+      <stop offset="100%" stop-color="#FF6B00" stop-opacity="0.85"/>
+    </linearGradient>
+    <linearGradient id="oul-cyan-l" x1="54" y1="40" x2="90" y2="85" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#67E8F9"/>
+      <stop offset="100%" stop-color="#0284C7"/>
+    </linearGradient>
+    <linearGradient id="oul-cyan-r" x1="90" y1="40" x2="126" y2="85" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#22D3EE"/>
+      <stop offset="100%" stop-color="#0369A1"/>
+    </linearGradient>
+    <linearGradient id="oul-amber-l" x1="54" y1="77" x2="90" y2="137" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#FDBA74"/>
+      <stop offset="40%" stop-color="#FF7A00"/>
+      <stop offset="100%" stop-color="#C2410C"/>
+    </linearGradient>
+    <linearGradient id="oul-amber-r" x1="90" y1="77" x2="126" y2="137" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#FB923C"/>
+      <stop offset="50%" stop-color="#EA580C"/>
+      <stop offset="100%" stop-color="#9A3412"/>
+    </linearGradient>
+    <linearGradient id="oul-core" x1="90" y1="50" x2="90" y2="130" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#38BDF8"/>
+      <stop offset="50%" stop-color="#F8FAFC"/>
+      <stop offset="100%" stop-color="#FF7A00"/>
+    </linearGradient>
+    <linearGradient id="oul-ump" x1="330" y1="48" x2="490" y2="48" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#38BDF8"/>
+      <stop offset="28%" stop-color="#38BDF8"/>
+      <stop offset="28.5%" stop-color="#FF8A00"/>
+      <stop offset="100%" stop-color="#FF6B00"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Card Background -->
+  <rect x="2" y="2" width="676" height="176" rx="20" fill="#090D16" stroke="#1E293B" stroke-width="2"/>
+
+  <!-- Icon Group -->
+  <g transform="translate(8, 0)">
+    <polygon points="90,18 152,54 152,126 90,162 28,126 28,54" fill="url(#oul-bg)" stroke="url(#oul-border)" stroke-width="3.5" stroke-linejoin="round"/>
+    <polygon points="90,30 142,60 142,120 90,150 38,120 38,60" fill="none" stroke="#1E293B" stroke-width="1.2" stroke-dasharray="4 4"/>
+    <path d="M54 61 L90 40 L90 55 L68 68 L68 73 L54 81 Z" fill="url(#oul-cyan-l)"/>
+    <path d="M90 40 L126 61 L126 81 L112 73 L112 68 L90 55 Z" fill="url(#oul-cyan-r)"/>
+    <path d="M54 77 L68 85 L68 108 L90 121 L90 137 L54 116 Z" fill="url(#oul-amber-l)"/>
+    <path d="M126 77 L126 116 L90 137 L90 121 L112 108 L112 85 Z" fill="url(#oul-amber-r)"/>
+    <line x1="90" y1="60" x2="90" y2="115" stroke="url(#oul-core)" stroke-width="4" stroke-linecap="round"/>
+    <polygon points="90,76 102,83 102,97 90,104 78,97 78,83" fill="#0B101B" stroke="#F8FAFC" stroke-width="2.6" stroke-linejoin="round"/>
+    <polygon points="90,82 96,86 96,94 90,98 84,94 84,86" fill="url(#oul-core)"/>
+  </g>
+
+  <!-- Typography Lockup -->
+  <text x="188" y="98" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="60" font-weight="800" fill="#F8FAFC">Open<tspan fill="url(#oul-ump)">UMP</tspan></text>
+
+  <!-- Subtitle / Tagline -->
+  <text x="190" y="132" font-family="ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace" font-size="14" font-weight="600" letter-spacing="2.6" fill="#94A3B8">
+    OPEN UNIFIED MANUFACTURING PLATFORM
+  </text>
+
+  <!-- Status Pill -->
+  <rect x="556" y="34" width="92" height="24" rx="12" fill="#0F172A" stroke="#0284C7" stroke-width="1.2"/>
+  <circle cx="572" cy="46" r="4" fill="#38BDF8"/>
+  <text x="584" y="50" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="11" font-weight="700" fill="#E2E8F0">OT &#x2194; IT</text>
+</svg>

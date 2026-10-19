@@ -4,7 +4,7 @@
 
 **Status:** Initial proposal, version 0.2  
 **Date:** 13 October 2026  
-**Project:** OpenUMP (Open Unified Machine Protocol)  
+**Project:** OpenUMP (Open Unified Manufacturing Platform)  
 **Repository:** [openump/Hades](https://github.com/openump/Hades)  
 **Domain:** Open-source industrial connectivity and edge data infrastructure  
 **Deployment model:** Edge-first, with optional cloud integration  

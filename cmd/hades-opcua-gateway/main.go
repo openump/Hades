@@ -7,7 +7,6 @@ import (
 	"errors"
 	"flag"
 	"fmt"
-	"github.com/awcullen/opcua/ua"
 	"github.com/openump/Hades/internal/gateway"
 	"github.com/openump/Hades/internal/opcuapilot"
 	"github.com/openump/Hades/internal/sample"
@@ -74,13 +73,34 @@ func run() error {
 	defer stop()
 	ctx, deadlineStop := context.WithTimeout(ctx, 15*time.Minute)
 	defer deadlineStop()
-	var reader *opcuapilot.Reader
-	defer func() {
-		if reader != nil {
-			reader.Close()
-		}
-	}()
 	var acquired, failures, admitted, retries, badReadings atomic.Uint64
+	statusEncoder := json.NewEncoder(os.Stdout)
+	opened, err := gateway.OpenConfiguredDriver(ctx, cfg, *endpoint, gateway.DriverOptions{
+		PollInterval:  cfg.Interval,
+		ReadTimeout:   500 * time.Millisecond,
+		GatewayID:     cfg.Metadata["acquisition"].(map[string]any)["gateway_id"].(string),
+		RatePerSecond: 100,
+		Burst:         4,
+		StatusReporter: func(event gateway.ProducerStatusEvent) {
+			_ = statusEncoder.Encode(map[string]any{
+				"type":        "producer_status",
+				"gateway_id":  event.GatewayID,
+				"endpoint":    event.Endpoint,
+				"state":       event.State,
+				"reason":      event.Reason,
+				"reported_at": event.At.UTC().Format(sample.Timestamp),
+			})
+		},
+	}, gateway.FactoryOptions{OPCUAPKI: *pki})
+	if err != nil {
+		return err
+	}
+	driver, ok := opened.(*gateway.OPCUADriver)
+	if !ok {
+		opened.Close()
+		return fmt.Errorf("configured driver for opc-ua did not return an OPC UA implementation")
+	}
+	defer driver.Close()
 	go func() {
 		ticker := time.NewTicker(time.Second)
 		defer ticker.Stop()
@@ -102,55 +122,24 @@ func run() error {
 	output := json.NewEncoder(os.Stdout)
 	fmt.Fprintln(os.Stderr, "opcua_gateway_ready")
 	for poll := 0; poll < *count; poll++ {
-		connect, cancel := context.WithTimeout(ctx, 4*time.Second)
-		if reader == nil {
-			reader, err = opcuapilot.Dial(connect, *endpoint, *pki, "client")
-		}
-		cancel()
-		var values []ua.DataValue
-		if err == nil {
-			read, cancel := context.WithTimeout(ctx, 500*time.Millisecond)
-			values, err = reader.Read(read)
-			cancel()
-		}
+		readings, completed, reason := driver.Poll(ctx)
 		acquired.Add(1)
-		completed := time.Now().UTC()
 		next := completed.Add(time.Second)
 		if ctx.Err() != nil {
 			return cancelled(ctx)
 		}
-		if err != nil {
+		if reason != "" {
 			failures.Add(1)
-			if reader != nil {
-				reader.Close()
-				reader = nil
-			}
-			values = make([]ua.DataValue, len(opcuapilot.Signals))
-			for i := range values {
-				values[i] = ua.NewDataValue(nil, ua.BadCommunicationError, time.Time{}, 0, time.Time{}, 0)
-			}
 		}
-		for i, signal := range opcuapilot.Signals {
-			reading, stamp, origin, ext := opcuapilot.MapValue(signal, values[i], completed)
-			if reading["quality"] == "bad" {
+		for _, signal := range opcuapilot.Signals {
+			reading := readings[signal.Name]
+			if reading.Quality == "bad" {
 				badReadings.Add(1)
 			}
-			ext["opcua.namespace_uri"] = opcuapilot.NamespaceURI
-			ext["opcua.status_origin"] = "server"
-			if reader != nil {
-				ext["opcua.namespace_index"] = reader.Namespace
-			} else {
-				ext["opcua.namespace_index"] = nil
-			}
+			raw, err := gateway.EnvelopeForReading(cfg, signal.Name, reading, boot, sequence, completed)
 			if err != nil {
-				ext["opcua.status_origin"] = "gateway"
-				ext["opcua.transport_error"] = "connection_failed"
-				if errors.Is(err, context.DeadlineExceeded) {
-					ext["opcua.transport_error"] = "timeout"
-				}
+				return err
 			}
-			payload := map[string]any{"schema_version": "1.0", "asset_id": cfg.Metadata["asset_id"], "metadata_revision": cfg.Metadata["metadata_revision"], "message_id": sample.UUID(), "observed_at": stamp.UTC().Format(sample.Timestamp), "ingested_at": time.Now().UTC().Format(sample.Timestamp), "source": map[string]any{"gateway_id": cfg.Metadata["acquisition"].(map[string]any)["gateway_id"], "protocol": "opc-ua", "boot_id": boot, "sequence": sequence, "clock_origin": origin, "clock_uncertainty_ms": nil}, "signals": map[string]any{signal.Name: reading}, "extensions": ext}
-			raw, _ := json.Marshal(payload)
 			sequence++
 			submitStart := time.Now()
 			if err := gateway.SubmitObserved(ctx, sink, *ingress, raw, func() { retries.Add(1) }); err != nil {
@@ -161,7 +150,7 @@ func run() error {
 			}
 			httpMS := float64(time.Since(submitStart)) / float64(time.Millisecond)
 			admitted.Add(1)
-			if err := output.Encode(map[string]any{"type": "gateway_admitted", "payload": payload, "boundary": "accepted_volatile", "http_ms": httpMS}); err != nil {
+			if err := output.Encode(map[string]any{"type": "gateway_admitted", "payload": json.RawMessage(raw), "boundary": "accepted_volatile", "http_ms": httpMS}); err != nil {
 				return err
 			}
 		}

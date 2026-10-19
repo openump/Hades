@@ -61,6 +61,7 @@ var ApprovedProtocols = map[string]bool{
 	"simulator":  true,
 	"modbus-tcp": true,
 	"opc-ua":     true,
+	"plc4go":     true,
 }
 
 type Config struct {
@@ -97,6 +98,17 @@ func Num(v any) float64 {
 	default:
 		return 0
 	}
+}
+
+func MetadataUnitOrDefault(raw any) string {
+	def, ok := raw.(map[string]any)
+	if !ok {
+		return "1"
+	}
+	if unit, ok := def["unit"].(string); ok && unit != "" {
+		return unit
+	}
+	return "1"
 }
 
 func HierarchyOf(m map[string]any) HierarchyKey {

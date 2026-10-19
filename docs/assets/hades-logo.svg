@@ -1,0 +1,69 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 680 180" width="680" height="180" fill="none">
+  <defs>
+    <linearGradient id="hdl-bg" x1="16" y1="12" x2="164" y2="168" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#14141B"/>
+      <stop offset="100%" stop-color="#09090D"/>
+    </linearGradient>
+    <linearGradient id="hdl-border" x1="20" y1="16" x2="160" y2="164" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#FF5500" stop-opacity="0.85"/>
+      <stop offset="50%" stop-color="#475569" stop-opacity="0.4"/>
+      <stop offset="100%" stop-color="#FFB800" stop-opacity="0.75"/>
+    </linearGradient>
+    <linearGradient id="hdl-ember" x1="50" y1="32" x2="130" y2="145" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#FFB800"/>
+      <stop offset="45%" stop-color="#FF5500"/>
+      <stop offset="100%" stop-color="#DC2626"/>
+    </linearGradient>
+    <linearGradient id="hdl-steel" x1="48" y1="90" x2="132" y2="150" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#F1F5F9"/>
+      <stop offset="100%" stop-color="#64748B"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Card Background -->
+  <rect x="2" y="2" width="676" height="176" rx="20" fill="#09090D" stroke="#27272A" stroke-width="2"/>
+
+  <!-- Icon Group (Centered at 96, 90) -->
+  <g transform="translate(6, 0)">
+    <polygon points="90,18 152,54 152,126 90,162 28,126 28,54" fill="url(#hdl-bg)" stroke="url(#hdl-border)" stroke-width="3.5" stroke-linejoin="round"/>
+    <polygon points="90,30 142,60 142,120 90,150 38,120 38,60" fill="none" stroke="#27272A" stroke-width="1.2" stroke-dasharray="5 4"/>
+
+    <!-- Bident Prongs -->
+    <path d="M62 42 L76 55 L76 113 L62 113 L62 55 L53 63 L53 51 Z" fill="url(#hdl-ember)"/>
+    <path d="M118 42 L127 51 L127 63 L118 55 L118 113 L104 113 L104 55 Z" fill="url(#hdl-ember)"/>
+
+    <!-- Crossbar -->
+    <polygon points="57,81 123,81 115,93 65,93" fill="url(#hdl-steel)"/>
+
+    <!-- 5-Gate Safety Notches -->
+    <g stroke="#FFB800" stroke-width="2.2" stroke-linecap="round">
+      <line x1="84" y1="57" x2="96" y2="57"/>
+      <line x1="84" y1="66" x2="96" y2="66"/>
+      <line x1="84" y1="75" x2="96" y2="75"/>
+      <line x1="84" y1="99" x2="96" y2="99"/>
+      <line x1="84" y1="108" x2="96" y2="108"/>
+    </g>
+
+    <!-- Anvil Base -->
+    <polygon points="52,118 128,118 118,131 98,131 90,141 82,131 62,131" fill="url(#hdl-steel)"/>
+
+    <!-- Core Lock -->
+    <polygon points="90,79 98,87 90,95 82,87" fill="#09090D" stroke="#FFB800" stroke-width="2.2"/>
+    <circle cx="90" cy="87" r="2.5" fill="#FF5500"/>
+  </g>
+
+  <!-- Typography Lockup -->
+  <text x="188" y="98" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="62" font-weight="900" letter-spacing="2" fill="#F8FAFC">
+    HADES
+  </text>
+
+  <!-- Subtitle / Tagline -->
+  <text x="190" y="132" font-family="ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace" font-size="14" font-weight="600" letter-spacing="2.6" fill="#A1A1AA">
+    DETERMINISTIC INDUSTRIAL EDGE RUNTIME
+  </text>
+
+  <!-- Badge Pill -->
+  <rect x="528" y="34" width="120" height="24" rx="12" fill="#18181B" stroke="#FF5500" stroke-width="1.2"/>
+  <circle cx="544" cy="46" r="4" fill="#FFB800"/>
+  <text x="556" y="50" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="11" font-weight="700" fill="#F4F4F5">OPENUMP EDGE</text>
+</svg>

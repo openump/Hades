@@ -14,7 +14,7 @@
 
 ## 1. Executive Summary & Architectural Principles
 
-**Hades** is the industrial edge data plane of **OpenUMP**. Its mission is to acquire read-only operational technology (OT) signals at a factory site, normalize and validate them against a strict versioned OpenUMP contract, publish contextualized observations to a local MQTT broker, persist local numeric history for site autonomy, and asynchronously forward observations to the **Zeus** cloud control/data plane without allowing cloud outages to disrupt plant-floor visibility.
+**Hades** is the industrial edge data plane of **OpenUMP** (Open Unified Manufacturing Platform). Its mission is to acquire read-only operational technology (OT) signals at a factory site, normalize and validate them against a strict versioned OpenUMP contract, publish contextualized observations to a local MQTT broker, persist local numeric history for site autonomy, and asynchronously forward observations to the **Zeus** cloud control/data plane without allowing cloud outages to disrupt plant-floor visibility.
 
 Every component in Both the **Current Architecture (As-Built)** and the **Target Architecture (To-Be)** adheres to six non-negotiable architectural invariants:
 1. **Strictly Read-Only OT Boundary:** Hades never issues write function codes, actuation commands, or PLC program modifications.

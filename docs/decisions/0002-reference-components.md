@@ -24,7 +24,7 @@ A relational event/document database and Kafka are not required for the numeric-
 
 ## Consequences
 
-These maintained upstream releases pass native capability checks. Mosquitto's exact Docker tag is not available, so image packaging remains a tracked prerequisite. The upstream architectures are documented separately from tested host support. TLS/authentication, persistent MQTT sessions, buffers, and crash recovery need their dedicated tickets.
+These maintained upstream releases pass native capability checks. Mosquitto's exact Docker tag is not available, so image packaging remains a tracked prerequisite. The upstream architectures are documented separately from tested host support. Hades now exposes three gateway-driver tiers behind the shared poll interface: a native OPC UA reader for the approved software pilot profile, a PLC4Go-style brownfield abstraction for contiguous multi-tag polling across selected controller schemes, and the supervised Telegraf Modbus sidecar fallback. The Telegraf Modbus path now runs as a long-lived child under `hades-gateway` instead of spawning a fresh `--once` process for every poll. TLS/authentication, persistent MQTT sessions, buffers, and crash recovery need their dedicated tickets.
 
 ## Verification
 

@@ -21,6 +21,7 @@ type Reading struct {
 	Unit       string
 	Quality    string
 	Reason     string
+	ObservedAt time.Time
 	Extensions map[string]any
 }
 
@@ -97,9 +98,16 @@ func DriverConfig(endpoint string) (string, error) {
 }
 
 func DriverConfigForProfile(endpoint string, profile Profile) (string, error) {
+	return DriverConfigForProfileWithInterval(endpoint, profile, time.Second)
+}
+
+func DriverConfigForProfileWithInterval(endpoint string, profile Profile, interval time.Duration) (string, error) {
 	p, err := validateProfile(profile)
 	if err != nil {
 		return "", err
+	}
+	if interval < time.Second || interval > time.Hour {
+		return "", fmt.Errorf("driver interval must be 1s..1h")
 	}
 	u, err := url.Parse(endpoint)
 	if err != nil {
@@ -115,6 +123,9 @@ func DriverConfigForProfile(endpoint string, profile Profile) (string, error) {
 		lines = append(lines, fmt.Sprintf("    { measurement = %q, name = %q, byte_order = %q, data_type = %q, scale = %.1f, address = [%d] }", p.MetricName, reg.Name, reg.ByteOrder, reg.DataType, reg.Scale, reg.Address))
 	}
 	return fmt.Sprintf(`[agent]
+	interval = %q
+	flush_interval = %q
+	round_interval = false
   omit_hostname = true
   quiet = true
 [[inputs.modbus]]
@@ -131,7 +142,7 @@ func DriverConfigForProfile(endpoint string, profile Profile) (string, error) {
   files = ["stdout"]
   data_format = "json"
   json_timestamp_units = "1ms"
-`, p.MetricName, endpoint, p.SlaveID, strings.Join(lines, ",\n")), nil
+`, interval.String(), interval.String(), p.MetricName, endpoint, p.SlaveID, strings.Join(lines, ",\n")), nil
 }
 
 func DecodeReading(raw []byte) (uint16, time.Time, error) {
@@ -236,6 +247,60 @@ func EnvelopeForProfile(cfg *sample.Config, profile Profile, values map[string]u
 			"clock_uncertainty_ms": nil,
 		},
 		"signals": signals,
+	}
+	return json.Marshal(env)
+}
+
+func EnvelopeForReading(cfg *sample.Config, name string, reading Reading, boot string, sequence int, observed time.Time) ([]byte, error) {
+	defs, ok := cfg.Metadata["measurements"].(map[string]any)
+	if !ok {
+		return nil, fmt.Errorf("metadata missing measurements")
+	}
+	definition, ok := defs[name].(map[string]any)
+	if !ok {
+		return nil, fmt.Errorf("unknown measurement %q", name)
+	}
+	protocol, _ := cfg.Metadata["acquisition"].(map[string]any)["protocol"].(string)
+	if protocol == "" {
+		return nil, fmt.Errorf("metadata missing acquisition protocol")
+	}
+	clockOrigin := "gateway"
+	if origin, ok := reading.Extensions["opcua.timestamp_origin"].(string); ok && origin != "" {
+		clockOrigin = origin
+	}
+	if !reading.ObservedAt.IsZero() {
+		observed = reading.ObservedAt
+	}
+	if observed.IsZero() {
+		observed = time.Now().UTC()
+	}
+	signal := map[string]any{
+		"value":   reading.Value,
+		"unit":    definition["unit"],
+		"quality": reading.Quality,
+	}
+	if reading.Reason != "" {
+		signal["reason"] = reading.Reason
+	}
+	env := map[string]any{
+		"schema_version":    "1.0",
+		"message_id":        sample.UUID(),
+		"asset_id":          cfg.Metadata["asset_id"],
+		"metadata_revision": cfg.Metadata["metadata_revision"],
+		"observed_at":       observed.UTC().Format(sample.Timestamp),
+		"ingested_at":       time.Now().UTC().Format(sample.Timestamp),
+		"source": map[string]any{
+			"gateway_id":           cfg.Metadata["acquisition"].(map[string]any)["gateway_id"],
+			"protocol":             protocol,
+			"boot_id":              boot,
+			"sequence":             sequence,
+			"clock_origin":         clockOrigin,
+			"clock_uncertainty_ms": nil,
+		},
+		"signals": map[string]any{name: signal},
+	}
+	if len(reading.Extensions) > 0 {
+		env["extensions"] = reading.Extensions
 	}
 	return json.Marshal(env)
 }
