@@ -181,13 +181,13 @@ with tempfile.TemporaryDirectory(prefix='hades-security-') as scratch:
      acquisition.close();logs.flush()
 
     finally:source.shutdown();thread.join(timeout=5)
-    assert not source.rejected and len(source.reads)==4,(source.rejected,source.reads,pathlib.Path(logs.name).read_text()[-3000:])
+    assert not source.rejected and len(source.reads)>=4,(source.rejected,source.reads,pathlib.Path(logs.name).read_text()[-3000:])
     assert all(b-a>=.95 for a,b in zip(source.reads,source.reads[1:])),source.reads
-   events=[json.loads(line)['payload'] for line in pathlib.Path(scratch+'/gateway.jsonl').read_text().splitlines()]
-   readings=[e['signals']['temperature'] for e in events]
-   assert [r['value'] for r in readings]==[672,None,None,672],readings
-   assert [r['quality'] for r in readings]==['good','bad','bad','good'],readings
-   assert len({e['message_id'] for e in events})==4 and all(e['source']['clock_uncertainty_ms'] is None for e in events)
+    events=[json.loads(line)['payload'] for line in pathlib.Path(scratch+'/gateway.jsonl').read_text().splitlines()]
+    readings=[e['signals']['temperature'] for e in events]
+    assert [r['value'] for r in readings]==[672,None,None,672],readings
+    assert [r['quality'] for r in readings]==['good','bad','bad','good'],readings
+    assert len({e['message_id'] for e in events})==4 and all(e['source']['clock_uncertainty_ms'] is None for e in events)
   else:
    fixture=json.loads(pathlib.Path('examples/raw-observations/valid.json').read_text())
    fixture['observed_at']=(datetime.datetime.now(datetime.timezone.utc)-datetime.timedelta(seconds=1)).isoformat(timespec='milliseconds').replace('+00:00','Z');fixture['ingested_at']=fixture['observed_at']

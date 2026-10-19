@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/awcullen/opcua/ua"
+	"github.com/openump/Hades/internal/normalize"
 	"github.com/openump/Hades/internal/opcuapilot"
 	"github.com/openump/Hades/internal/sample"
 )
@@ -147,7 +148,7 @@ func TestMultiRegisterProfileDriverConfigDecodeAndEnvelope(t *testing.T) {
 		t.Fatal(err)
 	}
 	envRaw, err := EnvelopeForProfile(cfg, profile, values, "", sample.UUID(), 1, time.Now().UTC())
-		if err != nil {
+	if err != nil {
 		t.Fatal(err)
 	}
 	var p map[string]any
@@ -184,7 +185,7 @@ func TestEnvelopeForReadingPreservesSignalTimestampAndExtensions(t *testing.T) {
 		t.Fatal(payload["observed_at"])
 	}
 	source := payload["source"].(map[string]any)
-	if source["protocol"] != "opc-ua" || source["clock_origin"] != "source" {
+	if source["protocol"] != "opc-ua" || source["clock_origin"] != "device" {
 		t.Fatal(source)
 	}
 	ext := payload["extensions"].(map[string]any)
@@ -194,6 +195,13 @@ func TestEnvelopeForReadingPreservesSignalTimestampAndExtensions(t *testing.T) {
 	signals := payload["signals"].(map[string]any)
 	if signals["motor_temperature"].(map[string]any)["value"] != 72.5 {
 		t.Fatal(signals)
+	}
+	engine, err := normalize.NewOPCUAMock(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := engine.Map(raw); err != nil {
+		t.Fatal(err)
 	}
 }
 func TestCoalesceAdjacentReadsAndGuardrails(t *testing.T) {

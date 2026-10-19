@@ -130,8 +130,9 @@ func run() error {
 		if err != nil {
 			return err
 		}
-		// Bound the acquisition copy to exactly one pending envelope. No new device
-		// read occurs until admission; a restart loses this unsaved observation.
+		// Bound the unsaved acquisition copy to exactly one pending envelope. The
+		// persistent driver may continue polling in the background, but only the
+		// latest unsaved observation is retained before admission.
 		pending.Store(1)
 		if err = gateway.SubmitObserved(ctx, client, *ingress, raw, func() { retries.Add(1) }); err != nil {
 			if ctx.Err() != nil {

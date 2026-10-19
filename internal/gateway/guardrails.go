@@ -100,13 +100,13 @@ func (tb *TokenBucket) Acquire() bool {
 
 // CircuitBreaker prevents a stalled controller from being hammered forever.
 type CircuitBreaker struct {
-	mu            sync.Mutex
-	state         ProducerStatus
-	threshold     int
-	openUntil     time.Time
+	mu             sync.Mutex
+	state          ProducerStatus
+	threshold      int
+	openUntil      time.Time
 	currentBackoff time.Duration
-	maxBackoff    time.Duration
-	resetAfter    time.Duration
+	maxBackoff     time.Duration
+	resetAfter     time.Duration
 }
 
 func NewCircuitBreaker(threshold int, baseBackoff, maxBackoff time.Duration) *CircuitBreaker {
@@ -162,13 +162,13 @@ func (cb *CircuitBreaker) RecordSuccess() ProducerStatus {
 
 // EndpointGuardrail enforces a per-PLC rate bucket and concurrency budget.
 type EndpointGuardrail struct {
-	mu         sync.Mutex
-	endpoint   string
-	bucket     *TokenBucket
-	inflight   int
-	maxInFlight int
-	breaker    *CircuitBreaker
-	lastStatus ProducerStatusEvent
+	mu            sync.Mutex
+	endpoint      string
+	bucket        *TokenBucket
+	inflight      int
+	maxInFlight   int
+	breaker       *CircuitBreaker
+	lastStatus    ProducerStatusEvent
 	lastStatusSet bool
 }
 

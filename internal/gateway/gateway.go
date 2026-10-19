@@ -264,10 +264,7 @@ func EnvelopeForReading(cfg *sample.Config, name string, reading Reading, boot s
 	if protocol == "" {
 		return nil, fmt.Errorf("metadata missing acquisition protocol")
 	}
-	clockOrigin := "gateway"
-	if origin, ok := reading.Extensions["opcua.timestamp_origin"].(string); ok && origin != "" {
-		clockOrigin = origin
-	}
+	clockOrigin := normalizedClockOrigin(reading.Extensions)
 	if !reading.ObservedAt.IsZero() {
 		observed = reading.ObservedAt
 	}
@@ -303,4 +300,16 @@ func EnvelopeForReading(cfg *sample.Config, name string, reading Reading, boot s
 		env["extensions"] = reading.Extensions
 	}
 	return json.Marshal(env)
+}
+
+func normalizedClockOrigin(extensions map[string]any) string {
+	if origin, ok := extensions["opcua.timestamp_origin"].(string); ok {
+		switch origin {
+		case "source", "server", "device":
+			return "device"
+		case "gateway":
+			return "gateway"
+		}
+	}
+	return "gateway"
 }
