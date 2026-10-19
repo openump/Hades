@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"sync"
+	"syscall"
 	"time"
 
 	"github.com/awcullen/opcua/ua"
@@ -42,10 +43,18 @@ func OpenOPCUADriver(ctx context.Context, endpoint, pki string, options DriverOp
 
 func OpenOPCUADriverForSignals(ctx context.Context, endpoint, pki string, signals []opcuapilot.Signal, options DriverOptions) (*OPCUADriver, error) {
 	reader, err := opcuapilot.DialWithSignals(ctx, endpoint, pki, "client", signals)
-	if err != nil {
+	if err != nil && !errors.Is(err, syscall.ECONNREFUSED) {
 		return nil, err
 	}
-	driver := NewOPCUADriverWithSource(endpoint, reader, nil, signals, options)
+	// An offline source is a bad/null acquisition, not a fatal service startup.
+	// Authentication, trust and configuration errors still fail closed.
+	if err != nil {
+		reader = nil
+	}
+	driver := NewOPCUADriverWithSource(endpoint, nil, nil, signals, options)
+	if reader != nil {
+		driver.reader = reader
+	}
 	driver.opener = func(ctx context.Context) (opcuaBatchReader, error) {
 		return opcuapilot.DialWithSignals(ctx, endpoint, pki, "client", signals)
 	}
@@ -98,6 +107,9 @@ func (d *OPCUADriver) Poll(ctx context.Context) (map[string]Reading, time.Time, 
 	out := make(map[string]Reading, len(d.signals))
 	for index, signal := range d.signals {
 		reading, observed, _, ext := opcuapilot.MapValue(signal, values[index], d.options.Now())
+		if reader, ok := d.reader.(*opcuapilot.Reader); ok {
+			ext["opcua.namespace_index"] = reader.Namespace
+		}
 		current := Reading{
 			Value:      reading["value"],
 			Unit:       signal.Unit,

@@ -896,3 +896,35 @@ func TestOPCUAFailedPollNormalizesWithoutInventingDeviceEvidence(t *testing.T) {
 		}
 	}
 }
+
+func TestOPCUAOfflineStartupEmitsBadReadingsAndRejectsMissingTrust(t *testing.T) {
+	pki := filepath.Join(t.TempDir(), "pki")
+	if err := opcuapilot.InitPKI(pki); err != nil {
+		t.Fatal(err)
+	}
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	endpoint := "opc.tcp://" + listener.Addr().String()
+	listener.Close()
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	driver, err := OpenOPCUADriver(ctx, endpoint, pki, DriverOptions{ReadTimeout: 100 * time.Millisecond})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer driver.Close()
+	readings, _, reason := driver.Poll(ctx)
+	if reason == "" || len(readings) != len(opcuapilot.Signals) {
+		t.Fatal(readings, reason)
+	}
+	for _, reading := range readings {
+		if reading.Value != nil || reading.Quality != "bad" {
+			t.Fatal(reading)
+		}
+	}
+	if _, err := OpenOPCUADriver(ctx, endpoint, t.TempDir(), DriverOptions{}); err == nil {
+		t.Fatal("missing trust accepted")
+	}
+}
