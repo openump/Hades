@@ -24,7 +24,7 @@ with tempfile.TemporaryDirectory(prefix='hades-normalization-') as scratch:
    request=urllib.request.Request('http://127.0.0.1:18081/observations',data=raw,headers={'Content-Type':'application/json'})
    try:
     response=urllib.request.urlopen(request,timeout=5);actual=response.status
-    if actual==202:assert json.load(response)['acceptance']=='accepted_volatile'
+    if actual==202:assert json.load(response)['acceptance']=='accepted_broker_ack'
    except urllib.error.HTTPError as failure:actual=failure.code
    assert actual==code,(actual,code)
   fixture=json.loads(pathlib.Path('examples/raw-observations/valid.json').read_text())

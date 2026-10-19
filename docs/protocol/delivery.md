@@ -14,15 +14,15 @@ Consumers deduplicate within authenticated enterprise scope by message ID and co
 
 | Stage | Acceptance | Ownership and retirement | Crash/loss boundary |
 | --- | --- | --- | --- |
-| Gateway acquisition | Reading captured with identity in the gateway's bounded volatile queue | Gateway retains through unsuccessful normalizer attempts; retires after explicit volatile acceptance. | Unsaved readings are lost on gateway crash or overflow; device polling cannot recover them automatically. |
-| Normalizer ingress | `202 Accepted` with `acceptance: accepted_volatile` after validation/mapping and admission to its bounded queue | Normalizer owns accepted work through MQTT retry; retires after successful broker PUBACK. | Process crash loses accepted queued/in-flight observations; HTTP 202 must not claim durable storage. |
+| Gateway acquisition | Reading captured with identity in the gateway's bounded volatile queue | Gateway retains through unsuccessful normalizer attempts; retires only after explicit `accepted_broker_ack` receipt. | Unsaved readings are lost on gateway crash or overflow; device polling cannot recover them automatically. |
+| Normalizer ingress | `202 Accepted` with `acceptance: accepted_broker_ack` only after successful QoS 1 PUBACK | Gateway retains through queue waits/publication failures; `503` on bounded publication timeout. | No successful pre-PUBACK admission. Broker/subscriber crash and queue-limit boundaries still apply; no durable spool is claimed. |
 | Local broker | Successful MQTT 5 PUBACK at QoS 1 | Broker handles configured routing/session queues; downstream consumers establish their own acceptance. | PUBACK does not establish historian/cloud commit or per-message disk sync. Unpersisted broker/session state may be lost on crash. |
 | Historian adapter | Original observation recorded in its bounded intake log and synced | Adapter owns retry until the selected historian write acceptance/commit boundary is met and recorded retirement is synced. | Intake survives only after verified sync. If database API acknowledgement precedes disk commit, retiring on that acknowledgement exposes a documented database-crash loss window. |
 | Cloud-transfer adapter | Original observation recorded in its bounded transfer log and synced | Adapter retries until a verified durable Zeus receipt, then durably retires the record. | Before local sync it is unprotected; after sync, receipt loss causes replay, not intentional deletion. |
 
 These boundaries are intentionally separate. A durable adapter intake does not repair observations lost before that intake. A generic HTTP 2xx or MQTT callback is not evidence of downstream durability. Broker persistence/session settings must be recorded and tested; autosave intervals alone do not prove a strict maximum loss interval.
 
-For a local HTTP ingress implementation, use 400 for malformed JSON, 413 for oversized bodies, 422 for permanent contract/mapping errors, and 503 with a bounded retry hint for temporary admission failure. Return 202 only after successful volatile admission. This is a proposed interface for Hades-010, not a current endpoint. Invalid observations never enter normal telemetry topics; diagnostics go to bounded quarantine. Permanent errors must not be retried indefinitely.
+For a local HTTP ingress implementation, use 400 for malformed JSON, 413 for oversized bodies, 422 for permanent contract/mapping errors, and 503 with a bounded retry hint for temporary admission failure. Return 202 only after successful broker PUBACK, as implemented by Hades-029; otherwise return 503 and retain gateway ownership. Invalid observations never enter normal telemetry topics; diagnostics go to bounded quarantine. Permanent errors must not be retried indefinitely.
 
 The historian adapter must distinguish durable intake, HTTP/API acceptance, and database commit. Hades-011/017 must identify and test the exact retirement boundary for VictoriaMetrics 1.154.0. If retirement follows API acceptance without verified sync, label that stage best effort and report the crash-loss window. Do not infer durability from a query returning the sample. A stricter profile must retain records until a verified durable boundary is available.
 
@@ -33,7 +33,7 @@ All record limits and byte limits apply simultaneously; the first reached limit 
 | Queue or store | Initial maximum | Policy |
 | --- | --- | --- |
 | Gateway pending readings | 4,096 observations or 16 MiB, memory only | Reject newest at capacity; count dropped acquisitions and mark degraded. Retry retained observations until accepted or lost on process restart. |
-| Normalizer pending publication | 4,096 observations or 16 MiB, memory only | Refuse new ingress with 503 at capacity; retry admitted records. No silent oldest-record eviction. |
+| Normalizer pending publication | 4,096 observations or 16 MiB, memory only | Refuse new ingress with 503 at capacity; four-second bounded publication waits, gateway owns retry. No silent oldest-record eviction. |
 | Broker offline delivery, per durable client | 4,096 queued observations or 16 MiB | Configure available broker limits and session expiry; document the selected version's actual drop/refusal behavior. Broker overflow is a visible data-loss condition, not a delivery guarantee. |
 | Historian adapter intake | 100,000 records or 256 MiB on disk | Reject newest with a loss counter at capacity; retain admitted work through sink failures. No automatic age expiry before sink acceptance. |
 | Cloud-transfer intake | 100,000 records or 256 MiB on disk | Reject newest with a loss counter at capacity; expire unreceipted records at 72 hours only with trustworthy time and a recorded expiry/loss event. |
@@ -76,7 +76,7 @@ The proposed receiver deduplication window is seven days from first durable clou
 
 | Scenario | Required transition/result | Verification owner |
 | --- | --- | --- |
-| Valid local ingress | Gateway pending → normalizer volatile admission → MQTT pending → successful PUBACK; adapter intakes establish later boundaries independently. | Hades-010/011 |
+| Valid local ingress | Gateway pending → normalizer bounded publication wait → successful PUBACK → explicit broker-ack receipt; adapter intakes establish later boundaries independently. | Hades-010/011 |
 | Invalid observation | Permanent rejection/quarantine; no normal telemetry publication, no fabricated zero, bounded diagnostics. | Hades-010 |
 | Normalizer queue full | 503, source retains/retries within its own bound; source overflow/restart can cause counted loss. | Hades-010/017 |
 | Broker acknowledgement lost | Normalizer retries the same ID; consumers detect duplicates, and no fresh identity is allocated. | Hades-017 |
@@ -105,3 +105,5 @@ capacity. Only verified receipts retire records. The implementation pins one
 approved metadata snapshot; historical multi-revision deployment is not claimed.
 See [cloud transfer](../integration/zeus-transfer.md) and the
 [isolated outage matrix](../operations/cloud-outage-evidence.md).
+
+Hades-029 supersedes the original volatile ingress transition. See [ingress acknowledgement](../operations/ingress-acknowledgement.md) for the implemented bounds and upgrade behavior.

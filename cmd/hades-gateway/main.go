@@ -124,7 +124,7 @@ func run() error {
 		}
 		pending.Store(0)
 		admitted.Add(1)
-		encoder.Encode(map[string]any{"type": "gateway_admitted", "payload": json.RawMessage(raw), "boundary": "accepted_volatile"})
+		encoder.Encode(map[string]any{"type": "gateway_admitted", "payload": json.RawMessage(raw), "boundary": "accepted_broker_ack"})
 		if sequence+1 < *count {
 			timer := time.NewTimer(max(time.Until(nextPoll), 0))
 			select {

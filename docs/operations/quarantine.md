@@ -26,14 +26,15 @@ one configured simulator asset; read-only industrial acquisition remains Hades-0
 
 Ingress returns 400 for invalid wire JSON, 413 above 65,536 bytes, and 422 for
 mapping/context failures. These create private diagnostics and never publish
-normal telemetry. `202` with `acceptance: accepted_volatile` means ownership by
-the memory queue, not durable delivery. Pending/in-flight work shares limits of
-4,096 records and 16 MiB, charging payload plus 4 KiB bookkeeping per record.
-Capacity returns 503/Retry-After: 1. A single publisher retries immutable bytes
-with the delivery profile's full jitter and retires only after successful PUBACK.
-A process crash can lose admitted work. `/health` exposes occupancy, admissions,
-publications, retries, rejection and quarantine/eviction counters; counters reset
-on restart and do not estimate unknown volatile crash losses.
+normal telemetry. `202` with `acceptance: accepted_broker_ack` requires successful
+MQTT PUBACK; entering the bounded memory wait queue does not acknowledge gateway
+ownership. Pending/in-flight waits share limits of 4,096 records and 16 MiB,
+charging payload plus 4 KiB bookkeeping per record. Capacity and publication
+timeouts return 503/Retry-After: 1. The gateway retains immutable bytes through
+these failures. `/health` exposes wait occupancy, publication and HTTP broker-ack
+counts, failures, refusals and diagnostic eviction counters. See
+[ingress acknowledgement](ingress-acknowledgement.md) for the remaining broker and
+volatile gateway acquisition failure boundaries.
 
 Quarantine is a single-owner mode-0700 directory with mode-0600 records. Each
 synced record contains a bounded reason, HTTP status, receipt time, base64 payload
@@ -61,3 +62,5 @@ the pinned broker on Linux. No local Docker execution is claimed.
 
 Sources: [Bento Bloblang](https://warpstreamlabs.github.io/bento/docs/guides/bloblang/about/),
 [Bento 1.22.0 source](https://github.com/warpstreamlabs/bento/tree/v1.22.0/public/bloblang).
+
+Hades-029 update: successful normalizer ingress requires broker PUBACK, not entry into a volatile queue. See [ingress acknowledgement](ingress-acknowledgement.md).

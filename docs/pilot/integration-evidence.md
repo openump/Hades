@@ -43,7 +43,7 @@ IDs, boot/sequence, source, metadata revision and both timestamps are assigned
 once before delivery. A single pending raw envelope owns the next ingress attempt;
 new polling pauses under ingress backpressure. Transient errors and ambiguous
 202 receipt bodies retry immutable bytes with full jitter and bounded numeric
-Retry-After hints. Only an explicit `202 accepted_volatile` receipt retires this
+Retry-After hints. Only an explicit `202 accepted_broker_ack` receipt retires this
 volatile gateway copy. Permanent rejection stops visibly. Restart can lose the
 one unsaved observation; no durable/zero-loss acquisition claim is made.
 

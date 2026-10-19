@@ -5,8 +5,8 @@ Quarantine has a separate writer lock and a bounded FIFO list. Startup sorts the
 existing diagnostic keys once to rebuild that index; eviction thereafter removes
 its head without sorting the store. Health reads cached diagnostic counts.
 Diagnostic disk writes cannot hold the publication lock. The existing 16-request
-admission limit still returns 503 under saturation. Normalizer admission remains
-`accepted_volatile`; crash-safe normalizer admission belongs to Hades-029.
+admission limit still returns 503 under saturation. Hades-029 now requires
+MQTT PUBACK before `accepted_broker_ack`; see [ingress acknowledgement](ingress-acknowledgement.md).
 
 ## Historian batching
 

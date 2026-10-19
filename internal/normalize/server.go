@@ -6,13 +6,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/openump/Hades/internal/contracts"
-	"github.com/openump/Hades/internal/delivery"
 	"github.com/openump/Hades/internal/operations"
 	"github.com/openump/Hades/internal/sample"
 	"github.com/openump/Hades/internal/storage"
 	"github.com/openump/Hades/internal/transport"
 	"io"
-	"log"
 	"net/http"
 	"sort"
 	"sync"
@@ -20,6 +18,10 @@ import (
 )
 
 type Server struct {
+	pendingContexts                                                                     []context.Context
+	pendingResults                                                                      []chan error
+	brokerAccepted, publishTimeouts                                                     uint64
+	publishTimeout                                                                      time.Duration
 	IngressPolicy                                                                       *transport.IngressPolicy
 	qmu                                                                                 sync.Mutex
 	quarantineFIFO                                                                      *list.List
@@ -57,7 +59,7 @@ func NewServer(engine *Engine, dir string, maxRecords, maxBytes int) (*Server, e
 	for _, key := range keys {
 		fifo.PushBack(key)
 	}
-	return &Server{quarantineFIFO: fifo, quarantineRecords: len(q.Records), quarantineBytes: q.Bytes, engine: engine, maxRecords: maxRecords, maxBytes: maxBytes, quarantine: q, wake: make(chan struct{}, 1), slots: make(chan struct{}, 16)}, nil
+	return &Server{publishTimeout: 4 * time.Second, quarantineFIFO: fifo, quarantineRecords: len(q.Records), quarantineBytes: q.Bytes, engine: engine, maxRecords: maxRecords, maxBytes: maxBytes, quarantine: q, wake: make(chan struct{}, 1), slots: make(chan struct{}, 16)}, nil
 }
 func (s *Server) Close() error { return s.quarantine.Close() }
 
@@ -70,7 +72,7 @@ func (s *Server) Stats() map[string]any {
 	if len(s.pendingSince) > 0 {
 		oldestMS = max(time.Since(s.pendingSince[0]).Milliseconds(), 0)
 	}
-	return map[string]any{"pending_records": len(s.pending), "pending_bytes": s.bytes, "admitted": s.admitted, "published": s.published, "rejected": s.rejected, "quarantine_records": s.quarantineRecords, "quarantine_bytes": s.quarantineBytes, "quarantine_evictions": s.evicted, "retries": s.retries, "publish_failures": s.retries, "capacity_refusals": s.capacityRefusals, "refused_bytes": s.refusedBytes, "storage_failures": s.storageFailures, "processing_count": s.processingCount, "processing_latency": s.processingLatency.Snapshot(), "processing_ms_sum": s.processingMS, "stale_readings": s.staleReadings, "unknown_freshness": s.unknownFreshness, "disk_reserve_ok": diskOK, "queue_limit_records": s.maxRecords, "queue_limit_bytes": s.maxBytes, "last_admission": s.lastAdmission, "oldest_pending_ms": oldestMS, "transfer_state": "not_observed_by_this_service"}
+	return map[string]any{"pending_records": len(s.pending), "pending_bytes": s.bytes, "admitted": s.admitted, "published": s.published, "rejected": s.rejected, "quarantine_records": s.quarantineRecords, "quarantine_bytes": s.quarantineBytes, "quarantine_evictions": s.evicted, "retries": s.retries, "publish_failures": s.retries, "capacity_refusals": s.capacityRefusals, "refused_bytes": s.refusedBytes, "storage_failures": s.storageFailures, "processing_count": s.processingCount, "processing_latency": s.processingLatency.Snapshot(), "processing_ms_sum": s.processingMS, "stale_readings": s.staleReadings, "unknown_freshness": s.unknownFreshness, "disk_reserve_ok": diskOK, "queue_limit_records": s.maxRecords, "queue_limit_bytes": s.maxBytes, "last_admission": s.lastAdmission, "oldest_pending_ms": oldestMS, "transfer_state": "not_observed_by_this_service", "ingress_acceptance": "accepted_broker_ack", "broker_accepted": s.brokerAccepted, "publish_timeouts": s.publishTimeouts, "publication_wait_limit_ms": s.publishTimeout.Milliseconds(), "spool_records": 0, "spool_bytes": 0}
 }
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if r.URL.Path == "/health" && r.Method == http.MethodGet {
@@ -165,6 +167,9 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			unknown++
 		}
 	}
+	requestctx, cancel := context.WithTimeout(r.Context(), s.publishTimeout)
+	defer cancel()
+	result := make(chan error, 1)
 	s.mu.Lock()
 	s.staleReadings += stale
 	s.unknownFreshness += unknown
@@ -174,9 +179,11 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		s.refusedBytes += uint64(len(normalized))
 		s.mu.Unlock()
 		w.Header().Set("Retry-After", "1")
-		http.Error(w, "volatile queue full", 503)
+		http.Error(w, "publication wait queue full", 503)
 		return
 	}
+	s.pendingContexts = append(s.pendingContexts, requestctx)
+	s.pendingResults = append(s.pendingResults, result)
 	s.pending = append(s.pending, normalized)
 	s.pendingSince = append(s.pendingSince, time.Now())
 	s.bytes += charge
@@ -187,9 +194,28 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	case s.wake <- struct{}{}:
 	default:
 	}
+	var publishErr error
+	select {
+	case publishErr = <-result:
+	case <-requestctx.Done():
+		publishErr = requestctx.Err()
+	}
+	if publishErr != nil {
+		s.mu.Lock()
+		if requestctx.Err() != nil {
+			s.publishTimeouts++
+		}
+		s.mu.Unlock()
+		w.Header().Set("Retry-After", "1")
+		http.Error(w, "broker acceptance unavailable; retain and retry original observation", 503)
+		return
+	}
+	s.mu.Lock()
+	s.brokerAccepted++
+	s.mu.Unlock()
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(202)
-	io.WriteString(w, "{\"acceptance\":\"accepted_volatile\"}\n")
+	io.WriteString(w, "{\"acceptance\":\"accepted_broker_ack\"}\n")
 }
 
 // quarantineRecord serializes only diagnostic ownership. Publication and health
@@ -228,6 +254,9 @@ func (s *Server) quarantineRecord(record []byte) (err error) {
 }
 func (s *Server) Run(ctx context.Context, publish func(context.Context, []byte) error) error {
 	for {
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
 		s.mu.Lock()
 		var raw []byte
 		if len(s.pending) > 0 {
@@ -242,28 +271,34 @@ func (s *Server) Run(ctx context.Context, publish func(context.Context, []byte) 
 				continue
 			}
 		}
-		for attempt := 0; ; attempt++ {
-			if ctx.Err() != nil {
-				return ctx.Err()
-			}
-			if err := publish(ctx, append([]byte(nil), raw...)); err == nil {
-				break
-			} else {
-				log.Printf("normalizer publication retry: %v", err)
-			}
-			s.mu.Lock()
-			s.retries++
-			s.mu.Unlock()
-			if err := delivery.Pause(ctx, attempt); err != nil {
-				return err
-			}
+		s.mu.Lock()
+		requestctx := s.pendingContexts[0]
+		result := s.pendingResults[0]
+		s.mu.Unlock()
+		publishctx, cancel := context.WithCancel(requestctx)
+		stop := context.AfterFunc(ctx, cancel)
+		err := publishctx.Err()
+		if err == nil {
+			err = publish(publishctx, append([]byte(nil), raw...))
 		}
+		stop()
+		cancel()
+
 		s.mu.Lock()
 		s.pending[0] = nil // Release the retired payload even while backing storage is reused.
 		s.pending = s.pending[1:]
 		s.pendingSince = s.pendingSince[1:]
 		s.bytes -= len(raw) + storage.Overhead
-		s.published++
+		s.pendingContexts[0] = nil
+		s.pendingContexts = s.pendingContexts[1:]
+		s.pendingResults[0] = nil
+		s.pendingResults = s.pendingResults[1:]
+		if err == nil {
+			s.published++
+		} else {
+			s.retries++
+		}
 		s.mu.Unlock()
+		result <- err
 	}
 }

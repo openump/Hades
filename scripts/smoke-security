@@ -46,13 +46,13 @@ with tempfile.TemporaryDirectory(prefix='hades-security-') as scratch:
   return c
  def http(path,role,code,data=None,port=hp,pki=v1):
   request=urllib.request.Request(f'https://127.0.0.1:{port}'+path,data=data)
-  try:response=urllib.request.urlopen(request,context=context(role,pki),timeout=4);actual=response.status
+  try:response=urllib.request.urlopen(request,context=context(role,pki),timeout=6 if path=='/observations' else 4);actual=response.status
   except urllib.error.HTTPError as error:actual=error.code
   assert actual==code,(role,path,actual,code)
   return response if actual==code and code<400 else None
- def wait(check,label):
+ def wait(check,label,attempts=200):
   last_error=None
-  for _ in range(200):
+  for _ in range(attempts):
    try:
     if check():return
    except (OSError,ValueError) as error:last_error=error
@@ -199,6 +199,50 @@ with tempfile.TemporaryDirectory(prefix='hades-security-') as scratch:
   wait(lambda:len(transferred())==expected_count and not load_values(scratch+'/transfer'),'TLS durable transfer receipt retirement')
   local_payloads={r['payload'] for r in load_values(scratch+'/intake')}
   assert {r['payload'] for r in transferred()}==local_payloads
+  if not ot_lab and not opc_lab:
+   # Hades-029: a failed broker publication never acknowledges gateway ownership.
+   subprocess.run(['go','build','-o','artifacts/hades-ingress-submit','./tests/recovery/ingress-submit'],check=True)
+   import copy
+   retried=copy.deepcopy(fixture);retried['message_id']='019a1234-5678-7000-8000-000000000029'
+   retried['source']['sequence']=29
+   retried['observed_at']=(datetime.datetime.now(datetime.timezone.utc)-datetime.timedelta(seconds=1)).isoformat(timespec='milliseconds').replace('+00:00','Z');retried['ingested_at']=retried['observed_at']
+   immutable=json.dumps(retried).encode();payload_path=pathlib.Path(scratch)/'immutable-reading.json';payload_path.write_bytes(immutable)
+   if native:broker.terminate();broker.wait(timeout=10)
+   else:subprocess.run(compose+['stop','broker'],check=True)
+   # No HTTP success while offline, including after a SIGKILL/restart of ingress.
+   http('/observations','gateway-press-04',503,data=immutable,port='18083')
+   attempt_log=open(scratch+'/gateway-retry.log','w')
+   submit=subprocess.Popen(['artifacts/hades-ingress-submit','-payload',str(payload_path),'-ingress','https://127.0.0.1:18083/observations']+flags('gateway-press-04',v1),stdout=attempt_log,stderr=logs);children.append(submit)
+   wait(lambda:'retry:' in pathlib.Path(attempt_log.name).read_text(),'gateway retained original reading')
+   normalizer_args=normalizer.args;normalizer.kill();normalizer.wait(timeout=10)
+   normalizer=subprocess.Popen(normalizer_args,stdout=logs,stderr=logs);children.append(normalizer)
+   wait(lambda:http('/health','admin',200,port='18083') is not None,'ingress health during broker outage')
+   http('/observations','gateway-press-04',503,data=immutable,port='18083')
+   assert submit.poll() is None and 'accepted_broker_ack' not in pathlib.Path(attempt_log.name).read_text()
+   if native:
+    broker=subprocess.Popen([native,'-c',scratch+'/mosquitto.conf'],stdout=logs,stderr=logs);children.append(broker)
+   else:subprocess.run(compose+['start','broker'],check=True)
+   wait(lambda:submit.poll() is not None,'gateway broker acknowledgement after recovery')
+   assert submit.returncode==0,pathlib.Path(logs.name).read_text()[-4000:]
+   assert 'accepted_broker_ack' in pathlib.Path(attempt_log.name).read_text();attempt_log.close()
+   expected_ids={fixture['message_id'],retried['message_id']}
+   def received_ids():
+    local={json.loads(base64.b64decode(r['payload']))['message_id'] for r in load_values(scratch+'/intake')}
+    remote={r['message_id'] for r in transferred()}
+    return local,remote
+   import base64
+   # Subscriber reconnect jitter can reach 30 seconds; allow one full backoff
+   # plus intake/receiver delivery without weakening the exact ID comparison.
+   try:
+    wait(lambda:received_ids()==(expected_ids,expected_ids),'every acknowledged ID in history and transfer',attempts=600)
+   except Exception:
+    print('ingress debug:',received_ids(),'expected',expected_ids,'transfer exit',transfer.poll(),'history exit',history.poll())
+    raise
+   for records in (load_values(scratch+'/intake'),transferred()):
+    payloads=[json.loads(base64.b64decode(r['payload'])) for r in records]
+    p=next(p for p in payloads if p['message_id']==retried['message_id'])
+    for field in ('source','observed_at','ingested_at','asset_id','metadata_revision'):assert p[field]==retried[field],field
+   print('ingress acknowledgement: offline 503, gateway immutable retry, ingress SIGKILL/restart mid-outage, broker recovery; all 2 acknowledged IDs reached history and transfer, zero missing IDs')
   transfer.terminate();assert transfer.wait(timeout=10)==0
   print('transfer: scoped mTLS broker-to-receiver path preserved exact payloads and retired only after durable receipts')
   if opc_lab:
