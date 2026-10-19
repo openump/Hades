@@ -186,7 +186,13 @@ func (d *OPCUADriver) invalidateReader(target opcuaBatchReader) {
 func (d *OPCUADriver) failureReadings(reason string) map[string]Reading {
 	out := make(map[string]Reading, len(d.signals))
 	for _, signal := range d.signals {
-		out[signal.Name] = Reading{Value: nil, Unit: signal.Unit, Quality: "bad", Reason: reason, ObservedAt: d.options.Now()}
+		out[signal.Name] = Reading{Value: nil, Unit: signal.Unit, Quality: "bad", Reason: reason, ObservedAt: d.options.Now(), Extensions: map[string]any{
+			"opcua.node_id":          signal.Node,
+			"opcua.timestamp_origin": "gateway",
+			"opcua.source_timestamp": nil,
+			"opcua.server_timestamp": nil,
+			"opcua.status_code":      nil,
+		}}
 	}
 	return out
 }

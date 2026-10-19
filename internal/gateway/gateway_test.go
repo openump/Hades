@@ -863,3 +863,36 @@ func BenchmarkOPCUADriver(b *testing.B) {
 		driver.Poll(context.Background())
 	}
 }
+
+func TestOPCUAFailedPollNormalizesWithoutInventingDeviceEvidence(t *testing.T) {
+	cfg, err := sample.LoadContext("../..", "../../examples/site/opcua-mock.metadata.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	engine, err := normalize.NewOPCUAMock(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	driver := NewOPCUADriverWithSource("opc.tcp://127.0.0.1:4840", nil, nil, opcuapilot.Signals[:], DriverOptions{})
+	for name, reading := range driver.failureReadings("read-timeout") {
+		raw, err := EnvelopeForReading(cfg, name, reading, sample.UUID(), 0, time.Now().UTC())
+		if err != nil {
+			t.Fatal(err)
+		}
+		normalized, err := engine.Map(raw)
+		if err != nil {
+			t.Fatalf("failed poll rejected: %v; %s", err, raw)
+		}
+		var out map[string]any
+		if err := json.Unmarshal(normalized, &out); err != nil {
+			t.Fatal(err)
+		}
+		ext := out["extensions"].(map[string]any)
+		if ext["opcua.timestamp_origin"] != "gateway" || ext["opcua.status_code"] != nil || ext["opcua.source_timestamp"] != nil || ext["opcua.server_timestamp"] != nil {
+			t.Fatal(ext)
+		}
+		if reading.Value != nil || reading.Quality != "bad" || reading.Reason != "read-timeout" {
+			t.Fatal(reading)
+		}
+	}
+}

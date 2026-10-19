@@ -40,7 +40,7 @@ class Scenario:
      self.wait(lambda:subprocess.check_output(['systemctl','show',unit,'-p','ActiveState','--value'],text=True).strip()=='inactive','finite installed OPC UA gateway')
      assert subprocess.check_output(['systemctl','show',unit,'-p','ExecMainStatus','--value'],text=True).strip()=='0'
     else:subprocess.run(['artifacts/hades-service-native','-action','run','-config',str(definition),'-digest',digest],check=True,timeout=20,stderr=self.logs)
-    payloads=[json.loads(line)['payload'] for line in (state/'events.log').read_text().splitlines() if line.startswith('{"boundary":')]
+    payloads=[json.loads(line)['payload'] for line in (state/'events.log').read_text().splitlines() if line.startswith('{') and ('"boundary":' in line or '"type":"gateway_admitted"' in line)]
     assert len(payloads)==3,(mode,payloads)
     expected='uncertain' if mode=='uncertain' else 'bad' if mode in ('bad','missing','delay','server-down','wrong-type') else 'good'
     for payload in payloads:

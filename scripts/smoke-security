@@ -211,23 +211,24 @@ with tempfile.TemporaryDirectory(prefix='hades-security-') as scratch:
   if ot_lab:
    wait(lambda:len(load_values(scratch+'/intake'))==4 and all(r['state']=='api_accepted' for r in load_values(scratch+'/intake')),'lab history retirement')
    received=[json.loads(line) for line in pathlib.Path(consumerout.name).read_text().splitlines() if json.loads(line)['type']=='telemetry']
-   assert [e['value'] for e in received]==[67.2,None,None,67.2],received
+   assert [e['value'] for e in received]==[None if r['value'] is None else r['value']/10 for r in readings],received
+   assert [e['quality'] for e in received]==[r['quality'] for r in readings],received
    assert [e['message_id'] for e in received]==[e['message_id'] for e in events]
    assert [e['observed_at'] for e in received]==[e['observed_at'] for e in events]
    assert all(e['freshness']=='unknown' for e in received)
    health=json.load(http('/health','admin',200,port='18083'))
    assert health['published']==4 and health['unknown_freshness']==4 and health['processing_count']>=4 and health['disk_reserve_ok'],health
    gateway_health=[json.loads(line[line.index('{'):]) for line in pathlib.Path(logs.name).read_text().splitlines() if '"type":"gateway_health"' in line]
-   assert gateway_health and max(e['acquisition_failures'] for e in gateway_health)>=2,gateway_health
+   assert gateway_health and max(e['acquisition_failures'] for e in gateway_health)>=len(bad_reads),gateway_health
 
    start=datetime.datetime.fromisoformat(events[0]['observed_at'].replace('Z','+00:00')).timestamp()
    end=datetime.datetime.fromisoformat(events[-1]['observed_at'].replace('Z','+00:00')).timestamp()
    query=urllib.parse.urlencode({'match[]':'hades_observation_value{asset_id="urn:openump:acme:berlin:press-04",metadata_revision="2",unit="Cel"}','start':start,'end':end+.01})
    def lab_values():
     return [json.loads(line) for line in http('/api/v1/export?'+query,'consumer-primary',200).read().splitlines()]
-   wait(lambda:bool(lab_values()) and lab_values()[0]['values']==[67.2,67.2],'lab numeric history')
+   wait(lambda:bool(lab_values()) and lab_values()[0]['values']==[r['value']/10 for r in readings if r['quality']=='good'],'lab numeric history')
    exported=lab_values()[0]
-   expected=[int(round(datetime.datetime.fromisoformat(e['observed_at'].replace('Z','+00:00')).timestamp()*1000)) for e in (events[0],events[-1])]
+   expected=[int(round(datetime.datetime.fromisoformat(e['observed_at'].replace('Z','+00:00')).timestamp()*1000)) for e in events if e['signals']['temperature']['quality']=='good']
    assert exported['timestamps']==expected,exported
    print('OT lab: four FC3-only bounded polls, timeout/exception/null quality/reconnect, preserved ID/time, TLS source-to-history passed; real device acceptance pending')
 
