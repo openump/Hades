@@ -23,6 +23,7 @@ type OPCUADriver struct {
 	endpoint     string
 	signals      []opcuapilot.Signal
 	reader       opcuaBatchReader
+	opener       func(ctx context.Context) (opcuaBatchReader, error)
 	subscriber   opcuaSubscriptionReader
 	options      DriverOptions
 	session      *PersistentSession
@@ -44,7 +45,11 @@ func OpenOPCUADriverForSignals(ctx context.Context, endpoint, pki string, signal
 	if err != nil {
 		return nil, err
 	}
-	return NewOPCUADriverWithSource(endpoint, reader, nil, signals, options), nil
+	driver := NewOPCUADriverWithSource(endpoint, reader, nil, signals, options)
+	driver.opener = func(ctx context.Context) (opcuaBatchReader, error) {
+		return opcuapilot.DialWithSignals(ctx, endpoint, pki, "client", signals)
+	}
+	return driver, nil
 }
 
 func NewOPCUADriverWithSource(endpoint string, reader opcuaBatchReader, subscriber opcuaSubscriptionReader, signals []opcuapilot.Signal, options DriverOptions) *OPCUADriver {
@@ -123,6 +128,7 @@ func (d *OPCUADriver) Poll(ctx context.Context) (map[string]Reading, time.Time, 
 func (d *OPCUADriver) Close() error {
 	if d.reader != nil {
 		d.reader.Close()
+		d.reader = nil
 	}
 	return nil
 }
@@ -131,7 +137,50 @@ func (d *OPCUADriver) next(ctx context.Context) ([]ua.DataValue, error) {
 	if d.subscriber != nil {
 		return d.subscriber.Next(ctx)
 	}
-	return d.reader.Read(ctx)
+	reader, err := d.ensureReader(ctx)
+	if err != nil {
+		return nil, err
+	}
+	type readResult struct {
+		values []ua.DataValue
+		err    error
+	}
+	resultCh := make(chan readResult, 1)
+	go func(activeReader opcuaBatchReader) {
+		values, err := activeReader.Read(ctx)
+		resultCh <- readResult{values: values, err: err}
+	}(reader)
+	select {
+	case result := <-resultCh:
+		return result.values, result.err
+	case <-ctx.Done():
+		d.invalidateReader(reader)
+		return nil, ctx.Err()
+	}
+}
+
+func (d *OPCUADriver) ensureReader(ctx context.Context) (opcuaBatchReader, error) {
+	if d.reader != nil {
+		return d.reader, nil
+	}
+	if d.opener == nil {
+		return nil, errors.New("opcua reader unavailable")
+	}
+	reader, err := d.opener(ctx)
+	if err != nil {
+		return nil, err
+	}
+	d.reader = reader
+	return reader, nil
+}
+
+func (d *OPCUADriver) invalidateReader(target opcuaBatchReader) {
+	if target != nil {
+		target.Close()
+	}
+	if d.reader == target {
+		d.reader = nil
+	}
 }
 
 func (d *OPCUADriver) failureReadings(reason string) map[string]Reading {

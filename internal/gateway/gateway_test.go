@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/binary"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -374,6 +375,24 @@ func (r *fakeOPCUAReader) Read(context.Context) ([]ua.DataValue, error) {
 
 func (r *fakeOPCUAReader) Close() {}
 
+type blockingOPCUAReader struct {
+	unblock chan struct{}
+	closed  bool
+}
+
+func (r *blockingOPCUAReader) Read(context.Context) ([]ua.DataValue, error) {
+	<-r.unblock
+	return nil, errors.New("closed")
+}
+
+func (r *blockingOPCUAReader) Close() {
+	if r.closed {
+		return
+	}
+	r.closed = true
+	close(r.unblock)
+}
+
 func TestOPCUADriverMapsSignalsAndReusesPersistentSession(t *testing.T) {
 	base := time.Now().UTC()
 	reader := &fakeOPCUAReader{batches: [][]ua.DataValue{
@@ -425,6 +444,29 @@ func TestOPCUADriverMapsSignalsAndReusesPersistentSession(t *testing.T) {
 	}
 	if err := driver.Close(); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestOPCUADriverReadTimeoutClosesBlockedReader(t *testing.T) {
+	reader := &blockingOPCUAReader{unblock: make(chan struct{})}
+	driver := NewOPCUADriverWithSource("opc.tcp://127.0.0.1:4840", reader, nil, opcuapilot.Signals[:1], DriverOptions{
+		ReadTimeout:   50 * time.Millisecond,
+		RatePerSecond: 100,
+		Burst:         4,
+	})
+	start := time.Now()
+	values, _, reason := driver.Poll(context.Background())
+	if reason != "read-timeout" {
+		t.Fatal(reason)
+	}
+	if values[opcuapilot.Signals[0].Name].Quality != "bad" {
+		t.Fatal(values)
+	}
+	if elapsed := time.Since(start); elapsed > 250*time.Millisecond {
+		t.Fatal(elapsed)
+	}
+	if !reader.closed {
+		t.Fatal("expected reader to be closed on timeout")
 	}
 }
 
