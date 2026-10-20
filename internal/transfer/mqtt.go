@@ -3,6 +3,7 @@ package transfer
 import (
 	"context"
 	"crypto/sha256"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"github.com/openump/Hades/internal/storage"
@@ -55,7 +56,13 @@ func (a *Queue) Subscribe(ctx context.Context, address string, diagnostic func(s
 			topics = append(topics, asset.Prefix+"command_receipt/+")
 		}
 	}
-	hash := sha256.Sum256([]byte(a.cfg.Prefix + "telemetry"))
+	identity := []byte(a.cfg.Prefix + "telemetry")
+	if len(a.receiptKeys) > 0 {
+		keyring, _ := json.Marshal(a.receiptKeys)
+		identity = append(identity, []byte("/signed-receipts/")...)
+		identity = append(identity, keyring...)
+	}
+	hash := sha256.Sum256(identity)
 	id := fmt.Sprintf("hades-transfer-%x", hash[:12])
 	options := autopaho.ClientConfig{TlsCfg: a.cfg.TLS, ServerUrls: []*url.URL{u}, KeepAlive: 10, SessionExpiryInterval: 86400, CleanStartOnInitialConnection: false, ConnectTimeout: 5 * time.Second, ReconnectBackoff: func(attempt int) time.Duration {
 		return delivery.Delay(attempt)
