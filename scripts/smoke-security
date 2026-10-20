@@ -98,6 +98,9 @@ with tempfile.TemporaryDirectory(prefix='hades-security-') as scratch:
   start_services(v1)
   topic='openump/v1/acme/berlin/assembly/line-01/press-04/telemetry'
   wait(lambda:subprocess.run(command('pub','admin',v1)+['-t','hades/admin/health','-m','ready'],capture_output=True,timeout=2).returncode==0,'secure broker readiness')
+  if not ot_lab and not opc_lab:
+   actuator_env=dict(os.environ,HADES_ACTUATOR_TEST_BROKER='tls://127.0.0.1:'+mp,HADES_ACTUATOR_TEST_PKI=str(v1))
+   subprocess.run(['go','test','-race','./internal/actuator','./internal/transfer','-run','TestMTLSCommandAndReceiptBrokerPath|TestSupervisedActuatorLiveStatusAndKill|TestSignedReceiptBrokerIntake','-count=1'],env=actuator_env,check=True)
   # Untrusted/no client certificate and trusted but unprivileged identity.
   pub(None,topic,False);pub('outsider',topic,False);pub('consumer-primary',topic,False);pub('normalizer','openump/v1/other/site/area/line/asset/telemetry',False)
   pub('normalizer',topic);pub('history-adapter',topic,False);pub('transfer-adapter',topic,False)

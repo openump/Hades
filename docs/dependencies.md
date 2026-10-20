@@ -56,3 +56,12 @@ and notices remain available through go.mod/go.sum and upstream license files.
 No dependency license selects Hades' project license or qualifies a production
 OPC UA deployment. The SDK's gopcua benchmark dependency is not imported by the
 Hades runtime. Reachable vulnerability scanning runs against the current graph.
+
+## Actuation signatures (Hades-033)
+
+RFC8785/JCS uses the upstream Cyberphone JSON canonicalization implementation,
+`github.com/cyberphone/json-canonicalization` at
+`v0.0.0-20261011152517-32a48195b9b2` (Apache-2.0), pinned in go.mod/go.sum.
+Ed25519 and SHA-256 use Go's standard crypto packages. Upstream source and
+API: [jsoncanonicalizer](https://github.com/cyberphone/json-canonicalization/tree/32a48195b9b2/go/src/webpki.org/jsoncanonicalizer).
+This dependency supplies canonical bytes, not command authorization or PLC safety.

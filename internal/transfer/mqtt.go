@@ -3,6 +3,7 @@ package transfer
 import (
 	"context"
 	"crypto/sha256"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"github.com/openump/Hades/internal/storage"
@@ -51,8 +52,17 @@ func (a *Queue) Subscribe(ctx context.Context, address string, diagnostic func(s
 	topics := make([]string, 0, len(assets)*3)
 	for _, asset := range assets {
 		topics = append(topics, asset.Prefix+"telemetry", asset.Prefix+"metadata", asset.Prefix+"status")
+		if len(a.receiptKeys) > 0 {
+			topics = append(topics, asset.Prefix+"command_receipt/+")
+		}
 	}
-	hash := sha256.Sum256([]byte(a.cfg.Prefix + "telemetry"))
+	identity := []byte(a.cfg.Prefix + "telemetry")
+	if len(a.receiptKeys) > 0 {
+		keyring, _ := json.Marshal(a.receiptKeys)
+		identity = append(identity, []byte("/signed-receipts/")...)
+		identity = append(identity, keyring...)
+	}
+	hash := sha256.Sum256(identity)
 	id := fmt.Sprintf("hades-transfer-%x", hash[:12])
 	options := autopaho.ClientConfig{TlsCfg: a.cfg.TLS, ServerUrls: []*url.URL{u}, KeepAlive: 10, SessionExpiryInterval: 86400, CleanStartOnInitialConnection: false, ConnectTimeout: 5 * time.Second, ReconnectBackoff: func(attempt int) time.Duration {
 		return delivery.Delay(attempt)
@@ -93,7 +103,7 @@ func (a *Queue) Subscribe(ctx context.Context, address string, diagnostic func(s
 	options.OnPublishReceived = []func(paho.PublishReceived) (bool, error){func(event paho.PublishReceived) (bool, error) {
 		packet := event.Packet
 		var err error
-		if packet.Retain && strings.HasSuffix(packet.Topic, "/telemetry") {
+		if packet.Retain && (strings.HasSuffix(packet.Topic, "/telemetry") || strings.Contains(packet.Topic, "/command_receipt/")) {
 			err = fmt.Errorf("retained telemetry rejected")
 		} else {
 			err = a.Intake(packet.Topic, packet.Payload)
