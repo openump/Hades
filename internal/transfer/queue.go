@@ -4,6 +4,7 @@ package transfer
 
 import (
 	"context"
+	"crypto/ed25519"
 	"crypto/sha256"
 	"encoding/json"
 	"errors"
@@ -46,6 +47,7 @@ type Record struct {
 	Reason   string    `json:"reason,omitempty"`
 }
 type Queue struct {
+	receiptKeys                                                                                            map[string]ed25519.PublicKey
 	drainMu                                                                                                sync.Mutex
 	retryAt                                                                                                time.Time
 	retryAttempt                                                                                           int
@@ -131,6 +133,9 @@ func Validate(cfg *sample.Config, topic string, raw []byte) (map[string]any, err
 	return p, err
 }
 func Open(cfg *sample.Config, dir string, maxRecords, maxBytes int) (*Queue, error) {
+	return OpenWithReceiptKeys(cfg, dir, maxRecords, maxBytes, nil)
+}
+func OpenWithReceiptKeys(cfg *sample.Config, dir string, maxRecords, maxBytes int, keys map[string]ed25519.PublicKey) (*Queue, error) {
 	if maxRecords > 100000 || maxBytes > 256*1024*1024 {
 		return nil, fmt.Errorf("limits exceed transfer profile")
 	}
@@ -138,7 +143,7 @@ func Open(cfg *sample.Config, dir string, maxRecords, maxBytes int) (*Queue, err
 	if err != nil {
 		return nil, err
 	}
-	q := &Queue{now: time.Now, cfg: cfg, store: s, records: map[string]Record{}}
+	q := &Queue{receiptKeys: keys, now: time.Now, cfg: cfg, store: s, records: map[string]Record{}}
 	for id := range s.Records {
 		raw, ok, err := s.Read(id)
 		if err != nil || !ok {
@@ -151,7 +156,7 @@ func Open(cfg *sample.Config, dir string, maxRecords, maxBytes int) (*Queue, err
 		var r Record
 		if err = json.Unmarshal(raw, &r); err == nil {
 			var p map[string]any
-			p, err = Validate(cfg, r.Topic, r.Payload)
+			p, err = ValidateWithReceiptKeys(cfg, r.Topic, r.Payload, keys)
 			if err == nil && (r.ID != id || p["message_id"] != id || r.Digest != Digest(r.Topic, r.Payload) || r.Accepted.IsZero() || (r.State != "pending" && r.State != "suspended")) {
 				err = fmt.Errorf("corrupt transfer record")
 			}
@@ -166,7 +171,7 @@ func Open(cfg *sample.Config, dir string, maxRecords, maxBytes int) (*Queue, err
 	return q, nil
 }
 func (q *Queue) Intake(topic string, raw []byte) error {
-	p, err := Validate(q.cfg, topic, raw)
+	p, err := ValidateWithReceiptKeys(q.cfg, topic, raw, q.receiptKeys)
 	if err != nil {
 		return err
 	}

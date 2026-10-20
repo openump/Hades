@@ -150,3 +150,11 @@ broker denials for gateway/normalizer/history/transfer on both control subtrees,
 permits proposer commands and actuator receipts, and rejects the reverse roles
 and cross-asset publication. These MQTT probes use inert text, never execute a
 command and never connect to a PLC write interface.
+
+## Runtime implementation (Hades-033)
+
+The supervised software-pilot implementation now lives in `internal/actuator`
+and `cmd/hades-actuator`. See [operations and explicit qualification boundaries](../operations/actuator.md) for verified signatures, five gates, signed audit,
+loopback staging driver, applied-sequence readback, local confirmation/kill and
+opt-in signed-receipt transfer. The declarative contract permits more address
+families than this deliberately restricted runtime driver implements.

@@ -2,8 +2,10 @@ package main
 
 import (
 	"context"
+	"crypto/ed25519"
 	"encoding/json"
 	"flag"
+	"github.com/openump/Hades/internal/actuator"
 	"log"
 	"os"
 	"os/signal"
@@ -29,6 +31,7 @@ func run() error {
 	config := flag.String("config", "examples/site/metadata.json", "approved metadata snapshot")
 	intake := flag.String("intake", "runtime/transfer-intake", "private synced intake")
 	quarantine := flag.String("quarantine", "runtime/transfer-quarantine", "private diagnostic store")
+	receiptKeys := flag.String("command-receipt-keys", "", "optional local trusted actuator public-key JSON map")
 	resume := flag.String("resume-id", "", "resume one suspended immutable message before running")
 	records := flag.Int("queue-records", 100000, "bounded transfer records including suspended")
 	bytes := flag.Int("queue-bytes", 256*1024*1024, "bounded transfer bytes including record overhead")
@@ -52,7 +55,14 @@ func run() error {
 	if err != nil {
 		return err
 	}
-	adapter, err := transfer.Open(cfg, *intake, *records, *bytes)
+	var trusted map[string]ed25519.PublicKey
+	if *receiptKeys != "" {
+		trusted, err = actuator.LoadPublicKeys(*receiptKeys)
+		if err != nil {
+			return err
+		}
+	}
+	adapter, err := transfer.OpenWithReceiptKeys(cfg, *intake, *records, *bytes, trusted)
 	if err != nil {
 		return err
 	}

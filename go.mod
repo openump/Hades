@@ -4,6 +4,7 @@ go 1.27.2
 
 require (
 	github.com/awcullen/opcua v1.4.0
+	github.com/cyberphone/json-canonicalization v0.0.0-20261011152517-32a48195b9b2
 	github.com/eclipse/paho.golang v0.23.0
 	github.com/santhosh-tekuri/jsonschema/v6 v6.0.3
 	github.com/warpstreamlabs/bento v1.22.0

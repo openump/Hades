@@ -51,6 +51,9 @@ func (a *Queue) Subscribe(ctx context.Context, address string, diagnostic func(s
 	topics := make([]string, 0, len(assets)*3)
 	for _, asset := range assets {
 		topics = append(topics, asset.Prefix+"telemetry", asset.Prefix+"metadata", asset.Prefix+"status")
+		if len(a.receiptKeys) > 0 {
+			topics = append(topics, asset.Prefix+"command_receipt/+")
+		}
 	}
 	hash := sha256.Sum256([]byte(a.cfg.Prefix + "telemetry"))
 	id := fmt.Sprintf("hades-transfer-%x", hash[:12])
@@ -93,7 +96,7 @@ func (a *Queue) Subscribe(ctx context.Context, address string, diagnostic func(s
 	options.OnPublishReceived = []func(paho.PublishReceived) (bool, error){func(event paho.PublishReceived) (bool, error) {
 		packet := event.Packet
 		var err error
-		if packet.Retain && strings.HasSuffix(packet.Topic, "/telemetry") {
+		if packet.Retain && (strings.HasSuffix(packet.Topic, "/telemetry") || strings.Contains(packet.Topic, "/command_receipt/")) {
 			err = fmt.Errorf("retained telemetry rejected")
 		} else {
 			err = a.Intake(packet.Topic, packet.Payload)

@@ -210,6 +210,16 @@
           "acltype": "subscribeLiteral",
           "topic": "openump/v1/acme/berlin/assembly/line-01/press-04/status",
           "allow": true
+        },
+        {
+          "acltype": "subscribeLiteral",
+          "topic": "openump/v1/acme/berlin/assembly/line-01/press-04/command_receipt/+",
+          "allow": true
+        },
+        {
+          "acltype": "publishClientReceive",
+          "topic": "openump/v1/acme/berlin/assembly/line-01/press-04/command_receipt/+",
+          "allow": true
         }
       ]
     },
