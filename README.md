@@ -56,6 +56,8 @@ Hades is licensed under the **Apache License 2.0** ([LICENSE](LICENSE)). See [AD
 
 ## Architecture and operations index
 
+- Current component diagrams, ownership boundaries and guarded actuation: [technical architecture](docs/architecture-design-specification.md)
+
 - Raw ingress, scaling and bounded diagnostics: [normalization and quarantine](docs/operations/quarantine.md)
 - Numeric ingestion, synced intake and outage recovery: [history mapping](docs/protocol/history-mapping.md)
 - Service identities and segmented TLS profile: [identity and networking](docs/operations/identity-networking.md)
