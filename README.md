@@ -1,69 +1,152 @@
 # OpenUMP — Hades
 
-Hades is the industrial edge stack of OpenUMP (Open Unified Manufacturing Platform). It acquires read-only machine observations, normalizes them, publishes contextualized data over MQTT, and supports local numeric history, append-only segmented WAL durability, outbound cloud transfer, and write-control-plane contracts.
+**Industrial data at the edge. Local visibility through cloud outages.**
 
-This repository contains the [white paper](WHITEPAPER.md), the complete software MVP reference implementation (`Hades-001` through `Hades-023`), the OPC UA software pilot (`hades-opcua-mock` + `hades-opcua-gateway`), and the whole-stack capacity and Tier 2 IPC retention qualification package, licensed under **Apache License 2.0** ([LICENSE](LICENSE), [ADR-0001](docs/decisions/0001-license-policy.md)). The Software Pilot MVP baseline is signed off in the [MVP evaluation package](docs/releases/mvp-evaluation.md); physical plant commissioning remains gated on site-specific PLC/IPC hardware validation and production PKI.
+[![CI](https://github.com/openump/Hades/actions/workflows/contracts.yml/badge.svg?branch=main)](https://github.com/openump/Hades/actions/workflows/contracts.yml)
+[![Go](https://img.shields.io/github/go-mod/go-version/openump/Hades)](go.mod)
+[![License](https://img.shields.io/github/license/openump/Hades)](LICENSE)
 
-## Implementation language
+Hades is the industrial edge stack of **OpenUMP — Open Unified Machine Protocol**.
+It connects machine observations to validated MQTT streams, local numeric history
+and independent cloud delivery. A separate guarded control plane handles signed
+actuation proposals.
 
-Custom deployed services and operational CLI tools use **Go**. Reuse the selected upstream components and declarative configuration for their existing capabilities. Python is development tooling for contract tests, the local OPC UA mock pilot server, and capability probes; deployed custom edge services do not require it. See [ADR-0003](docs/decisions/0003-runtime-language.md). The conformance implementation pins its Go toolchain and dependencies in `go.mod`/`go.sum`.
+[Quick start](#quick-start) · [Architecture](docs/architecture-design-specification.md) · [White paper](WHITEPAPER.md) · [Contribute](CONTRIBUTING.md)
 
-## Development setup
+## What Hades delivers
 
-Go 1.27.2 is pinned in `go.mod` for conformance tooling and edge services. Go 1.21+ can automatically obtain the pinned toolchain. Python 3.11+ is optional development reference and mock-server tooling. Runtime probe prerequisites are documented alongside each probe.
+- **Connect machines:** read-only OPC UA software pilot and Modbus TCP acquisition.
+- **Keep observations contextualized:** versioned contracts, asset identity, source timestamps and explicit quality.
+- **Maintain local visibility:** MQTT fan-out and numeric history operate independently of cloud delivery.
+- **Make delivery accountable:** bounded segmented WAL queues, backpressure, immutable retries and verified receiver receipts.
+- **Guard control proposals:** signed commands, five deterministic gates and local operator controls, with L0 shadow as the default.
+
+## Architecture at a glance
+
+```mermaid
+flowchart LR
+    SRC["OPC UA / Modbus sources"] --> GW["Read-only gateways"]
+    GW --> N["Normalizer<br/>Mapping and validation"]
+    N --> B["Local MQTT broker"]
+    B --> H["History adapter<br/>Synced intake"]
+    H --> VM["VictoriaMetrics<br/>Local numeric history"]
+    B --> C["Independent consumers"]
+    B --> T["Transfer worker<br/>Independent synced queue"]
+    T --> Z["Approved cloud receiver<br/>Durable receipt boundary"]
+    P["Signed proposals"] --> B
+    B --> A["Optional actuator<br/>Five gates + signed audit"]
+    A --> PLC["Loopback staging mailbox<br/>PLC-owned interlocks"]
+    A -->|"Signed receipts"| B
+```
+
+The acquisition plane remains read-only. Actuation is isolated and currently
+restricted to a **single loopback mailbox per service**. Deployed Zeus processing
+and physical PLC qualification are separate from the software pilot.
+
+See the [technical architecture](docs/architecture-design-specification.md) for
+component responsibilities, supervision, trust boundaries and execution flow.
+
+## Quick start
+
+Try synthetic telemetry and a validating consumer on your own machine.
+**Prerequisites:** Git, Go 1.27.2 and Docker with Compose. A Go installation with
+toolchain management can obtain the version pinned in [go.mod](go.mod).
 
 ```sh
 git clone https://github.com/openump/Hades.git
 cd Hades
-cp .env.example .env
-git diff --check
+docker compose -f deploy/compose.yaml up --build -d --wait
+```
+
+Start the consumer in this terminal:
+
+```sh
+go run ./cmd/hades-consumer -count 3
+```
+
+After its JSON `ready` message, open a second terminal in `Hades` and publish:
+
+```sh
+go run ./cmd/hades-simulator -scenario cycle -count 3
+```
+
+The consumer prints three validated telemetry records covering good quality,
+bad quality and a missing/null reading. It preserves quality rather than turning
+missing readings into zero. This example exercises MQTT and contract validation;
+it does not connect a PLC or start history/cloud delivery.
+
+Stop the development containers when finished; named volumes are retained:
+
+```sh
+docker compose -f deploy/compose.yaml down
+```
+
+This localhost development broker uses shared anonymous permissions. For service
+identities and the secured stack, follow [identity and networking](docs/operations/identity-networking.md).
+For normalization, history and independent consumers together, use the
+[full local slice tutorial](docs/tutorials/local-slice.md).
+
+## Current support
+
+| Area | Available today | Qualification boundary |
+|---|---|---|
+| Acquisition | OPC UA mock pilot, persistent Telegraf Modbus TCP acquisition, PLC4Go Modbus read connector | Additional protocols and physical controllers need separate verification. |
+| Local data | Validated MQTT distribution, approved asset catalog, synced history intake and numeric queries | Site retention, storage endurance and sustained capacity must be measured on the intended host. |
+| Cloud delivery | Independent transfer queue, exact-byte retry and durable-receipt interface | Receiver fixtures do not establish deployed Zeus acceptance. |
+| Actuation | Signed proposals, gates, audit/replay protection, local confirmation/kill and signed receipts | Loopback uint16 Modbus staging pilot only; no production PLC or fleet control qualification. |
+| Operations | Reviewed supervision, live status, rollout/rollback and cold recovery tooling | Physical plant commissioning and production PKI remain site-specific. |
+
+The Software Pilot MVP baseline is recorded in the [evaluation package](docs/releases/mvp-evaluation.md).
+Acceptance guarantees are explicit: MQTT PUBACK, historian API acceptance and a
+verified durable receiver receipt are different boundaries. See
+[delivery semantics](docs/protocol/delivery.md).
+
+## Explore the documentation
+
+| Start here | Guides |
+|---|---|
+| **Evaluate Hades** | [White paper](WHITEPAPER.md) · [Architecture](docs/architecture-design-specification.md) · [MVP evaluation](docs/releases/mvp-evaluation.md) |
+| **Run a local stack** | [MQTT development](docs/tutorials/mqtt-development.md) · [Synthetic telemetry](docs/tutorials/simulated-telemetry.md) · [Full local slice](docs/tutorials/local-slice.md) |
+| **Understand the contracts** | [Namespace and identity](docs/protocol/namespace.md) · [Telemetry](docs/protocol/telemetry.md) · [Metadata/status](docs/protocol/metadata-status.md) · [Write control](docs/contracts/write-control-plane.md) |
+| **Operate and secure** | [Runbook](docs/operations/runbook.md) · [Identity/networking](docs/operations/identity-networking.md) · [Actuator](docs/operations/actuator.md) · [Backup/restore](docs/operations/backup-restore.md) |
+| **Measure and verify** | [Capacity report](docs/operations/capacity-report.md) · [Retention sizing](docs/operations/retention-sizing.md) · [Recovery evidence](docs/operations/recovery-evidence.md) · [Conformance](docs/protocol/conformance.md) |
+| **Inspect implementation choices** | [Dependency inventory](docs/dependencies.md) · [Go runtime decision](docs/decisions/0003-runtime-language.md) · [Durability decision](docs/decisions/0004-delivery-durability.md) |
+
+## Development and contributions
+
+Custom deployed services and operational CLIs use **Go**. Python supports optional
+development tests and independent reference consumers; the custom production
+services and OPC UA mock implementation are Go.
+
+```sh
 ./scripts/check-contracts
-go test ./...
-# Optional Python development reference and OPC UA mock prerequisites:
+go test -race ./...
+go vet ./...
+```
+
+The conformance check covers seven versioned contracts and 94 shared fixtures.
+For the optional Python development reference (Python 3.11+):
+
+```sh
 python3 -m venv .venv
-.venv/bin/python -m pip install -r requirements-dev.txt -r deploy/opcua/requirements-pilot.txt
+.venv/bin/python -m pip install -r requirements-dev.txt
 .venv/bin/python -m unittest discover -s tests -v
 ```
 
-The `.env` file is ignored and contains development identifiers only. Never commit device credentials, private keys, site exports, or runtime data.
+Read [CONTRIBUTING.md](CONTRIBUTING.md) before submitting changes. Track work in
+[Hermes](https://github.com/openump/Hermes), referencing stable `Hades-NNN` ticket
+IDs in implementation PRs. Keep credentials, private keys, site exports and
+runtime data outside Git.
 
-## MQTT development deployment
+## OpenUMP ecosystem
 
-Start the pinned local broker and run its restart probe using [the development guide](docs/tutorials/mqtt-development.md). This development profile is localhost-only with shared anonymous permissions; production identity and segmented mTLS use [identity and networking](docs/operations/identity-networking.md).
-
-## Synthetic telemetry and local slice
-
-Run the Go simulator and validating consumer using [the sample guide](docs/tutorials/simulated-telemetry.md), or run the end-to-end local stack with [the local slice tutorial](docs/tutorials/local-slice.md).
-
-## Contracts and capability checks
-
-- [Namespace and identity](docs/protocol/namespace.md)
-- [Telemetry contract](docs/protocol/telemetry.md) and [versioning](docs/protocol/versioning.md)
-- [Metadata and producer status](docs/protocol/metadata-status.md)
-- [Actuation and command control-plane contracts](docs/protocol/actuation-control-plane.md)
-- [Delivery and bounded buffering](docs/protocol/delivery.md), [durability decision](docs/decisions/0004-delivery-durability.md), and [Zeus receipt proposal](docs/integration/zeus-transfer.md)
-- [Selected dependency inventory](docs/dependencies.md) and [native probes](examples/component-probes/README.md)
-
-Run `./scripts/check-contracts` for the offline Go conformance CLI across all seven `schemas/v1` contracts (`telemetry`, `asset-metadata`, `producer-status`, `transfer-receipt`, `command`, `command-receipt`, `actuation-policy`) and 94 fixtures. [Conformance documentation](docs/protocol/conformance.md) describes fixture checks, review baselines, and CI.
-
-## Planning and contributions
-
-Implementation tickets live in [Hermes](https://github.com/openump/Hermes/blob/main/plans/hades/PROJECT_PLAN.md). Reference their stable `Hades-` IDs in commits and implementation PRs. See [CONTRIBUTING.md](CONTRIBUTING.md) for verification and decision conventions.
+| Repository | Role |
+|---|---|
+| **[Hades](https://github.com/openump/Hades)** | Industrial edge acquisition, local data services and guarded control. |
+| **[Zeus](https://github.com/openump/Zeus)** | Cloud ingestion, analytics and AI architecture. |
+| **[Hermes](https://github.com/openump/Hermes)** | Project planning, implementation tickets and verification records. |
 
 ## License
 
-Hades is licensed under the **Apache License 2.0** ([LICENSE](LICENSE)). See [ADR-0001](docs/decisions/0001-license-policy.md) and [dependency notices](docs/dependencies.md) for third-party dependency licenses and redistribution requirements.
-
-## Architecture and operations index
-
-- Current component diagrams, ownership boundaries and guarded actuation: [technical architecture](docs/architecture-design-specification.md)
-
-- Raw ingress, scaling and bounded diagnostics: [normalization and quarantine](docs/operations/quarantine.md)
-- Numeric ingestion, synced intake and outage recovery: [history mapping](docs/protocol/history-mapping.md)
-- Service identities and segmented TLS profile: [identity and networking](docs/operations/identity-networking.md)
-- Pinned read-only OPC UA software pilot and Modbus lab evidence: [OPC UA pilot profile](docs/pilot/opcua-profile.md), [read-only checklist](docs/pilot/read-only-checklist.md), and [integration evidence](docs/pilot/integration-evidence.md)
-- Operational counters/limits and segmented WAL (`segment-*.wal`) durability: [diagnostics](docs/operations/diagnostics.md) and [recovery evidence](docs/operations/recovery-evidence.md)
-- Cloud transfer with durable receipts and isolated test receiver: [transfer implementation](docs/integration/zeus-transfer.md) and [cloud outage evidence](docs/operations/cloud-outage-evidence.md)
-- Reviewed reference configuration revisions, systemd supervisor (`hades-service`), and cold recovery: [rollout](docs/operations/configuration-rollout.md), [backup/restore](docs/operations/backup-restore.md), and [operator runbook](docs/operations/runbook.md)
-- Whole-stack OPC UA pilot (`--opcua-pilot`), multi-context capacity measurements, and Tier 2 IPC retention/endurance sizing: [capacity report](docs/operations/capacity-report.md) and [retention sizing](docs/operations/retention-sizing.md)
-- Current evaluation status, artifact inventory, operator checklist and sign-off gates: [MVP evaluation package](docs/releases/mvp-evaluation.md) and [artifact inventory](docs/releases/artifact-inventory.md)
+[Apache License 2.0](LICENSE). See the [license policy](docs/decisions/0001-license-policy.md)
+and [dependency notices](docs/dependencies.md) for third-party requirements.
