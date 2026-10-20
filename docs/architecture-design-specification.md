@@ -211,7 +211,7 @@ sequenceDiagram
     B->>T: Receipt subscription enabled by trusted keyring
     T->>T: Verify signature and sync exact receipt bytes
     Note over A,PLC: Periodic heartbeat only under original valid lease and fresh interlocks
-    Note over O,A: Kill cancels active I/O and persists L0; no online promotion
+    Note over O,A: Kill cancels active I/O and persists L0, with no online promotion
 ```
 
 An expired/retained command, failed precondition, unsafe value or untrusted origin
