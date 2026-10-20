@@ -144,7 +144,6 @@ runtime data outside Git.
 |---|---|
 | **[Hades](https://github.com/openump/Hades)** | Industrial edge acquisition, local data services and guarded control. |
 | **[Zeus](https://github.com/openump/Zeus)** | Cloud ingestion, analytics and AI architecture. |
-| **[Hermes](https://github.com/openump/Hermes)** | Project planning, implementation tickets and verification records. |
 
 ## License
 
