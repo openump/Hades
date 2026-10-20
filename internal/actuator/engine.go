@@ -1,6 +1,7 @@
 package actuator
 
 import (
+	"bytes"
 	"context"
 	"crypto/ed25519"
 	"crypto/sha256"
@@ -9,6 +10,7 @@ import (
 	"math"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -130,6 +132,12 @@ type Engine struct {
 func Open(o Options) (*Engine, error) {
 	if o.Config == nil || o.PLC == nil || len(o.SigningKey) != 64 || o.SigningKeyID == "" {
 		return nil, fmt.Errorf("config, PLC, receipt identity required")
+	}
+	if !regexp.MustCompile(`^[a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])?$`).MatchString(o.SigningKeyID) || !bytes.Equal(o.SigningKey, ed25519.NewKeyFromSeed(o.SigningKey[:ed25519.SeedSize])) {
+		return nil, fmt.Errorf("invalid receipt signing identity")
+	}
+	if len(o.Bindings) > 1 {
+		return nil, fmt.Errorf("software pilot supports one active mailbox binding per service")
 	}
 	if _, err := o.Config.Validator.Validate("actuation-policy", o.Policy); err != nil {
 		return nil, err

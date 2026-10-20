@@ -2,7 +2,7 @@
 
 `hades-actuator` is a separate Go write-control service. It defaults to L0 shadow
 mode. This implementation supports **literal loopback Modbus TCP mailbox
-simulation only**, unit ID 1, uint16 engineering-unit setpoints and FC3/FC6. It
+simulation only**, one active mailbox binding per service, unit ID 1, uint16 engineering-unit setpoints and FC3/FC6. It
 cannot connect to a production PLC or write coils/direct outputs. It does not
 replace a safety PLC, E-stop or ladder interlock. No real hardware or deployed
 Zeus qualification is claimed.

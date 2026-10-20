@@ -395,3 +395,19 @@ func TestUncertainNewCommandCannotInheritWatchdogLease(t *testing.T) {
 		t.Fatal("uncertain command inherited a watchdog lease")
 	}
 }
+
+func TestInvalidReceiptIdentityRefusedBeforeServiceStartup(t *testing.T) {
+	f := setup(t, "L0")
+	o := f.o
+	o.Directory = filepath.Join(t.TempDir(), "other")
+	o.SigningKeyID = "bad/key"
+	if _, err := Open(o); err == nil {
+		t.Fatal("invalid receipt key ID accepted")
+	}
+	o.SigningKeyID = "actuator-key"
+	o.SigningKey = append(ed25519.PrivateKey(nil), o.SigningKey...)
+	o.SigningKey[63] ^= 1
+	if _, err := Open(o); err == nil {
+		t.Fatal("inconsistent private/public key accepted")
+	}
+}
