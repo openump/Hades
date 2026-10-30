@@ -8,7 +8,7 @@ credentials, private archives, and site data stay outside Git.
 
 | Artifact | Version/source pin | Delivery / qualification |
 | --- | --- | --- |
-| Hades Go CLIs (13 binaries) | `go.mod`: Go 1.27.2; `go.sum` pins modules | `go build ./cmd/...`; CI cross-builds Linux amd64/arm64 (`hades-check`, `hades-simulator`, `hades-consumer`, `hades-normalizer`, `hades-history`, `hades-history-proxy`, `hades-gateway`, `hades-opcua-gateway`, `hades-transfer`, `hades-pki`, `hades-site`, `hades-service`, `hades-capacity`). No release binaries published. |
+| Hades Go CLIs (13 binaries) | `go.mod`: Go 1.27.3; `go.sum` pins modules | `go build ./cmd/...`; CI cross-builds Linux amd64/arm64 (`hades-check`, `hades-simulator`, `hades-consumer`, `hades-normalizer`, `hades-history`, `hades-history-proxy`, `hades-gateway`, `hades-opcua-gateway`, `hades-transfer`, `hades-pki`, `hades-site`, `hades-service`, `hades-capacity`). No release binaries published. |
 | Mosquitto | 2.1.2 source hash, APK pins and Alpine digest in `deploy/broker/Dockerfile` | Locally built image tag; Linux CI runtime tested. Record resulting local image ID. |
 | VictoriaMetrics community | 1.154.0 OCI index in `deploy/historian/Dockerfile` | Linux reference runtime tested; storage-format migration excluded. |
 | Bento Bloblang | 1.22.0 module in `go.mod`/`go.sum` | Embedded mapping engine in normalizer (`internal/normalize`); full connector runtime not deployed. |

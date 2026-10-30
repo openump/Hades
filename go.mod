@@ -1,6 +1,6 @@
 module github.com/openump/Hades
 
-go 1.27.2
+go 1.27.3
 
 require (
 	github.com/awcullen/opcua v1.4.0

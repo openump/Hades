@@ -49,7 +49,7 @@ component responsibilities, supervision, trust boundaries and execution flow.
 ## Quick start
 
 Try synthetic telemetry and a validating consumer on your own machine.
-**Prerequisites:** Git, Go 1.27.2 and Docker with Compose. A Go installation with
+**Prerequisites:** Git, Go 1.27.3 and Docker with Compose. A Go installation with
 toolchain management can obtain the version pinned in [go.mod](go.mod).
 
 ```sh

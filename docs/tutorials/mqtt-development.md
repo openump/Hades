@@ -16,7 +16,7 @@ The container runs as UID/GID 1883 with a read-only root filesystem, no capabili
 
 ## Packaging and persistence
 
-The selected Mosquitto 2.1.2 official image tag was unavailable. The supplied multi-stage Dockerfile builds the exact upstream source archive with SHA-256 verification. Both stages pin the Alpine 3.24 multi-architecture index digest; direct APK build/runtime packages are version-pinned for amd64/arm64. Upstream package repositories and transitive packages are not a hermetic build archive. If a pinned package disappears, fail and review an update instead of silently using newer packages.
+The selected Mosquitto 2.1.2 official image tag was unavailable. The supplied multi-stage Dockerfile builds the exact upstream source archive with SHA-256 verification. Both stages pin the Alpine 3.24 multi-architecture index digest; direct APK build/runtime packages are pinned to their reviewed major.minor series (`~3.5`) and installed with `--upgrade`. The Alpine branch repository keeps only the newest revision of each package, so exact revision pins break on every security release; series pins take security revisions automatically, while a new upstream version still fails the build and needs a reviewed Dockerfile change. Upstream package repositories and transitive packages are not a hermetic build archive; APK verifies repository signatures.
 
 The local built image is tagged `openump/hades-mosquitto:2.1.2-dev`; this does not imply a published registry image. Build from the checked-in Dockerfile, not a preexisting unrelated tag. Production packaging must record the resulting image digest, dependency notices/SBOM, and verified platform results. The included client tools use the same source release as the broker.
 
