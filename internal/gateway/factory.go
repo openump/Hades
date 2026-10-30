@@ -65,7 +65,9 @@ func (f ProtocolDriverFactory) Open(ctx context.Context, cfg *sample.Config, end
 		if f.OpenTelegraf == nil {
 			return nil, fmt.Errorf("telegraf opener is not configured")
 		}
-		return f.OpenTelegraf(ctx, factoryOptions.TelegrafBinary, endpoint, DefaultLabProfile(), options)
+		profile := DefaultLabProfile()
+		options.Deadbands = deadbandsForProfile(cfg, profile, options.Deadbands)
+		return f.OpenTelegraf(ctx, factoryOptions.TelegrafBinary, endpoint, profile, options)
 	case "opc-ua":
 		if err := sample.CheckOPCUAMock(cfg); err != nil {
 			return nil, err
@@ -94,6 +96,22 @@ func (f ProtocolDriverFactory) Open(ctx context.Context, cfg *sample.Config, end
 	default:
 		return nil, fmt.Errorf("unsupported gateway protocol %q", protocol)
 	}
+}
+
+// deadbandsForProfile re-keys measurement deadbands to the register name the
+// Telegraf driver reports. The lab context has exactly one measurement and the
+// lab profile exactly one register, so the mapping is unambiguous.
+func deadbandsForProfile(cfg *sample.Config, profile Profile, deadbands map[string]DeadbandConfig) map[string]DeadbandConfig {
+	measurements, _ := cfg.Metadata["measurements"].(map[string]any)
+	if len(deadbands) == 0 || len(measurements) != 1 || len(profile.Registers) != 1 {
+		return deadbands
+	}
+	for name := range measurements {
+		if band, ok := deadbands[name]; ok {
+			return map[string]DeadbandConfig{profile.Registers[0].Name: band}
+		}
+	}
+	return deadbands
 }
 
 func validateModbusLabContext(cfg *sample.Config) error {

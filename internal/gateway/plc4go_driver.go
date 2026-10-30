@@ -21,8 +21,11 @@ type PLC4GoTag struct {
 	Unit    string
 }
 
+// PLC4GoReadRequest executes one multi-tag read. Values are numeric Go values
+// (uint16 for raw registers, wider types for typed S7/EIP/ADS/BACnet tags).
+// Tags the controller rejected are absent from the result.
 type PLC4GoReadRequest interface {
-	Execute(ctx context.Context) (map[string]uint16, error)
+	Execute(ctx context.Context) (map[string]any, error)
 }
 
 type PLC4GoReadRequestBuilder interface {
@@ -37,6 +40,13 @@ type PLC4GoConnection interface {
 
 type PLC4GoConnector interface {
 	Connect(ctx context.Context, endpoint string) (PLC4GoConnection, error)
+}
+
+// coalescingConnector is implemented by connectors whose protocol drivers merge
+// adjacent tags of one read request into contiguous PDUs themselves (the PLC4X
+// read optimizer). The driver then sends every tag in a single request.
+type coalescingConnector interface {
+	CoalescesReads() bool
 }
 
 type PLC4GoDriver struct {
@@ -69,6 +79,9 @@ func OpenPLC4GoDriver(ctx context.Context, connector PLC4GoConnector, endpoint s
 		return nil, err
 	}
 	batches := buildPLC4GoBatches(endpoint, tags)
+	if c, ok := connector.(coalescingConnector); ok && c.CoalescesReads() {
+		batches = [][]PLC4GoTag{append([]PLC4GoTag(nil), tags...)}
+	}
 	options = normalizeDriverOptions(options)
 	return &PLC4GoDriver{
 		endpoint:   endpoint,
@@ -84,12 +97,24 @@ func OpenPLC4GoDriver(ctx context.Context, connector PLC4GoConnector, endpoint s
 	}, nil
 }
 
+// OpenPLC4GoDriverForProfile maps a zero-based Modbus register profile to tags.
+// PLC4X addresses Modbus registers one-based, so its connector gets Address+1.
 func OpenPLC4GoDriverForProfile(ctx context.Context, connector PLC4GoConnector, endpoint string, profile Profile, options DriverOptions) (*PLC4GoDriver, error) {
+	_, plc4x := connector.(*PLC4XConnector)
 	tags := make([]PLC4GoTag, 0, len(profile.Registers))
 	for _, register := range profile.Registers {
+		address := fmt.Sprintf("holding-register:%d", register.Address)
+		if plc4x {
+			// PLC4X defaults untyped registers to signed INT; keep the profile's type.
+			plcType := "UINT"
+			if register.DataType == "INT16" {
+				plcType = "INT"
+			}
+			address = fmt.Sprintf("holding-register:%d:%s", int(register.Address)+1, plcType)
+		}
 		tags = append(tags, PLC4GoTag{
 			Name:    register.Name,
-			Address: fmt.Sprintf("holding-register:%d", register.Address),
+			Address: address,
 			Unit:    register.Unit,
 		})
 	}
@@ -407,8 +432,8 @@ type modbusTCPPLC4GoReadRequest struct {
 	groups     [][]modbusTCPPLC4GoTag
 }
 
-func (r *modbusTCPPLC4GoReadRequest) Execute(ctx context.Context) (map[string]uint16, error) {
-	values := make(map[string]uint16, len(r.groups))
+func (r *modbusTCPPLC4GoReadRequest) Execute(ctx context.Context) (map[string]any, error) {
+	values := make(map[string]any, len(r.groups))
 	for _, group := range r.groups {
 		if len(group) == 0 {
 			continue

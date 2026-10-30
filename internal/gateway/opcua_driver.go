@@ -19,12 +19,21 @@ type opcuaSubscriptionReader interface {
 	Next(ctx context.Context) ([]ua.DataValue, error)
 }
 
+// closableSubscription is a subscription the driver created itself and must
+// delete when the session is reset.
+type closableSubscription interface {
+	opcuaSubscriptionReader
+	Close(ctx context.Context) error
+}
+
 type OPCUADriver struct {
 	endpoint   string
 	signals    []opcuapilot.Signal
 	reader     opcuaBatchReader
 	opener     func(ctx context.Context) (opcuaBatchReader, error)
 	subscriber opcuaSubscriptionReader
+	subscribe  func(ctx context.Context, reader opcuaBatchReader) (closableSubscription, error)
+	owned      closableSubscription
 	options    DriverOptions
 	session    *PersistentSession
 	guardrail  *EndpointGuardrail
@@ -52,6 +61,16 @@ func OpenOPCUADriverForSignals(ctx context.Context, endpoint, pki string, signal
 	}
 	driver.opener = func(ctx context.Context) (opcuaBatchReader, error) {
 		return opcuapilot.DialWithSignals(ctx, endpoint, pki, "client", signals)
+	}
+	if driver.options.Subscribe {
+		interval := float64(driver.options.PollInterval.Milliseconds())
+		driver.subscribe = func(ctx context.Context, reader opcuaBatchReader) (closableSubscription, error) {
+			pilot, ok := reader.(*opcuapilot.Reader)
+			if !ok {
+				return nil, errors.New("opcua subscriptions require a pilot reader")
+			}
+			return pilot.Subscribe(ctx, interval)
+		}
 	}
 	return driver, nil
 }
@@ -127,6 +146,7 @@ func (d *OPCUADriver) Poll(ctx context.Context) (map[string]Reading, time.Time, 
 }
 
 func (d *OPCUADriver) Close() error {
+	d.dropSubscription()
 	if d.reader != nil {
 		d.reader.Close()
 		d.reader = nil
@@ -142,22 +162,49 @@ func (d *OPCUADriver) next(ctx context.Context) ([]ua.DataValue, error) {
 	if err != nil {
 		return nil, err
 	}
+	read := reader.Read
+	if d.subscribe != nil {
+		if d.owned == nil {
+			subscription, err := d.subscribe(ctx, reader)
+			if err != nil {
+				d.invalidateReader(reader)
+				return nil, err
+			}
+			d.owned = subscription
+		}
+		read = d.owned.Next
+	}
 	type readResult struct {
 		values []ua.DataValue
 		err    error
 	}
 	resultCh := make(chan readResult, 1)
-	go func(activeReader opcuaBatchReader) {
-		values, err := activeReader.Read(ctx)
+	go func() {
+		values, err := read(ctx)
 		resultCh <- readResult{values: values, err: err}
-	}(reader)
+	}()
 	select {
 	case result := <-resultCh:
+		if result.err != nil && d.owned != nil {
+			d.invalidateReader(reader)
+		}
 		return result.values, result.err
 	case <-ctx.Done():
 		d.invalidateReader(reader)
 		return nil, ctx.Err()
 	}
+}
+
+// dropSubscription deletes a driver-owned subscription; it is recreated on the
+// next poll.
+func (d *OPCUADriver) dropSubscription() {
+	if d.owned == nil {
+		return
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	_ = d.owned.Close(ctx)
+	d.owned = nil
 }
 
 func (d *OPCUADriver) ensureReader(ctx context.Context) (opcuaBatchReader, error) {
@@ -176,6 +223,13 @@ func (d *OPCUADriver) ensureReader(ctx context.Context) (opcuaBatchReader, error
 }
 
 func (d *OPCUADriver) invalidateReader(target opcuaBatchReader) {
+	if d.owned != nil {
+		// Stop the publish loop before its session goes away.
+		ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
+		_ = d.owned.Close(ctx)
+		cancel()
+		d.owned = nil
+	}
 	if target != nil {
 		target.Close()
 	}

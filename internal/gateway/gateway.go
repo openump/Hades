@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net"
 	"net/url"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -102,6 +103,19 @@ func DriverConfigForProfile(endpoint string, profile Profile) (string, error) {
 }
 
 func DriverConfigForProfileWithInterval(endpoint string, profile Profile, interval time.Duration) (string, error) {
+	return driverConfig(endpoint, profile, interval, "")
+}
+
+// DriverConfigForSocket renders the sidecar configuration that streams JSON
+// batches to the gateway over the Unix domain socket at socketPath.
+func DriverConfigForSocket(endpoint string, profile Profile, interval time.Duration, socketPath string) (string, error) {
+	if socketPath == "" || !filepath.IsAbs(socketPath) || strings.ContainsAny(socketPath, "\"\n") {
+		return "", fmt.Errorf("sidecar socket path must be absolute")
+	}
+	return driverConfig(endpoint, profile, interval, socketPath)
+}
+
+func driverConfig(endpoint string, profile Profile, interval time.Duration, socketPath string) (string, error) {
 	p, err := validateProfile(profile)
 	if err != nil {
 		return "", err
@@ -122,6 +136,18 @@ func DriverConfigForProfileWithInterval(endpoint string, profile Profile, interv
 	for _, reg := range p.Registers {
 		lines = append(lines, fmt.Sprintf("    { measurement = %q, name = %q, byte_order = %q, data_type = %q, scale = %.1f, address = [%d] }", p.MetricName, reg.Name, reg.ByteOrder, reg.DataType, reg.Scale, reg.Address))
 	}
+	output := `[[outputs.file]]
+  files = ["stdout"]
+  data_format = "json"
+  json_timestamp_units = "1ms"
+`
+	if socketPath != "" {
+		output = fmt.Sprintf(`[[outputs.socket_writer]]
+  address = %q
+  data_format = "json"
+  json_timestamp_units = "1ms"
+`, "unix://"+socketPath)
+	}
 	return fmt.Sprintf(`[agent]
 	interval = %q
 	flush_interval = %q
@@ -138,11 +164,7 @@ func DriverConfigForProfileWithInterval(endpoint string, profile Profile, interv
   holding_registers = [
 %s
   ]
-[[outputs.file]]
-  files = ["stdout"]
-  data_format = "json"
-  json_timestamp_units = "1ms"
-`, interval.String(), interval.String(), p.MetricName, endpoint, p.SlaveID, strings.Join(lines, ",\n")), nil
+%s`, interval.String(), interval.String(), p.MetricName, endpoint, p.SlaveID, strings.Join(lines, ",\n"), output), nil
 }
 
 func DecodeReading(raw []byte) (uint16, time.Time, error) {

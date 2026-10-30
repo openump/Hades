@@ -1,0 +1,7 @@
+{
+  "subscribe": true,
+  "signals": {
+    "motor_temperature": {"deadband": {"epsilon": 0.5, "max_silence_ms": 60000}},
+    "cycle_counter": {"deadband": {"epsilon": 0, "max_silence_ms": 60000}}
+  }
+}
