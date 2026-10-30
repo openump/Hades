@@ -1,0 +1,25 @@
+{
+  "schema_version": "1.0",
+  "event_id": "019a1234-5678-7000-8000-000000000036",
+  "timestamp": "2026-10-16T12:01:00.050Z",
+  "asset": "urn:openump:acme:berlin:press-04",
+  "inference_type": "vibration_anomaly",
+  "model_id": "press-04-vibration-iforest",
+  "model_version": "1.2.0",
+  "anomaly_score": 0.82,
+  "threshold": 0.7,
+  "severity": "warning",
+  "confidence": 0.91,
+  "window_start_ms": 1792152000000,
+  "window_end_ms": 1792152060000,
+  "top_contributors": [
+    {
+      "measurement": "motor_temperature",
+      "contribution": 0.64
+    },
+    {
+      "measurement": "hydraulic_pressure",
+      "contribution": 0.21
+    }
+  ]
+}

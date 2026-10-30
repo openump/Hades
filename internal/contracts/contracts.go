@@ -49,8 +49,8 @@ func New(files fs.FS) (*Validator, error) {
 	if err != nil {
 		return nil, err
 	}
-	if len(paths) != 4 && len(paths) != 7 {
-		return nil, fmt.Errorf("expected four telemetry or seven telemetry/control v1 schema resources, found %d", len(paths))
+	if len(paths) < 4 {
+		return nil, fmt.Errorf("expected at least the four telemetry v1 schema resources, found %d", len(paths))
 	}
 	seen := map[string]bool{}
 	for _, path := range paths {
@@ -79,9 +79,9 @@ func New(files fs.FS) (*Validator, error) {
 		}
 	}
 	v := &Validator{schemas: map[string]*jsonschema.Schema{}}
-	kinds := []string{"common", "telemetry", "metadata", "status"}
-	if len(paths) == 7 {
-		kinds = append(kinds, "command", "command-receipt", "actuation-policy")
+	kinds, err := profileKinds(seen)
+	if err != nil {
+		return nil, err
 	}
 	for _, kind := range kinds {
 		schema, err := c.Compile("urn:openump:schema:1.0:" + kind)
@@ -91,6 +91,44 @@ func New(files fs.FS) (*Validator, error) {
 		v.schemas[kind] = schema
 	}
 	return v, nil
+}
+
+// profileKinds selects the message kinds to compile from the schema IDs present.
+// The telemetry profile is required and the control profile is all-or-nothing;
+// each additive Edge AI schema is compiled when present. Unknown IDs fail.
+func profileKinds(ids map[string]bool) ([]string, error) {
+	const prefix = "urn:openump:schema:1.0:"
+	profiles := [][]string{{"common", "telemetry", "metadata", "status"}, {"command", "command-receipt", "actuation-policy"}}
+	optional := []string{"model-manifest", "inference-event"}
+	known := map[string]bool{}
+	var kinds []string
+	for i, profile := range profiles {
+		present := 0
+		for _, kind := range profile {
+			known[prefix+kind] = true
+			if ids[prefix+kind] {
+				present++
+			}
+		}
+		switch {
+		case present == len(profile):
+			kinds = append(kinds, profile...)
+		case i == 0 || present > 0:
+			return nil, fmt.Errorf("incomplete %s schema profile", []string{"telemetry", "control"}[i])
+		}
+	}
+	for _, kind := range optional {
+		known[prefix+kind] = true
+		if ids[prefix+kind] {
+			kinds = append(kinds, kind)
+		}
+	}
+	for id := range ids {
+		if !known[id] {
+			return nil, fmt.Errorf("unknown schema resource %q", id)
+		}
+	}
+	return kinds, nil
 }
 
 // Decode rejects oversized, non-UTF-8, duplicate-key, non-finite, and deep JSON.
@@ -237,6 +275,16 @@ func (v *Validator) Validate(kind string, raw []byte) (map[string]any, error) {
 	}
 	if kind == "command-receipt" {
 		if err := receiptSemantics(object); err != nil {
+			return nil, err
+		}
+	}
+	if kind == "model-manifest" {
+		if err := manifestSemantics(object); err != nil {
+			return nil, err
+		}
+	}
+	if kind == "inference-event" {
+		if err := inferenceEventSemantics(object); err != nil {
 			return nil, err
 		}
 	}

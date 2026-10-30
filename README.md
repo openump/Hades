@@ -124,7 +124,7 @@ go test -race ./...
 go vet ./...
 ```
 
-The conformance check covers seven versioned contracts and 94 shared fixtures.
+The conformance check covers nine versioned contracts and 132 shared fixtures.
 For the optional Python development reference (Python 3.11+):
 
 ```sh

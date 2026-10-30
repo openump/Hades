@@ -137,7 +137,8 @@ and deliberate contract change, not a broadened telemetry role.
 
 The existing four schema files and telemetry/context/wire/topic fixtures retain
 all nine prior baseline hashes. The baseline adds only three control schemas and
-four control fixture files. New site manifests include all seven schemas. An old
+four control fixture files. New site manifests include all seven schemas; the
+additive Edge AI profile ([Hades-035](edge-ai-inference.md)) does not change that. An old
 four-schema bundle can still compile the telemetry validator, but creating and
 validating a new site bundle requires the three additive resources; regenerate a
 reviewed bundle rather than silently changing a signed manifest/archive. No

@@ -1,0 +1,57 @@
+{
+  "schema_version": "1.0",
+  "manifest_id": "019a1234-5678-7000-8000-000000000035",
+  "model_id": "press-04-vibration-iforest",
+  "model_version": "1.2.0",
+  "created_at_ms": 1792152000000,
+  "runtime_type": "statistical_v1",
+  "artifact_sha256": "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08",
+  "signature": {
+    "algorithm": "Ed25519",
+    "canonicalization": "RFC8785",
+    "signer_id": "ml-release",
+    "key_id": "ml-release-2026",
+    "value": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=="
+  },
+  "inputs": {
+    "bindings": [
+      {
+        "asset": "urn:openump:acme:berlin:press-04",
+        "measurement": "motor_temperature",
+        "unit": "Cel"
+      },
+      {
+        "asset": "urn:openump:acme:berlin:press-04",
+        "measurement": "hydraulic_pressure",
+        "unit": "bar"
+      }
+    ],
+    "window_size_samples": 60,
+    "window_duration_ms": 60000,
+    "required_quality": "good",
+    "min_good_ratio": 0.9
+  },
+  "outputs": [
+    {
+      "kind": "inference-event",
+      "asset": "urn:openump:acme:berlin:press-04",
+      "inference_type": "vibration_anomaly",
+      "severity": {
+        "warning_score": 0.7,
+        "critical_score": 0.9
+      }
+    },
+    {
+      "kind": "telemetry",
+      "asset": "urn:openump:acme:berlin:press-04",
+      "measurement": "estimated_bearing_wear",
+      "unit": "%"
+    }
+  ],
+  "budgets": {
+    "max_memory_mb": 64,
+    "max_inference_latency_ms": 200,
+    "max_consecutive_failures": 3,
+    "rollback_to_version": "1.1.0"
+  }
+}
