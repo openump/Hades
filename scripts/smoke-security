@@ -113,6 +113,20 @@ with tempfile.TemporaryDirectory(prefix='hades-security-') as scratch:
   pub('command-proposer',command_topic);pub('command-proposer',receipt_topic,False)
   pub('hades-actuator',receipt_topic);pub('hades-actuator',command_topic,False)
   pub('hades-actuator',command_topic.replace('/press-04/','/other-asset/'),False)
+  # Edge AI sidecar (Hades-035): inference events only, never the write plane.
+  event_topic=topic.rsplit('/',1)[0]+'/event/vibration_anomaly'
+  pub('hades-infer',event_topic);pub('hades-infer',event_topic.replace('/press-04/','/other-asset/'),False)
+  pub('hades-infer',topic,False);pub('hades-infer',command_topic,False);pub('hades-infer',receipt_topic,False)
+  denied_sub('hades-infer',command_topic);denied_sub('hades-infer',receipt_topic)
+  for identity in ('gateway-press-04','normalizer','history-adapter','transfer-adapter','hades-actuator','command-proposer'):
+   pub(identity,event_topic,False)
+  # End to end: the opted-in consumer receives what hades-infer publishes.
+  listener=subprocess.Popen(command('sub','consumer-primary',v1)+['-t',event_topic.rsplit('/',1)[0]+'/+','-C','1','-W','10','-v'],stdout=subprocess.PIPE,stderr=subprocess.STDOUT)
+  time.sleep(2)
+  subprocess.run(command('pub','hades-infer',v1)+['-t',event_topic,'-m','inference-probe'],check=True,capture_output=True,timeout=8)
+  delivered,_=listener.communicate(timeout=15)
+  assert listener.returncode==0 and b'inference-probe' in delivered,(listener.returncode,delivered)
+  denied_sub('consumer-secondary',event_topic.rsplit('/',1)[0]+'/+')
   for kind in ('telemetry','metadata','status'):
    approved=topic.rsplit('/',1)[0]+'/'+kind
    result=subprocess.run(command('sub','transfer-adapter',v1)+['-t',approved,'-E','-W','5','-d'],capture_output=True,timeout=8)

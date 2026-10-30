@@ -120,9 +120,19 @@ func (v *Validator) ValidateCommandContext(raw, policyRaw []byte, topic string, 
 
 // ValidateControlTopic keeps control topics separate from telemetry validation.
 func (r *Registry) ValidateControlTopic(topic, asset, target, kind string) error {
-	parts := strings.Split(topic, "/")
-	if len(parts) != 9 || len(topic) > 512 || (kind != "command" && kind != "command_receipt") || parts[7] != kind || !controlParameter(target) || parts[8] != target {
+	if kind != "command" && kind != "command_receipt" {
 		return fail("namespace", "invalid control publication topic")
+	}
+	return r.validateSuffixedTopic(topic, asset, kind, target, "invalid control publication topic")
+}
+
+// validateSuffixedTopic binds a nine-segment topic
+// openump/v1/<hierarchy>/<asset>/<kind>/<name> to an asset by rechecking the
+// asset through its eight-segment telemetry topic.
+func (r *Registry) validateSuffixedTopic(topic, asset, kind, name, message string) error {
+	parts := strings.Split(topic, "/")
+	if len(parts) != 9 || len(topic) > 512 || parts[7] != kind || !controlParameter(name) || parts[8] != name {
+		return fail("namespace", "%s", message)
 	}
 	return r.ValidateTopic(strings.Join(parts[:7], "/")+"/telemetry", asset)
 }

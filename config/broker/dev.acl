@@ -5,3 +5,7 @@ topic readwrite hades/dev/#
 # Anonymous development access never grants write-control channels.
 topic deny openump/v1/+/+/+/+/+/command/#
 topic deny openump/v1/+/+/+/+/+/command_receipt/#
+# Inference events feed cloud triage, so anonymous clients must not forge them. A static
+# Mosquitto deny blocks both publish and delivery; develop events on the secure profile,
+# where hades-infer and consumer-primary hold certificate identities.
+topic deny openump/v1/+/+/+/+/+/event/#

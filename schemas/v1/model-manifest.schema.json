@@ -1,0 +1,298 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:openump:schema:1.0:model-manifest",
+  "type": "object",
+  "properties": {
+    "schema_version": {
+      "const": "1.0"
+    },
+    "manifest_id": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$(?![\\s\\S])",
+      "maxLength": 36
+    },
+    "model_id": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9-]{0,62}[a-z0-9]$(?![\\s\\S])",
+      "maxLength": 64
+    },
+    "model_version": {
+      "type": "string",
+      "pattern": "^(0|[1-9][0-9]{0,8})\\.(0|[1-9][0-9]{0,8})\\.(0|[1-9][0-9]{0,8})$(?![\\s\\S])",
+      "maxLength": 32
+    },
+    "created_at_ms": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 9007199254740991
+    },
+    "runtime_type": {
+      "enum": [
+        "statistical_v1",
+        "onnx_v1",
+        "external_runner_v1"
+      ]
+    },
+    "artifact_sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$(?![\\s\\S])",
+      "minLength": 64,
+      "maxLength": 64
+    },
+    "signature": {
+      "type": "object",
+      "properties": {
+        "algorithm": {
+          "const": "Ed25519"
+        },
+        "canonicalization": {
+          "const": "RFC8785"
+        },
+        "signer_id": {
+          "$ref": "urn:openump:schema:1.0:common#/$defs/segment"
+        },
+        "key_id": {
+          "$ref": "urn:openump:schema:1.0:common#/$defs/segment"
+        },
+        "value": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9+/]{86}==$(?![\\s\\S])",
+          "minLength": 88,
+          "maxLength": 88
+        }
+      },
+      "required": [
+        "algorithm",
+        "canonicalization",
+        "signer_id",
+        "key_id",
+        "value"
+      ],
+      "additionalProperties": false
+    },
+    "inputs": {
+      "type": "object",
+      "properties": {
+        "bindings": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 64,
+          "uniqueItems": true,
+          "items": {
+            "type": "object",
+            "properties": {
+              "asset": {
+                "$ref": "urn:openump:schema:1.0:common#/$defs/asset_id"
+              },
+              "measurement": {
+                "$ref": "urn:openump:schema:1.0:common#/$defs/measurement_name"
+              },
+              "unit": {
+                "$ref": "urn:openump:schema:1.0:common#/$defs/unit"
+              }
+            },
+            "required": [
+              "asset",
+              "measurement",
+              "unit"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "window_size_samples": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 100000
+        },
+        "window_duration_ms": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 86400000
+        },
+        "required_quality": {
+          "const": "good"
+        },
+        "min_good_ratio": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "maximum": 1
+        }
+      },
+      "required": [
+        "bindings",
+        "window_size_samples",
+        "window_duration_ms",
+        "required_quality",
+        "min_good_ratio"
+      ],
+      "additionalProperties": false
+    },
+    "outputs": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 16,
+      "uniqueItems": true,
+      "items": {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "enum": [
+              "telemetry",
+              "inference-event"
+            ]
+          },
+          "asset": {
+            "$ref": "urn:openump:schema:1.0:common#/$defs/asset_id"
+          },
+          "measurement": {
+            "$ref": "urn:openump:schema:1.0:common#/$defs/measurement_name"
+          },
+          "unit": {
+            "$ref": "urn:openump:schema:1.0:common#/$defs/unit"
+          },
+          "inference_type": {
+            "$ref": "urn:openump:schema:1.0:common#/$defs/measurement_name"
+          },
+          "severity": {
+            "type": "object",
+            "properties": {
+              "warning_score": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1
+              },
+              "critical_score": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1
+              }
+            },
+            "required": [
+              "warning_score",
+              "critical_score"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "kind",
+          "asset"
+        ],
+        "additionalProperties": false,
+        "allOf": [
+          {
+            "if": {
+              "properties": {
+                "kind": {
+                  "const": "telemetry"
+                }
+              }
+            },
+            "then": {
+              "required": [
+                "measurement",
+                "unit"
+              ],
+              "not": {
+                "anyOf": [
+                  {
+                    "required": [
+                      "inference_type"
+                    ]
+                  },
+                  {
+                    "required": [
+                      "severity"
+                    ]
+                  }
+                ]
+              }
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "kind": {
+                  "const": "inference-event"
+                }
+              }
+            },
+            "then": {
+              "required": [
+                "inference_type",
+                "severity"
+              ],
+              "not": {
+                "anyOf": [
+                  {
+                    "required": [
+                      "measurement"
+                    ]
+                  },
+                  {
+                    "required": [
+                      "unit"
+                    ]
+                  }
+                ]
+              }
+            }
+          }
+        ]
+      }
+    },
+    "budgets": {
+      "type": "object",
+      "properties": {
+        "max_memory_mb": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 250
+        },
+        "max_inference_latency_ms": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 60000
+        },
+        "max_consecutive_failures": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 100
+        },
+        "rollback_to_version": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^(0|[1-9][0-9]{0,8})\\.(0|[1-9][0-9]{0,8})\\.(0|[1-9][0-9]{0,8})$(?![\\s\\S])",
+              "maxLength": 32
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "max_memory_mb",
+        "max_inference_latency_ms",
+        "max_consecutive_failures",
+        "rollback_to_version"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "required": [
+    "schema_version",
+    "manifest_id",
+    "model_id",
+    "model_version",
+    "created_at_ms",
+    "runtime_type",
+    "artifact_sha256",
+    "signature",
+    "inputs",
+    "outputs",
+    "budgets"
+  ],
+  "additionalProperties": false
+}

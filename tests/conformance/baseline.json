@@ -5,6 +5,9 @@
   "examples/contracts/control/cases.json": "c7be421e7b27610459655f50dadeded280024a153ac3a4040ab3e46e52e62ca0",
   "examples/contracts/control/command-receipt.json": "94186f52cb131ec24b041c47ec296ebb63d96d233a9f517a90077cbf1826871f",
   "examples/contracts/control/command.json": "e79afb5bca773364f65b1a500a0123934b509ab57caeed17ff775e6280e56c69",
+  "examples/contracts/inference/cases.json": "5c9452698ed5fae870643e3abd188e36e6a81e10ed6251af661b03124a5acd24",
+  "examples/contracts/inference/inference-event.json": "24adc532cc296b6d031e529f467b34e6558510dda3a191ccce0788fa90796eb0",
+  "examples/contracts/inference/model-manifest.json": "b16629fce265a9078fbc3fff87d33b13f6f6404951c69a8ec75270ff435cec59",
   "examples/contracts/telemetry/cases.json": "c3a522cabd6c192cfeedfe6afa857eb563259fa2de84cbee134a2e31de0ef7dc",
   "examples/contracts/topics.json": "af8a62258fda9f66a8b5abd043b17e52fac84ab19ea43a0a11220e87afa81e04",
   "examples/contracts/wire-cases.json": "c221361b5138c5fd11f218e91ca952fb5dd68cdb8ff9c744daf16b451df6b9e1",
@@ -12,7 +15,9 @@
   "schemas/v1/command-receipt.schema.json": "3190426cb9f256e9b507dcc54a12c904849338919a56252213410a795f012197",
   "schemas/v1/command.schema.json": "701336dffcb0aa5e7967febed24ed5210a57b67d17fe39e3134a308daade7670",
   "schemas/v1/common.schema.json": "55ab280822660e6eb05b98cb93b967e6585666393afe96615ca40d44cda55a83",
+  "schemas/v1/inference-event.schema.json": "81610dd0c12c46c4737809e5604fb8ef272621d566dba111564febabe4f4a0ee",
   "schemas/v1/metadata.schema.json": "c388d8e3a5c70d32ccafb2ee4a18163330f3833aa4014490666074f45733ffff",
+  "schemas/v1/model-manifest.schema.json": "d829fed2c01c51fd7a293b023d6f6723601d86809bb3e68f956ce3d4cc0f42b3",
   "schemas/v1/status.schema.json": "cfaa1ae18497d2aa2e5e75b85dc9e09540feca8f1e6e3ba8add0323a6385cb7b",
   "schemas/v1/telemetry.schema.json": "29dab39fc953d8fe3aa952b044adee146c7fc3be59251e2fa079dc4b2bd8aa66"
 }
