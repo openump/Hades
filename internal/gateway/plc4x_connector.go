@@ -1,3 +1,8 @@
+//go:build plc4x
+
+// The PLC4X connector links every protocol of plc4go's public drivers package
+// (about 1.4M lines of generated code), so it is only built with -tags plc4x.
+
 package gateway
 
 import (
@@ -31,6 +36,17 @@ func NewPLC4XConnector() *PLC4XConnector {
 // CoalescesReads reports that PLC4X merges adjacent registers / data-block
 // offsets of one request into contiguous PDUs, within protocol limits.
 func (c *PLC4XConnector) CoalescesReads() bool { return true }
+
+// ModbusHoldingRegisterTag renders a zero-based profile register as a PLC4X
+// tag. PLC4X addresses Modbus registers one-based and defaults untyped
+// registers to signed INT, so the address is shifted and the type kept.
+func (c *PLC4XConnector) ModbusHoldingRegisterTag(register RegisterMapping) string {
+	plcType := "UINT"
+	if register.DataType == "INT16" {
+		plcType = "INT"
+	}
+	return fmt.Sprintf("holding-register:%d:%s", int(register.Address)+1, plcType)
+}
 
 func (c *PLC4XConnector) driverManager() plc4go.PlcDriverManager {
 	c.once.Do(func() {
