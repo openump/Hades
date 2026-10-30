@@ -3,7 +3,6 @@ package gateway
 import (
 	"context"
 	"errors"
-	"sync"
 	"syscall"
 	"time"
 
@@ -20,21 +19,26 @@ type opcuaSubscriptionReader interface {
 	Next(ctx context.Context) ([]ua.DataValue, error)
 }
 
+// closableSubscription is a subscription the driver created itself and must
+// delete when the session is reset.
+type closableSubscription interface {
+	opcuaSubscriptionReader
+	Close(ctx context.Context) error
+}
+
 type OPCUADriver struct {
-	endpoint     string
-	signals      []opcuapilot.Signal
-	reader       opcuaBatchReader
-	opener       func(ctx context.Context) (opcuaBatchReader, error)
-	subscriber   opcuaSubscriptionReader
-	options      DriverOptions
-	session      *PersistentSession
-	guardrail    *EndpointGuardrail
-	statusMu     sync.Mutex
-	lastStatus   ProducerStatus
-	deadbandMu   sync.Mutex
-	lastReported map[string]float64
-	lastValues   map[string]any
-	lastAt       map[string]time.Time
+	endpoint   string
+	signals    []opcuapilot.Signal
+	reader     opcuaBatchReader
+	opener     func(ctx context.Context) (opcuaBatchReader, error)
+	subscriber opcuaSubscriptionReader
+	subscribe  func(ctx context.Context, reader opcuaBatchReader) (closableSubscription, error)
+	owned      closableSubscription
+	options    DriverOptions
+	session    *PersistentSession
+	guardrail  *EndpointGuardrail
+	status     *statusEmitter
+	deadbands  deadbandSet
 }
 
 func OpenOPCUADriver(ctx context.Context, endpoint, pki string, options DriverOptions) (*OPCUADriver, error) {
@@ -58,6 +62,16 @@ func OpenOPCUADriverForSignals(ctx context.Context, endpoint, pki string, signal
 	driver.opener = func(ctx context.Context) (opcuaBatchReader, error) {
 		return opcuapilot.DialWithSignals(ctx, endpoint, pki, "client", signals)
 	}
+	if driver.options.Subscribe {
+		interval := float64(driver.options.PollInterval.Milliseconds())
+		driver.subscribe = func(ctx context.Context, reader opcuaBatchReader) (closableSubscription, error) {
+			pilot, ok := reader.(*opcuapilot.Reader)
+			if !ok {
+				return nil, errors.New("opcua subscriptions require a pilot reader")
+			}
+			return pilot.Subscribe(ctx, interval)
+		}
+	}
 	return driver, nil
 }
 
@@ -67,25 +81,22 @@ func NewOPCUADriverWithSource(endpoint string, reader opcuaBatchReader, subscrib
 	}
 	options = normalizeDriverOptions(options)
 	return &OPCUADriver{
-		endpoint:     endpoint,
-		signals:      append([]opcuapilot.Signal(nil), signals...),
-		reader:       reader,
-		subscriber:   subscriber,
-		options:      options,
-		session:      NewPersistentSession(endpoint),
-		guardrail:    NewEndpointGuardrail(endpoint, options.RatePerSecond, options.Burst, options.MaxInFlight),
-		lastStatus:   ProducerStateGood,
-		lastReported: make(map[string]float64, len(signals)),
-		lastValues:   make(map[string]any, len(signals)),
-		lastAt:       make(map[string]time.Time, len(signals)),
+		endpoint:   endpoint,
+		signals:    append([]opcuapilot.Signal(nil), signals...),
+		reader:     reader,
+		subscriber: subscriber,
+		options:    options,
+		session:    NewPersistentSession(endpoint),
+		guardrail:  NewEndpointGuardrail(endpoint, options.RatePerSecond, options.Burst, options.MaxInFlight),
+		status:     newStatusEmitter(options),
+		deadbands:  newDeadbandSet(options.Deadbands),
 	}
 }
 
 func (d *OPCUADriver) Poll(ctx context.Context) (map[string]Reading, time.Time, string) {
 	if err := d.guardrail.Enter(); err != nil {
-		event := d.guardrail.RecordFailure("scan-protection")
-		d.emitStatus(event)
-		return d.failureReadings("scan-protection"), d.options.Now(), "scan-protection"
+		reason := guardReason(err)
+		return d.deadbands.filter(d.failureReadings(reason), d.options.Now()), d.options.Now(), reason
 	}
 	defer d.guardrail.Leave()
 
@@ -99,8 +110,8 @@ func (d *OPCUADriver) Poll(ctx context.Context) (map[string]Reading, time.Time, 
 			reason = "read-timeout"
 		}
 		event := d.guardrail.RecordFailure(reason)
-		d.emitStatus(event)
-		return d.failureReadings(reason), d.options.Now(), reason
+		d.status.emit(event)
+		return d.deadbands.filter(d.failureReadings(reason), d.options.Now()), d.options.Now(), reason
 	}
 
 	stamp := time.Time{}
@@ -120,9 +131,6 @@ func (d *OPCUADriver) Poll(ctx context.Context) (map[string]Reading, time.Time, 
 		if reason, ok := reading["reason"].(string); ok {
 			current.Reason = reason
 		}
-		if current.Quality == "good" || current.Quality == "uncertain" {
-			current.Value = d.applyDeadband(signal.Name, current.Value, observed)
-		}
 		out[signal.Name] = current
 		if observed.After(stamp) {
 			stamp = observed
@@ -133,11 +141,12 @@ func (d *OPCUADriver) Poll(ctx context.Context) (map[string]Reading, time.Time, 
 	}
 	d.session.RecordPoll(nil, "")
 	recovery := d.guardrail.RecordSuccess()
-	d.emitStatus(recovery)
-	return out, stamp, ""
+	d.status.emit(recovery)
+	return d.deadbands.filter(out, d.options.Now()), stamp, ""
 }
 
 func (d *OPCUADriver) Close() error {
+	d.dropSubscription()
 	if d.reader != nil {
 		d.reader.Close()
 		d.reader = nil
@@ -153,22 +162,49 @@ func (d *OPCUADriver) next(ctx context.Context) ([]ua.DataValue, error) {
 	if err != nil {
 		return nil, err
 	}
+	read := reader.Read
+	if d.subscribe != nil {
+		if d.owned == nil {
+			subscription, err := d.subscribe(ctx, reader)
+			if err != nil {
+				d.invalidateReader(reader)
+				return nil, err
+			}
+			d.owned = subscription
+		}
+		read = d.owned.Next
+	}
 	type readResult struct {
 		values []ua.DataValue
 		err    error
 	}
 	resultCh := make(chan readResult, 1)
-	go func(activeReader opcuaBatchReader) {
-		values, err := activeReader.Read(ctx)
+	go func() {
+		values, err := read(ctx)
 		resultCh <- readResult{values: values, err: err}
-	}(reader)
+	}()
 	select {
 	case result := <-resultCh:
+		if result.err != nil && d.owned != nil {
+			d.invalidateReader(reader)
+		}
 		return result.values, result.err
 	case <-ctx.Done():
 		d.invalidateReader(reader)
 		return nil, ctx.Err()
 	}
+}
+
+// dropSubscription deletes a driver-owned subscription; it is recreated on the
+// next poll.
+func (d *OPCUADriver) dropSubscription() {
+	if d.owned == nil {
+		return
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	_ = d.owned.Close(ctx)
+	d.owned = nil
 }
 
 func (d *OPCUADriver) ensureReader(ctx context.Context) (opcuaBatchReader, error) {
@@ -187,6 +223,13 @@ func (d *OPCUADriver) ensureReader(ctx context.Context) (opcuaBatchReader, error
 }
 
 func (d *OPCUADriver) invalidateReader(target opcuaBatchReader) {
+	if d.owned != nil {
+		// Stop the publish loop before its session goes away.
+		ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
+		_ = d.owned.Close(ctx)
+		cancel()
+		d.owned = nil
+	}
 	if target != nil {
 		target.Close()
 	}
@@ -207,47 +250,6 @@ func (d *OPCUADriver) failureReadings(reason string) map[string]Reading {
 		}}
 	}
 	return out
-}
-
-func (d *OPCUADriver) applyDeadband(name string, value any, now time.Time) any {
-	cfg, ok := d.options.Deadbands[name]
-	if !ok || cfg.MaxSilenceInterval <= 0 {
-		return value
-	}
-	numeric, ok := asFloat64(value)
-	if !ok {
-		return value
-	}
-	d.deadbandMu.Lock()
-	defer d.deadbandMu.Unlock()
-	last, seen := d.lastReported[name]
-	if !seen || now.Sub(d.lastAt[name]) >= cfg.MaxSilenceInterval {
-		d.lastReported[name] = numeric
-		d.lastValues[name] = value
-		d.lastAt[name] = now
-		return value
-	}
-	if absFloat64(numeric-last) <= float64(cfg.Epsilon) {
-		return d.lastValues[name]
-	}
-	d.lastReported[name] = numeric
-	d.lastValues[name] = value
-	d.lastAt[name] = now
-	return value
-}
-
-func (d *OPCUADriver) emitStatus(event ProducerStatusEvent) {
-	if d.options.StatusReporter == nil {
-		return
-	}
-	event.GatewayID = d.options.GatewayID
-	d.statusMu.Lock()
-	defer d.statusMu.Unlock()
-	if event.State == d.lastStatus {
-		return
-	}
-	d.lastStatus = event.State
-	d.options.StatusReporter(event)
 }
 
 func asFloat64(value any) (float64, bool) {
@@ -273,11 +275,4 @@ func asFloat64(value any) (float64, bool) {
 	default:
 		return 0, false
 	}
-}
-
-func absFloat64(value float64) float64 {
-	if value < 0 {
-		return -value
-	}
-	return value
 }

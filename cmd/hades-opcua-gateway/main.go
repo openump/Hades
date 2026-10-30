@@ -34,6 +34,7 @@ func run() error {
 	root := flag.String("root", ".", "schema root")
 	ingress := flag.String("ingress", "https://127.0.0.1:8081/observations", "mTLS normalizer ingress")
 	count := flag.Int("count", 4, "bounded polls, 1..1000")
+	acquisition := flag.String("acquisition", "", "optional gateway acquisition map (deadbands, subscribe)")
 	credentials := transport.Flags()
 	flag.Parse()
 	if *count < 1 || *count > 1000 {
@@ -75,7 +76,7 @@ func run() error {
 	defer deadlineStop()
 	var acquired, failures, admitted, retries, badReadings atomic.Uint64
 	statusEncoder := json.NewEncoder(os.Stdout)
-	opened, err := gateway.OpenConfiguredDriver(ctx, cfg, *endpoint, gateway.DriverOptions{
+	options := gateway.DriverOptions{
 		PollInterval:  cfg.Interval,
 		ReadTimeout:   500 * time.Millisecond,
 		GatewayID:     cfg.Metadata["acquisition"].(map[string]any)["gateway_id"].(string),
@@ -91,7 +92,22 @@ func run() error {
 				"reported_at": event.At.UTC().Format(sample.Timestamp),
 			})
 		},
-	}, gateway.FactoryOptions{OPCUAPKI: *pki})
+	}
+	factoryOptions := gateway.FactoryOptions{OPCUAPKI: *pki}
+	if *acquisition != "" {
+		acq, err := gateway.LoadAcquisitionConfig(*acquisition)
+		if err != nil {
+			return err
+		}
+		measurements, ok := cfg.Metadata["measurements"].(map[string]any)
+		if !ok {
+			return fmt.Errorf("metadata missing measurements")
+		}
+		if err := acq.Apply(measurements, &options, &factoryOptions); err != nil {
+			return err
+		}
+	}
+	opened, err := gateway.OpenConfiguredDriver(ctx, cfg, *endpoint, options, factoryOptions)
 	if err != nil {
 		return err
 	}
@@ -132,7 +148,11 @@ func run() error {
 			failures.Add(1)
 		}
 		for _, signal := range opcuapilot.Signals {
-			reading := readings[signal.Name]
+			reading, ok := readings[signal.Name]
+			if !ok {
+				// Suppressed by the signal's deadband; nothing new to report.
+				continue
+			}
 			if reading.Quality == "bad" {
 				badReadings.Add(1)
 			}

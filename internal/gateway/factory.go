@@ -13,6 +13,9 @@ type FactoryOptions struct {
 	TelegrafBinary string
 	OPCUAPKI       string
 	PLC4Go         PLC4GoConnector
+	// PLC4GoTags maps each measurement to its controller tag address. Every
+	// measurement must be mapped; addresses are never derived from names.
+	PLC4GoTags map[string]string
 }
 
 type ProtocolDriverFactory struct {
@@ -62,7 +65,9 @@ func (f ProtocolDriverFactory) Open(ctx context.Context, cfg *sample.Config, end
 		if f.OpenTelegraf == nil {
 			return nil, fmt.Errorf("telegraf opener is not configured")
 		}
-		return f.OpenTelegraf(ctx, factoryOptions.TelegrafBinary, endpoint, DefaultLabProfile(), options)
+		profile := DefaultLabProfile()
+		options.Deadbands = deadbandsForProfile(cfg, profile, options.Deadbands)
+		return f.OpenTelegraf(ctx, factoryOptions.TelegrafBinary, endpoint, profile, options)
 	case "opc-ua":
 		if err := sample.CheckOPCUAMock(cfg); err != nil {
 			return nil, err
@@ -81,13 +86,32 @@ func (f ProtocolDriverFactory) Open(ctx context.Context, cfg *sample.Config, end
 		if f.OpenPLC4Go == nil {
 			return nil, fmt.Errorf("plc4go opener is not configured")
 		}
-		tags := measurementsToPLC4GoTags(cfg)
+		tags, err := measurementsToPLC4GoTags(cfg, factoryOptions.PLC4GoTags)
+		if err != nil {
+			return nil, err
+		}
 		return f.OpenPLC4Go(ctx, factoryOptions.PLC4Go, endpoint, tags, options)
 	case "simulator":
 		return nil, fmt.Errorf("simulator does not use a gateway protocol driver")
 	default:
 		return nil, fmt.Errorf("unsupported gateway protocol %q", protocol)
 	}
+}
+
+// deadbandsForProfile re-keys measurement deadbands to the register name the
+// Telegraf driver reports. The lab context has exactly one measurement and the
+// lab profile exactly one register, so the mapping is unambiguous.
+func deadbandsForProfile(cfg *sample.Config, profile Profile, deadbands map[string]DeadbandConfig) map[string]DeadbandConfig {
+	measurements, _ := cfg.Metadata["measurements"].(map[string]any)
+	if len(deadbands) == 0 || len(measurements) != 1 || len(profile.Registers) != 1 {
+		return deadbands
+	}
+	for name := range measurements {
+		if band, ok := deadbands[name]; ok {
+			return map[string]DeadbandConfig{profile.Registers[0].Name: band}
+		}
+	}
+	return deadbands
 }
 
 func validateModbusLabContext(cfg *sample.Config) error {
@@ -123,10 +147,10 @@ func validatePLC4GoMetadata(cfg *sample.Config) error {
 	return nil
 }
 
-func measurementsToPLC4GoTags(cfg *sample.Config) []PLC4GoTag {
+func measurementsToPLC4GoTags(cfg *sample.Config, addresses map[string]string) ([]PLC4GoTag, error) {
 	measurements, ok := cfg.Metadata["measurements"].(map[string]any)
 	if !ok {
-		return nil
+		return nil, fmt.Errorf("metadata missing measurements")
 	}
 	names := make([]string, 0, len(measurements))
 	for name := range measurements {
@@ -134,12 +158,21 @@ func measurementsToPLC4GoTags(cfg *sample.Config) []PLC4GoTag {
 	}
 	sort.Strings(names)
 	tags := make([]PLC4GoTag, 0, len(names))
-	for i, name := range names {
+	for _, name := range names {
+		address := addresses[name]
+		if address == "" {
+			return nil, fmt.Errorf("plc4go measurement %q has no configured tag address", name)
+		}
 		tags = append(tags, PLC4GoTag{
 			Name:    name,
-			Address: fmt.Sprintf("holding-register:%d", i),
+			Address: address,
 			Unit:    sample.MetadataUnitOrDefault(measurements[name]),
 		})
 	}
-	return tags
+	for name := range addresses {
+		if _, ok := measurements[name]; !ok {
+			return nil, fmt.Errorf("plc4go tag address configured for unknown measurement %q", name)
+		}
+	}
+	return tags, nil
 }

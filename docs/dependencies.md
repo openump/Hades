@@ -57,6 +57,23 @@ No dependency license selects Hades' project license or qualifies a production
 OPC UA deployment. The SDK's gopcua benchmark dependency is not imported by the
 Hades runtime. Reachable vulnerability scanning runs against the current graph.
 
+## Brownfield PLC drivers (Hades-031)
+
+`github.com/apache/plc4x/plc4go` (Apache-2.0), pseudo-version
+`v0.0.0-20261014120758-f9d84f01cc12` (commit `f9d84f01cc12`, 14 October 2026), supplies
+the in-process, pure-Go PLC4X drivers. It needs no JVM and builds with `CGO_ENABLED=0`.
+Upstream publishes no tagged Go module releases, so Hades pins a reviewed commit.
+Change it only after re-running the PLC4X connector tests. Hades registers only
+the S7, Modbus TCP, EtherNet/IP, ADS and BACnet/IP drivers, and exposes only
+read request builders. Linked transitive dependencies are rs/zerolog v1.35.1,
+fatih/color v1.19.0, mattn/go-isatty v0.0.24 and mattn/go-colorable v0.1.15
+(MIT); library logging goes to a no-op logger. PLC4X Modbus tag addresses are
+one-based (`holding-register:1` is protocol address 0). Tested against a
+loopback Modbus TCP fixture only; no S7, EIP, ADS or BACnet device was contacted.
+
+The Tier 2 Telegraf sidecar uses Telegraf 1.40.2 `inputs.modbus` and
+`outputs.socket_writer` to a private Unix domain socket. No new dependency.
+
 ## Actuation signatures (Hades-033)
 
 RFC8785/JCS uses the upstream Cyberphone JSON canonicalization implementation,
