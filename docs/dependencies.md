@@ -65,7 +65,9 @@ the in-process, pure-Go PLC4X drivers. It needs no JVM and builds with `CGO_ENAB
 Upstream publishes no tagged Go module releases, so Hades pins a reviewed commit.
 Change it only after re-running the PLC4X connector tests. Hades registers only
 the S7, Modbus TCP, EtherNet/IP, ADS and BACnet/IP drivers, and exposes only
-read request builders. Linked transitive dependencies are rs/zerolog v1.35.1,
+read request builders. The public `drivers` package still links all 13 PLC4X
+protocols, so the connector is built only with `-tags plc4x`; default builds
+and binaries do not link plc4go. Linked transitive dependencies are rs/zerolog v1.35.1,
 fatih/color v1.19.0, mattn/go-isatty v0.0.24 and mattn/go-colorable v0.1.15
 (MIT); library logging goes to a no-op logger. PLC4X Modbus tag addresses are
 one-based (`holding-register:1` is protocol address 0). Tested against a

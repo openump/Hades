@@ -48,6 +48,30 @@ jobs:
       - name: Reachable Go vulnerability check
         run: go run golang.org/x/vuln/cmd/govulncheck@v1.9.0 ./...
 
+  plc4x:
+    # The PLC4X connector links ~1.4M lines of generated protocol code, so it is
+    # built only with -tags plc4x and checked here, in parallel with contracts.
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    env:
+      GOTOOLCHAIN: go1.27.3
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Tagged gateway checks
+        run: |
+          go vet -tags plc4x ./internal/gateway
+          go test -race -tags plc4x ./internal/gateway
+      - name: Build Linux gateway package without cgo
+        run: |
+          CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -tags plc4x ./internal/gateway
+          CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -tags plc4x ./internal/gateway
+      - name: Reachable Go vulnerability check
+        run: go run golang.org/x/vuln/cmd/govulncheck@v1.9.0 -tags plc4x ./internal/gateway
+
   broker:
     runs-on: ubuntu-24.04
     timeout-minutes: 15
