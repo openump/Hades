@@ -1,3 +1,5 @@
+//go:build plc4x
+
 package gateway
 
 import (

@@ -49,6 +49,12 @@ type coalescingConnector interface {
 	CoalescesReads() bool
 }
 
+// modbusTagFormatter is implemented by connectors whose Modbus register address
+// syntax differs from the zero-based "holding-register:N" default.
+type modbusTagFormatter interface {
+	ModbusHoldingRegisterTag(register RegisterMapping) string
+}
+
 type PLC4GoDriver struct {
 	endpoint   string
 	tags       []PLC4GoTag
@@ -97,20 +103,15 @@ func OpenPLC4GoDriver(ctx context.Context, connector PLC4GoConnector, endpoint s
 	}, nil
 }
 
-// OpenPLC4GoDriverForProfile maps a zero-based Modbus register profile to tags.
-// PLC4X addresses Modbus registers one-based, so its connector gets Address+1.
+// OpenPLC4GoDriverForProfile maps a zero-based Modbus register profile to tags,
+// using the connector's own address syntax when it has one.
 func OpenPLC4GoDriverForProfile(ctx context.Context, connector PLC4GoConnector, endpoint string, profile Profile, options DriverOptions) (*PLC4GoDriver, error) {
-	_, plc4x := connector.(*PLC4XConnector)
+	formatter, custom := connector.(modbusTagFormatter)
 	tags := make([]PLC4GoTag, 0, len(profile.Registers))
 	for _, register := range profile.Registers {
 		address := fmt.Sprintf("holding-register:%d", register.Address)
-		if plc4x {
-			// PLC4X defaults untyped registers to signed INT; keep the profile's type.
-			plcType := "UINT"
-			if register.DataType == "INT16" {
-				plcType = "INT"
-			}
-			address = fmt.Sprintf("holding-register:%d:%s", int(register.Address)+1, plcType)
+		if custom {
+			address = formatter.ModbusHoldingRegisterTag(register)
 		}
 		tags = append(tags, PLC4GoTag{
 			Name:    register.Name,
