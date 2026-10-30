@@ -1,0 +1,12 @@
+# Test-only PLC protocol simulators for Hades-040 (never shipped). Install with
+#   pip install --require-hashes --no-deps -r tests/fixtures/plc-simulators/requirements.txt
+# None of these releases has a runtime dependency.
+python-snap7==3.2.1 \
+    --hash=sha256:05d65110169c3ef2edea2aaeb23be598527c46877d5546ee0a7e61a7e37ab198
+pyads==3.6.0 \
+    --hash=sha256:5f92ea4821fce21a6a880e3bb0bdac4002c208bb7a00da578f1a0ba4128f635d \
+    --hash=sha256:92ee9a0f19f0d363a2c0f358331849e9598587b96549ac53ce730ea528ab204f \
+    --hash=sha256:0113d9bf71bf5fdebb9032e9ddde27733c9c3bfb4bf9ff7d5b74aea057336a0f \
+    --hash=sha256:f867eb467cbbfca4388e2694f42754bcf199cdf52923c35b1531b5493a31db0c
+bacpypes3==0.0.110 \
+    --hash=sha256:02abc0c9e7e92d7061727898ba00204ec072f1d451a63c4e7de76015b5b14911

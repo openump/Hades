@@ -9,7 +9,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"net/url"
 	"sync"
 
 	plc4go "github.com/apache/plc4x/plc4go/pkg/api"
@@ -21,7 +20,8 @@ import (
 )
 
 // PLC4XConnector connects through the in-process Apache PLC4X Go drivers
-// (no JVM) for s7://, modbus-tcp://, eip://, ads:// and bacnet-ip:// endpoints.
+// (no JVM) for s7://, modbus-tcp://, eip://, logix:// (little-endian Logix
+// EtherNet/IP), ads:// and bacnet-ip:// endpoints.
 // Only read request builders are exposed; write, subscription and browse
 // builders of the underlying connection are never reachable from the gateway.
 type PLC4XConnector struct {
@@ -55,6 +55,7 @@ func (c *PLC4XConnector) driverManager() plc4go.PlcDriverManager {
 		drivers.RegisterS7Driver(c.manager, options...)
 		drivers.RegisterModbusTcpDriver(c.manager, options...)
 		drivers.RegisterEipDriver(c.manager, options...)
+		drivers.RegisterLogixDriver(c.manager, options...)
 		drivers.RegisterAdsDriver(c.manager, options...)
 		drivers.RegisterBacnetDriver(c.manager, options...)
 	})
@@ -74,18 +75,12 @@ func (c *PLC4XConnector) Connect(ctx context.Context, endpoint string) (PLC4GoCo
 }
 
 // plc4xConnectionString maps a gateway endpoint to a PLC4X connection string.
-// PLC4X names BACnet/IP "bacnet-ip" and EtherNet/IP "eip", matching the gateway
-// schemes, so only scheme validation is needed.
+// The gateway schemes (s7, modbus-tcp, eip, logix, ads, bacnet-ip) are PLC4X
+// protocol codes, so only validation is needed.
 func plc4xConnectionString(endpoint string) (string, error) {
-	if err := validatePLC4GoEndpoint(endpoint); err != nil {
-		return "", err
-	}
-	parsed, err := url.Parse(endpoint)
+	parsed, err := plc4goConnectionURL(endpoint)
 	if err != nil {
 		return "", err
-	}
-	if parsed.Host == "" || parsed.User != nil || parsed.Fragment != "" {
-		return "", fmt.Errorf("plc4x endpoint requires scheme://host[:port][?options]")
 	}
 	return parsed.String(), nil
 }

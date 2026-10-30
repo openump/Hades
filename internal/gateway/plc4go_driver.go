@@ -238,11 +238,28 @@ func validatePLC4GoEndpoint(endpoint string) error {
 		return err
 	}
 	switch parsed.Scheme {
-	case "modbus-tcp", "s7", "eip", "ads", "bacnet-ip":
+	case "modbus-tcp", "s7", "eip", "logix", "ads", "bacnet-ip":
 		return nil
 	default:
 		return fmt.Errorf("unsupported plc4go scheme %q", parsed.Scheme)
 	}
+}
+
+// plc4goConnectionURL parses and validates a PLC4X connection string: a
+// supported scheme and scheme://host[:port][?options] with no credentials or
+// fragment. It is shared by the connector and the lab gate.
+func plc4goConnectionURL(endpoint string) (*url.URL, error) {
+	if err := validatePLC4GoEndpoint(endpoint); err != nil {
+		return nil, err
+	}
+	parsed, err := url.Parse(endpoint)
+	if err != nil {
+		return nil, err
+	}
+	if parsed.Host == "" || parsed.User != nil || parsed.Fragment != "" {
+		return nil, fmt.Errorf("plc4go endpoint requires scheme://host[:port][?options]")
+	}
+	return parsed, nil
 }
 
 func buildPLC4GoBatches(endpoint string, tags []PLC4GoTag) [][]PLC4GoTag {

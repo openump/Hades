@@ -5,7 +5,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"math"
+	"net"
 	"os"
+	"strings"
 	"time"
 )
 
@@ -109,6 +111,41 @@ func (c *AcquisitionConfig) Apply(measurements map[string]any, options *DriverOp
 	options.Subscribe = c.Subscribe
 	if tags := c.TagAddresses(); len(tags) > 0 {
 		factory.PLC4GoTags = tags
+	}
+	return nil
+}
+
+// labPLC4GoOptions allowlists the connection options each scheme may use on the
+// lab path. Only options that address the loopback peer itself or tune timing
+// are allowed; routing options that could reach past it (CIP communication
+// paths, BACnet remote networks/addresses, BBMD registration, static device
+// tables) are rejected.
+var labPLC4GoOptions = map[string]map[string]bool{
+	"s7":         {"cotp.local-rack": true, "cotp.local-slot": true, "cotp.remote-rack": true, "cotp.remote-slot": true, "controller-type": true, "pdu-size": true, "max-amq-caller": true, "max-amq-callee": true},
+	"logix":      {"backplane": true, "slot": true, "force-unconnected-operation": true, "forceUnconnectedOperation": true},
+	"eip":        {"backplane": true, "slot": true, "big-endian": true, "bigEndian": true, "force-unconnected-operation": true, "forceUnconnectedOperation": true},
+	"ads":        {"target-ams-net-id": true, "targetAmsNetId": true, "target-ams-port": true, "targetAmsPort": true, "source-ams-net-id": true, "sourceAmsNetId": true, "source-ams-port": true, "sourceAmsPort": true},
+	"bacnet-ip":  {"local-port": true, "apdutimeoutms": true, "apduretries": true},
+	"modbus-tcp": {"default-unit-identifier": true, "request-timeout-ms": true, "unit": true},
+}
+
+// ValidateLabPLC4GoEndpoint enforces the lab gate for PLC4X acquisition: a
+// supported scheme, a literal loopback IP host and only allowlisted options.
+// Site approval is required before any other endpoint may be polled.
+func ValidateLabPLC4GoEndpoint(endpoint string) error {
+	connectionString, err := plc4goConnectionURL(endpoint)
+	if err != nil {
+		return err
+	}
+	ip := net.ParseIP(connectionString.Hostname())
+	if ip == nil || !ip.IsLoopback() || (connectionString.Path != "" && connectionString.Path != "/") {
+		return fmt.Errorf("lab plc4go endpoint requires scheme://<loopback IP>[:port][?options]; site approval is pending")
+	}
+	allowed := labPLC4GoOptions[connectionString.Scheme]
+	for option := range connectionString.Query() {
+		if !allowed[strings.ToLower(option)] && !allowed[option] {
+			return fmt.Errorf("lab plc4go endpoint option %q is not allowed for %s; site approval is pending", option, connectionString.Scheme)
+		}
 	}
 	return nil
 }

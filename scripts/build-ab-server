@@ -1,0 +1,34 @@
+#!/usr/bin/env python3
+"""Build the libplctag ab_server EtherNet/IP (Logix) test fixture for Hades-040.
+
+Test-only: the binary is never linked into or shipped with Hades. libplctag is
+dual MPL-2.0/LGPL-2.0-or-later; Hades uses it unmodified under MPL-2.0.
+Usage: scripts/build-ab-server [OUTPUT]  (default artifacts/ab_server)
+"""
+import hashlib, pathlib, shutil, subprocess, sys, tarfile, tempfile, urllib.request
+
+COMMIT = '7712ed7f1ee05ba0ebfca641b3f5c43da52a66ed'  # tag v2.7.2, 2026-09-09
+SHA256 = 'ed1f7869fa266df1bc266b9d135cd09d53dc392e557edb9986b2e172c84eb752'
+root = pathlib.Path(__file__).resolve().parents[1]
+output = pathlib.Path(sys.argv[1]) if len(sys.argv) > 1 else root / 'artifacts' / 'ab_server'
+with tempfile.TemporaryDirectory(prefix='hades-ab-server-') as directory:
+    work = pathlib.Path(directory)
+    archive = work / 'src.tar.gz'
+    with urllib.request.urlopen(f'https://codeload.github.com/libplctag/libplctag/tar.gz/{COMMIT}', timeout=60) as response:
+        archive.write_bytes(response.read())
+    if hashlib.sha256(archive.read_bytes()).hexdigest() != SHA256:
+        raise SystemExit('unexpected libplctag source archive')
+    with tarfile.open(archive) as source:
+        source.extractall(work, filter='data')
+    tree = work / f'libplctag-{COMMIT}'
+    for step in (['cmake', '-S', str(tree), '-B', str(work / 'build'), '-DCMAKE_BUILD_TYPE=Release'],
+                 ['cmake', '--build', str(work / 'build'), '--target', 'ab_server', '-j', '4']):
+        result = subprocess.run(step, capture_output=True, text=True)
+        if result.returncode:
+            raise SystemExit(result.stdout + result.stderr)
+    built = next((p for p in (work / 'build').rglob('ab_server') if p.is_file()), None)
+    if built is None:
+        raise SystemExit('ab_server was not built')
+    output.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(built, output)
+print(output)

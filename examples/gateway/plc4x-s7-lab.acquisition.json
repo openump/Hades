@@ -1,0 +1,6 @@
+{
+  "signals": {
+    "motor_temperature": {"address": "%DB1:0:REAL", "deadband": {"epsilon": 0.5, "max_silence_ms": 60000}},
+    "cycle_counter": {"address": "%DB1:10:UINT"}
+  }
+}
