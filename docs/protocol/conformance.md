@@ -40,7 +40,7 @@ Never refresh automatically in CI. Review the schema/fixture diff and baseline t
 
 ## Pinned tools and sources
 
-Go 1.27.2; `github.com/santhosh-tekuri/jsonschema/v6` 6.0.3 (Apache-2.0); `golang.org/x/text` 0.43.0 (BSD-3-Clause); development-only govulncheck 1.9.0 (BSD-3-Clause). Versions and hashes are in go.mod/go.sum; the scanner is pinned in CI. No additional regex engine or cgo dependency is required.
+Go 1.27.3; `github.com/santhosh-tekuri/jsonschema/v6` 6.0.3 (Apache-2.0); `golang.org/x/text` 0.43.0 (BSD-3-Clause); development-only govulncheck 1.9.0 (BSD-3-Clause). Versions and hashes are in go.mod/go.sum; the scanner is pinned in CI. No additional regex engine or cgo dependency is required.
 
 - [JSON Schema compiler, assertions, and loader API](https://pkg.go.dev/github.com/santhosh-tekuri/jsonschema/v6@v6.0.3)
 - [Go toolchain selection](https://go.dev/doc/toolchain)

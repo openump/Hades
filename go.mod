@@ -1,6 +1,6 @@
 module github.com/openump/Hades
 
-go 1.27.2
+go 1.27.3
 
 require (
 	github.com/apache/plc4x/plc4go v0.0.0-20261014120758-f9d84f01cc12

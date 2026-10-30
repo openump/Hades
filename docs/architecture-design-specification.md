@@ -115,7 +115,7 @@ inside this Hades repository.
 
 ## 2. Runtime components and implementation paths
 
-Custom services and operational tools use Go 1.27.2, pinned in [go.mod](../go.mod).
+Custom services and operational tools use Go 1.27.3, pinned in [go.mod](../go.mod).
 Selected upstream components and versions are recorded in
 [dependencies](dependencies.md) and [ADR-0002](decisions/0002-reference-components.md).
 
