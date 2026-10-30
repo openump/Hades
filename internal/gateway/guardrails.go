@@ -1,7 +1,9 @@
 package gateway
 
 import (
+	"errors"
 	"fmt"
+	"math"
 	"sort"
 	"sync"
 	"time"
@@ -99,14 +101,19 @@ func (tb *TokenBucket) Acquire() bool {
 }
 
 // CircuitBreaker prevents a stalled controller from being hammered forever.
+// After the backoff window it admits a single half-open probe; a failed probe
+// reopens the breaker with a doubled backoff, a successful one closes it.
 type CircuitBreaker struct {
 	mu             sync.Mutex
 	state          ProducerStatus
 	threshold      int
+	failures       int
 	openUntil      time.Time
 	currentBackoff time.Duration
 	maxBackoff     time.Duration
 	resetAfter     time.Duration
+	probing        bool
+	now            func() time.Time
 }
 
 func NewCircuitBreaker(threshold int, baseBackoff, maxBackoff time.Duration) *CircuitBreaker {
@@ -119,46 +126,69 @@ func NewCircuitBreaker(threshold int, baseBackoff, maxBackoff time.Duration) *Ci
 	if maxBackoff <= 0 {
 		maxBackoff = 30 * time.Second
 	}
-	return &CircuitBreaker{threshold: threshold, currentBackoff: baseBackoff, maxBackoff: maxBackoff, resetAfter: baseBackoff, state: ProducerStateGood}
+	return &CircuitBreaker{threshold: threshold, currentBackoff: baseBackoff, maxBackoff: maxBackoff, resetAfter: baseBackoff, state: ProducerStateGood, now: func() time.Time { return time.Now().UTC() }}
 }
 
+// BeforeRequest reports whether a request may be sent. While the breaker is open
+// it refuses requests until the backoff window has elapsed, then admits exactly
+// one probe until that probe's outcome is recorded.
 func (cb *CircuitBreaker) BeforeRequest() bool {
 	cb.mu.Lock()
 	defer cb.mu.Unlock()
-	if cb.state == ProducerStateOffline && time.Now().UTC().Before(cb.openUntil) {
+	if cb.state != ProducerStateOffline {
+		return true
+	}
+	if cb.probing || cb.now().Before(cb.openUntil) {
 		return false
 	}
-	if cb.state == ProducerStateOffline && time.Now().UTC().After(cb.openUntil) {
-		cb.state = ProducerStateGood
-		cb.currentBackoff = cb.resetAfter
-	}
+	cb.probing = true
 	return true
+}
+
+// cancelProbe releases a probe admitted by BeforeRequest that was never sent.
+func (cb *CircuitBreaker) cancelProbe() {
+	cb.mu.Lock()
+	defer cb.mu.Unlock()
+	cb.probing = false
 }
 
 func (cb *CircuitBreaker) RecordFailure() ProducerStatus {
 	cb.mu.Lock()
 	defer cb.mu.Unlock()
-	if cb.state == ProducerStateGood {
+	cb.probing = false
+	cb.failures++
+	if cb.state == ProducerStateOffline || cb.failures >= cb.threshold {
+		cb.open()
+	} else {
 		cb.state = ProducerStateDegraded
-	} else if cb.state == ProducerStateDegraded {
-		cb.state = ProducerStateOffline
-		cb.openUntil = time.Now().UTC().Add(cb.currentBackoff)
-		cb.currentBackoff *= 2
-		if cb.currentBackoff > cb.maxBackoff {
-			cb.currentBackoff = cb.maxBackoff
-		}
 	}
 	return cb.state
+}
+
+func (cb *CircuitBreaker) open() {
+	cb.state = ProducerStateOffline
+	cb.openUntil = cb.now().Add(cb.currentBackoff)
+	cb.currentBackoff = min(cb.currentBackoff*2, cb.maxBackoff)
 }
 
 func (cb *CircuitBreaker) RecordSuccess() ProducerStatus {
 	cb.mu.Lock()
 	defer cb.mu.Unlock()
 	cb.state = ProducerStateGood
+	cb.probing = false
+	cb.failures = 0
 	cb.currentBackoff = cb.resetAfter
 	cb.openUntil = time.Time{}
 	return cb.state
 }
+
+var (
+	// ErrCircuitOpen means the endpoint is in circuit-breaker backoff.
+	ErrCircuitOpen = errors.New("circuit-open")
+	// ErrScanProtection means the gateway skipped a read to stay inside the
+	// endpoint's rate or concurrency budget. It is not a controller failure.
+	ErrScanProtection = errors.New("scan-protection")
+)
 
 // EndpointGuardrail enforces a per-PLC rate bucket and concurrency budget.
 type EndpointGuardrail struct {
@@ -187,17 +217,29 @@ func NewEndpointGuardrail(endpoint string, ratePerSecond float64, burst int, max
 func (g *EndpointGuardrail) Enter() error {
 	g.mu.Lock()
 	defer g.mu.Unlock()
-	if g.breaker != nil && !g.breaker.BeforeRequest() {
-		return fmt.Errorf("endpoint %s is in circuit-breaker backoff", g.endpoint)
-	}
 	if g.maxInFlight > 0 && g.inflight >= g.maxInFlight {
-		return fmt.Errorf("endpoint %s already has %d in-flight request(s)", g.endpoint, g.inflight)
+		return fmt.Errorf("endpoint %s already has %d in-flight request(s): %w", g.endpoint, g.inflight, ErrScanProtection)
+	}
+	if g.breaker != nil && !g.breaker.BeforeRequest() {
+		return fmt.Errorf("endpoint %s is in circuit-breaker backoff: %w", g.endpoint, ErrCircuitOpen)
 	}
 	if g.bucket != nil && !g.bucket.Acquire() {
-		return fmt.Errorf("endpoint %s exceeded the token bucket budget", g.endpoint)
+		if g.breaker != nil {
+			g.breaker.cancelProbe()
+		}
+		return fmt.Errorf("endpoint %s exceeded the token bucket budget: %w", g.endpoint, ErrScanProtection)
 	}
 	g.inflight++
 	return nil
+}
+
+// guardReason maps an Enter rejection to the reading reason reported for the
+// skipped poll.
+func guardReason(err error) string {
+	if errors.Is(err, ErrCircuitOpen) {
+		return "circuit-open"
+	}
+	return "scan-protection"
 }
 
 func (g *EndpointGuardrail) Leave() {
@@ -228,19 +270,22 @@ func (g *EndpointGuardrail) RecordSuccess() ProducerStatusEvent {
 	return event
 }
 
-// DeadbandFilter suppresses insignificant value changes while preserving a
-// heartbeat when the controller goes quiet.
+// DeadbandFilter implements report-by-exception: a value is reported only when it
+// moves more than epsilon from the last reported value, or as a heartbeat once
+// maxSilence has passed since the last report.
 type DeadbandFilter struct {
 	mu           sync.Mutex
-	epsilon      uint16
+	epsilon      float64
 	maxSilence   time.Duration
-	lastValue    *uint16
-	lastObserved time.Time
+	reported     bool
+	lastValue    float64
+	lastQuality  string
+	lastReported time.Time
 }
 
-func NewDeadbandFilter(epsilon uint16, maxSilence time.Duration) *DeadbandFilter {
-	if epsilon > 0xFFFF {
-		epsilon = 0xFFFF
+func NewDeadbandFilter(epsilon float64, maxSilence time.Duration) *DeadbandFilter {
+	if epsilon < 0 {
+		epsilon = 0
 	}
 	if maxSilence <= 0 {
 		maxSilence = time.Minute
@@ -248,32 +293,103 @@ func NewDeadbandFilter(epsilon uint16, maxSilence time.Duration) *DeadbandFilter
 	return &DeadbandFilter{epsilon: epsilon, maxSilence: maxSilence}
 }
 
-func (f *DeadbandFilter) Apply(value uint16, now time.Time) (uint16, bool) {
+// Apply reports whether value should be emitted at now.
+func (f *DeadbandFilter) Apply(value float64, now time.Time) bool {
+	return f.apply(value, "", now)
+}
+
+// apply additionally reports any quality change, so a good→uncertain
+// transition is never hidden by an unchanged value. now must be the gateway
+// clock; device timestamps can stall or move backwards.
+func (f *DeadbandFilter) apply(value float64, quality string, now time.Time) bool {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	if f.lastValue == nil {
-		f.lastValue = &value
-		f.lastObserved = now
-		return value, true
+	silence := now.Sub(f.lastReported)
+	if f.reported && quality == f.lastQuality && silence >= 0 && silence < f.maxSilence && math.Abs(value-f.lastValue) <= f.epsilon {
+		return false
 	}
-	if now.Sub(f.lastObserved) >= f.maxSilence {
-		f.lastValue = &value
-		f.lastObserved = now
-		return value, true
+	f.reported = true
+	f.lastValue = value
+	f.lastQuality = quality
+	f.lastReported = now
+	return true
+}
+
+// Reset forgets the last reported value so the next good value is always
+// emitted, e.g. after the signal went bad.
+func (f *DeadbandFilter) Reset() {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.reported = false
+}
+
+// deadbandSet holds the configured per-signal filters of one driver.
+type deadbandSet map[string]*DeadbandFilter
+
+// newDeadbandSet builds filters for configs with a positive MaxSilenceInterval;
+// a zero interval leaves the signal unfiltered.
+func newDeadbandSet(configs map[string]DeadbandConfig) deadbandSet {
+	set := make(deadbandSet, len(configs))
+	for name, cfg := range configs {
+		if cfg.MaxSilenceInterval > 0 {
+			set[name] = NewDeadbandFilter(cfg.Epsilon, cfg.MaxSilenceInterval)
+		}
 	}
-	prev := *f.lastValue
-	delta := uint16(0)
-	if value > prev {
-		delta = value - prev
-	} else {
-		delta = prev - value
+	return set
+}
+
+// filter removes readings suppressed by their deadband, timed by the gateway
+// poll time now. Bad readings are always kept and reset the filter so recovery
+// is reported immediately.
+func (s deadbandSet) filter(readings map[string]Reading, now time.Time) map[string]Reading {
+	if len(s) == 0 {
+		return readings
 	}
-	if delta <= f.epsilon {
-		return prev, false
+	for name, reading := range readings {
+		filter, ok := s[name]
+		if !ok {
+			continue
+		}
+		if reading.Quality == "bad" {
+			filter.Reset()
+			continue
+		}
+		numeric, ok := asFloat64(reading.Value)
+		if !ok {
+			continue
+		}
+		if !filter.apply(numeric, reading.Quality, now) {
+			delete(readings, name)
+		}
 	}
-	f.lastValue = &value
-	f.lastObserved = now
-	return value, true
+	return readings
+}
+
+// statusEmitter reports producer_status transitions, deduplicating repeats of
+// the current state.
+type statusEmitter struct {
+	mu        sync.Mutex
+	last      ProducerStatus
+	gatewayID string
+	report    func(ProducerStatusEvent)
+}
+
+func newStatusEmitter(options DriverOptions) *statusEmitter {
+	return &statusEmitter{last: ProducerStateGood, gatewayID: options.GatewayID, report: options.StatusReporter}
+}
+
+func (e *statusEmitter) emit(event ProducerStatusEvent) {
+	if e.report == nil {
+		return
+	}
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	if event.State == e.last {
+		return
+	}
+	e.last = event.State
+	event.GatewayID = e.gatewayID
+	e.report(event)
 }
 
 // PersistentSession models a reused read session across poll cycles so the gateway

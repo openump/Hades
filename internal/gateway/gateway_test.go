@@ -245,21 +245,244 @@ func TestCoalesceAdjacentReadsAndGuardrails(t *testing.T) {
 func TestDeadbandFilterEmitsHeartbeatOnMaxSilence(t *testing.T) {
 	filter := NewDeadbandFilter(3, 50*time.Millisecond)
 	base := time.Now()
-	value, ok := filter.Apply(100, base)
-	if !ok || value != 100 {
-		t.Fatal(value, ok)
+	steps := []struct {
+		value float64
+		at    time.Duration
+		emit  bool
+	}{
+		{100, 0, true},                      // first value is always reported
+		{101, 10 * time.Millisecond, false}, // noise within ±ε
+		{103, 20 * time.Millisecond, false}, // still within ±ε of the reported 100
+		{104, 30 * time.Millisecond, true},  // exceeds ε
+		{104, 40 * time.Millisecond, false},
+		{104, 80 * time.Millisecond, true}, // heartbeat after max silence
+		{102.5, 90 * time.Millisecond, false},
 	}
-	value, ok = filter.Apply(101, base.Add(10*time.Millisecond))
-	if ok || value != 100 {
-		t.Fatal(value, ok)
+	for i, step := range steps {
+		if got := filter.Apply(step.value, base.Add(step.at)); got != step.emit {
+			t.Fatalf("step %d: Apply(%v)=%v, want %v", i, step.value, got, step.emit)
+		}
 	}
-	value, ok = filter.Apply(102, base.Add(20*time.Millisecond))
-	if ok || value != 100 {
-		t.Fatal(value, ok)
+	filter.Reset()
+	if !filter.Apply(104, base.Add(100*time.Millisecond)) {
+		t.Fatal("expected the first value after Reset to be reported")
 	}
-	value, ok = filter.Apply(102, base.Add(200*time.Millisecond))
-	if !ok || value != 102 {
-		t.Fatal(value, ok)
+}
+
+func TestDeadbandSetOmitsSuppressedReadingsAndResetsOnBad(t *testing.T) {
+	set := newDeadbandSet(map[string]DeadbandConfig{"temp": {Epsilon: 1, MaxSilenceInterval: time.Hour}})
+	base := time.Now()
+	poll := func(reading Reading) map[string]Reading {
+		return set.filter(map[string]Reading{
+			"temp":  reading,
+			"other": {Value: 1.0, Quality: "good"},
+		}, base)
+	}
+	if out := poll(Reading{Value: 20.0, Quality: "good", ObservedAt: base}); out["temp"].Value != 20.0 {
+		t.Fatal(out)
+	}
+	out := poll(Reading{Value: 20.5, Quality: "good", ObservedAt: base.Add(time.Second)})
+	if _, ok := out["temp"]; ok {
+		t.Fatal("expected noise within ε to be omitted, not re-sent with a new timestamp", out)
+	}
+	if _, ok := out["other"]; !ok {
+		t.Fatal("signals without a deadband must pass through", out)
+	}
+	if out := poll(Reading{Quality: "bad", Reason: "read-error"}); out["temp"].Quality != "bad" {
+		t.Fatal("bad readings must never be suppressed", out)
+	}
+	if out := poll(Reading{Value: 20.5, Quality: "good", ObservedAt: base.Add(2 * time.Second)}); out["temp"].Value != 20.5 {
+		t.Fatal("expected recovery after a bad reading to be reported", out)
+	}
+}
+
+func TestDeadbandSetUsesPollClockAndReportsQualityChanges(t *testing.T) {
+	set := newDeadbandSet(map[string]DeadbandConfig{
+		"temp":     {Epsilon: 1, MaxSilenceInterval: time.Minute},
+		"disabled": {Epsilon: 5},
+	})
+	stalled := time.Unix(1_800_000_000, 0) // device timestamp that never advances
+	poll := func(value float64, quality string, now time.Time) map[string]Reading {
+		return set.filter(map[string]Reading{
+			"temp":     {Value: value, Quality: quality, ObservedAt: stalled},
+			"disabled": {Value: value, Quality: "good"},
+		}, now)
+	}
+	base := time.Now()
+	poll(72, "good", base)
+	out := poll(72, "uncertain", base.Add(time.Second))
+	if out["temp"].Quality != "uncertain" {
+		t.Fatal("a quality change must be reported even if the value is unchanged", out)
+	}
+	if _, ok := poll(72, "uncertain", base.Add(2*time.Second))["temp"]; ok {
+		t.Fatal("expected the unchanged uncertain value to be suppressed")
+	}
+	if _, ok := poll(72, "uncertain", base.Add(2*time.Second+time.Minute))["temp"]; !ok {
+		t.Fatal("expected a heartbeat by gateway poll time despite a stalled device timestamp")
+	}
+	if _, ok := out["disabled"]; !ok {
+		t.Fatal("a zero MaxSilenceInterval must leave the signal unfiltered")
+	}
+}
+
+func TestOPCUADeadbandReportsRecoveryAfterFailedPoll(t *testing.T) {
+	base := time.Now().UTC()
+	reader := &scriptedOPCUAReader{results: []scriptedOPCUAResult{
+		{values: []ua.DataValue{{Value: 72.0, StatusCode: ua.Good, SourceTimestamp: base}}},
+		{err: errors.New("connection reset")},
+		{values: []ua.DataValue{{Value: 72.0, StatusCode: ua.Good, SourceTimestamp: base}}},
+	}}
+	driver := NewOPCUADriverWithSource("opc.tcp://127.0.0.1:4840", reader, nil, opcuapilot.Signals[:1], DriverOptions{
+		ReadTimeout: 500 * time.Millisecond, RatePerSecond: 100, Burst: 4,
+		Deadbands: map[string]DeadbandConfig{"motor_temperature": {Epsilon: 1, MaxSilenceInterval: time.Hour}},
+	})
+	name := opcuapilot.Signals[0].Name
+	if out, _, _ := driver.Poll(context.Background()); out[name].Value != 72.0 {
+		t.Fatal(out)
+	}
+	if out, _, reason := driver.Poll(context.Background()); reason != "read-error" || out[name].Quality != "bad" {
+		t.Fatal(reason, out)
+	}
+	if out, _, _ := driver.Poll(context.Background()); out[name].Value != 72.0 || out[name].Quality != "good" {
+		t.Fatal("expected recovery to be reported immediately after a failed poll", out)
+	}
+}
+
+func TestCircuitBreakerAdmitsSingleHalfOpenProbe(t *testing.T) {
+	now := time.Unix(1_800_000_000, 0)
+	guard := NewEndpointGuardrail("modbus-tcp://127.0.0.1:1502", 100, 4, 4)
+	guard.breaker.now = func() time.Time { return now }
+	guard.RecordFailure("read-timeout")
+	guard.RecordFailure("read-timeout")
+	now = now.Add(time.Second)
+	if err := guard.Enter(); err != nil {
+		t.Fatal(err)
+	}
+	if err := guard.Enter(); !errors.Is(err, ErrCircuitOpen) {
+		t.Fatal("expected only one probe while half-open", err)
+	}
+	guard.Leave()
+	guard.RecordSuccess()
+	if err := guard.Enter(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestPLC4GoDriverDoesNotReconnectAfterClose(t *testing.T) {
+	connector := &sequencePLC4GoConnector{connections: []*fakePLC4GoConnection{{values: map[string]uint16{"temperature": 1}}}}
+	driver, err := OpenPLC4GoDriver(context.Background(), connector, "modbus-tcp://127.0.0.1:1502", []PLC4GoTag{
+		{Name: "temperature", Address: "holding-register:0"},
+	}, DriverOptions{RatePerSecond: 100, Burst: 4})
+	if err != nil {
+		t.Fatal(err)
+	}
+	driver.Close()
+	if _, _, reason := driver.Poll(context.Background()); reason != "read-error" {
+		t.Fatal(reason)
+	}
+	if connector.calls != 1 {
+		t.Fatal("a closed driver must not open a new controller session", connector.calls)
+	}
+}
+
+func TestCircuitBreakerBackoffGrowsAcrossFailedProbes(t *testing.T) {
+	now := time.Unix(1_800_000_000, 0)
+	breaker := NewCircuitBreaker(2, 100*time.Millisecond, 350*time.Millisecond)
+	breaker.now = func() time.Time { return now }
+	if breaker.RecordFailure() != ProducerStateDegraded || breaker.RecordFailure() != ProducerStateOffline {
+		t.Fatal("expected degraded then offline")
+	}
+	for _, window := range []time.Duration{100, 200, 350, 350} {
+		window *= time.Millisecond
+		now = now.Add(window - time.Millisecond)
+		if breaker.BeforeRequest() {
+			t.Fatalf("expected requests to be refused inside the %v backoff window", window)
+		}
+		now = now.Add(time.Millisecond)
+		if !breaker.BeforeRequest() {
+			t.Fatalf("expected a half-open probe after %v", window)
+		}
+		if breaker.RecordFailure() != ProducerStateOffline {
+			t.Fatal("a failed probe must reopen the breaker")
+		}
+	}
+	if breaker.RecordSuccess() != ProducerStateGood {
+		t.Fatal("expected success to close the breaker")
+	}
+	if breaker.RecordFailure() != ProducerStateDegraded {
+		t.Fatal("expected the failure count to reset after success")
+	}
+}
+
+func TestLocalScanProtectionDoesNotDegradeHealthyEndpoint(t *testing.T) {
+	connection := &fakePLC4GoConnection{values: map[string]uint16{"temperature": 672}}
+	var states []ProducerStatus
+	driver, err := OpenPLC4GoDriver(context.Background(), &fakePLC4GoConnector{connection: connection}, "modbus-tcp://127.0.0.1:1502", []PLC4GoTag{
+		{Name: "temperature", Address: "holding-register:0", Unit: "deciCel"},
+	}, DriverOptions{ReadTimeout: 500 * time.Millisecond, RatePerSecond: 0.001, Burst: 1, StatusReporter: func(event ProducerStatusEvent) {
+		states = append(states, event.State)
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, _, reason := driver.Poll(context.Background()); reason != "" {
+		t.Fatal(reason)
+	}
+	for range 3 {
+		readings, _, reason := driver.Poll(context.Background())
+		if reason != "scan-protection" || readings["temperature"].Quality != "bad" {
+			t.Fatal(reason, readings)
+		}
+	}
+	if len(states) != 0 {
+		t.Fatal("rate-limited polls must not emit producer_status", states)
+	}
+	if !driver.guardrail.breaker.BeforeRequest() {
+		t.Fatal("rate-limited polls must not open the circuit breaker")
+	}
+}
+
+func TestPLC4GoDriverReconnectsAfterResetAndReportsBreakerStates(t *testing.T) {
+	connector := &sequencePLC4GoConnector{connections: []*fakePLC4GoConnection{
+		{err: errors.New("connection reset by peer")},
+		{err: errors.New("connection reset by peer")},
+		{values: map[string]uint16{"temperature": 680}},
+	}}
+	var states []ProducerStatus
+	driver, err := OpenPLC4GoDriver(context.Background(), connector, "modbus-tcp://127.0.0.1:1502", []PLC4GoTag{
+		{Name: "temperature", Address: "holding-register:0", Unit: "deciCel"},
+	}, DriverOptions{ReadTimeout: 500 * time.Millisecond, RatePerSecond: 100, Burst: 4, StatusReporter: func(event ProducerStatusEvent) {
+		states = append(states, event.State)
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer driver.Close()
+	if _, _, reason := driver.Poll(context.Background()); reason != "read-error" {
+		t.Fatal(reason)
+	}
+	if _, _, reason := driver.Poll(context.Background()); reason != "read-error" {
+		t.Fatal(reason)
+	}
+	if _, _, reason := driver.Poll(context.Background()); reason != "circuit-open" {
+		t.Fatal("expected the open breaker to skip the next poll", reason)
+	}
+	driver.guardrail.breaker.now = func() time.Time { return time.Now().UTC().Add(time.Second) }
+	readings, _, reason := driver.Poll(context.Background())
+	if reason != "" || readings["temperature"].Value != uint16(680) {
+		t.Fatal(reason, readings)
+	}
+	if connector.calls != 3 {
+		t.Fatal("expected a fresh connection after each reset", connector.calls)
+	}
+	for i, connection := range connector.connections[:2] {
+		if connection.closeCalls != 1 {
+			t.Fatalf("connection %d closed %d times, want 1", i, connection.closeCalls)
+		}
+	}
+	want := []ProducerStatus{ProducerStateDegraded, ProducerStateOffline, ProducerStateGood}
+	if fmt.Sprint(states) != fmt.Sprint(want) {
+		t.Fatal(states)
 	}
 }
 
@@ -375,6 +598,24 @@ func (r *fakeOPCUAReader) Read(context.Context) ([]ua.DataValue, error) {
 
 func (r *fakeOPCUAReader) Close() {}
 
+type scriptedOPCUAResult struct {
+	values []ua.DataValue
+	err    error
+}
+
+type scriptedOPCUAReader struct {
+	results []scriptedOPCUAResult
+	calls   int
+}
+
+func (r *scriptedOPCUAReader) Read(context.Context) ([]ua.DataValue, error) {
+	result := r.results[min(r.calls, len(r.results)-1)]
+	r.calls++
+	return result.values, result.err
+}
+
+func (r *scriptedOPCUAReader) Close() {}
+
 type blockingOPCUAReader struct {
 	unblock chan struct{}
 	closed  bool
@@ -430,8 +671,8 @@ func TestOPCUADriverMapsSignalsAndReusesPersistentSession(t *testing.T) {
 	if reason != "" {
 		t.Fatal(reason)
 	}
-	if got := second["motor_temperature"].Value; got != 72.0 {
-		t.Fatal(got)
+	if _, ok := second["motor_temperature"]; ok {
+		t.Fatal("expected the deadband to suppress the 72.4 reading", second["motor_temperature"])
 	}
 	if got := second["cycle_counter"].Value; got != uint32(11) {
 		t.Fatal(got)
@@ -482,8 +723,20 @@ func (c *fakePLC4GoConnector) Connect(context.Context, string) (PLC4GoConnection
 
 type fakePLC4GoConnection struct {
 	values     map[string]uint16
+	err        error
 	batches    [][]string
 	closeCalls int
+}
+
+type sequencePLC4GoConnector struct {
+	connections []*fakePLC4GoConnection
+	calls       int
+}
+
+func (c *sequencePLC4GoConnector) Connect(context.Context, string) (PLC4GoConnection, error) {
+	connection := c.connections[min(c.calls, len(c.connections)-1)]
+	c.calls++
+	return connection, nil
 }
 
 func (c *fakePLC4GoConnection) ReadRequestBuilder() PLC4GoReadRequestBuilder {
@@ -509,15 +762,16 @@ func (b *fakePLC4GoBuilder) AddTagAddress(name, address string) error {
 
 func (b *fakePLC4GoBuilder) Build() (PLC4GoReadRequest, error) {
 	b.connection.batches = append(b.connection.batches, append([]string(nil), b.names...))
-	return &fakePLC4GoRequest{values: b.connection.values}, nil
+	return &fakePLC4GoRequest{values: b.connection.values, err: b.connection.err}, nil
 }
 
 type fakePLC4GoRequest struct {
 	values map[string]uint16
+	err    error
 }
 
 func (r *fakePLC4GoRequest) Execute(context.Context) (map[string]uint16, error) {
-	return r.values, nil
+	return r.values, r.err
 }
 
 type stubProtocolDriver struct{}
@@ -711,10 +965,7 @@ func TestPLC4GoModbusConnectorReadsContiguousRegistersOverLoopback(t *testing.T)
 				binary.BigEndian.PutUint16(payload[2+i*2:2+(i+1)*2], value)
 			}
 			response := make([]byte, 7+len(payload))
-			response[0] = 0x00
-			response[1] = 0x00
-			response[2] = 0x00
-			response[3] = 0x00
+			copy(response[0:2], buf[0:2])
 			binary.BigEndian.PutUint16(response[4:6], uint16(3+2*count))
 			response[6] = 0x01
 			copy(response[7:], payload)
@@ -765,6 +1016,82 @@ func TestPLC4GoModbusConnectorReadsContiguousRegistersOverLoopback(t *testing.T)
 	}
 	if err := <-serverErr; err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestModbusResponseValidationRejectsMismatchedFrames(t *testing.T) {
+	frame := func(transactionID uint16, unitID byte, pdu ...byte) []byte {
+		out := make([]byte, 7, 7+len(pdu))
+		binary.BigEndian.PutUint16(out[0:2], transactionID)
+		binary.BigEndian.PutUint16(out[4:6], uint16(1+len(pdu)))
+		out[6] = unitID
+		return append(out, pdu...)
+	}
+	cases := []struct {
+		name  string
+		frame []byte
+		want  string
+	}{
+		{"stale transaction", frame(6, 1, 0x03, 4, 0, 1, 0, 2), "transaction id 6"},
+		{"short register count", frame(7, 1, 0x03, 2, 0, 1), "byte count 2 for 2 registers"},
+		{"wrong unit", frame(7, 9, 0x03, 4, 0, 1, 0, 2), "unit id 9"},
+		{"exception", frame(7, 1, 0x83, 0x02), "exception code 2"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			client, server := net.Pipe()
+			defer client.Close()
+			go func() {
+				server.Write(tc.frame)
+				server.Close()
+			}()
+			ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+			defer cancel()
+			_, err := readModbusHoldingRegisterResponse(ctx, client, 7, 1, 2)
+			if err == nil || !strings.Contains(err.Error(), tc.want) {
+				t.Fatalf("err=%v, want %q", err, tc.want)
+			}
+		})
+	}
+	client, server := net.Pipe()
+	defer client.Close()
+	go func() {
+		server.Write(frame(7, 1, 0x03, 4, 0, 1, 0, 2))
+		server.Close()
+	}()
+	values, err := readModbusHoldingRegisterResponse(context.Background(), client, 7, 1, 2)
+	if err != nil || len(values) != 2 || values[0] != 1 || values[1] != 2 {
+		t.Fatal(values, err)
+	}
+}
+
+func TestPLC4GoFactoryRequiresExplicitTagAddresses(t *testing.T) {
+	cfg := &sample.Config{Metadata: map[string]any{
+		"acquisition": map[string]any{"protocol": "plc4go", "gateway_id": "gw"},
+		"measurements": map[string]any{
+			"pressure":    map[string]any{"type": "number", "unit": "bar"},
+			"temperature": map[string]any{"type": "number", "unit": "Cel"},
+		},
+	}}
+	var opened []PLC4GoTag
+	factory := ProtocolDriverFactory{OpenPLC4Go: func(_ context.Context, _ PLC4GoConnector, _ string, tags []PLC4GoTag, _ DriverOptions) (ProtocolDriver, error) {
+		opened = tags
+		return &stubProtocolDriver{}, nil
+	}}
+	connector := &fakePLC4GoConnector{}
+	_, err := factory.Open(context.Background(), cfg, "s7://127.0.0.1", DriverOptions{}, FactoryOptions{PLC4Go: connector, PLC4GoTags: map[string]string{"temperature": "%DB1:0:INT"}})
+	if err == nil || !strings.Contains(err.Error(), `"pressure" has no configured tag address`) {
+		t.Fatal(err)
+	}
+	_, err = factory.Open(context.Background(), cfg, "s7://127.0.0.1", DriverOptions{}, FactoryOptions{PLC4Go: connector, PLC4GoTags: map[string]string{"temperature": "%DB1:0:INT", "pressure": "%DB1:2:INT", "speed": "%DB1:4:INT"}})
+	if err == nil || !strings.Contains(err.Error(), `unknown measurement "speed"`) {
+		t.Fatal(err)
+	}
+	if _, err = factory.Open(context.Background(), cfg, "s7://127.0.0.1", DriverOptions{}, FactoryOptions{PLC4Go: connector, PLC4GoTags: map[string]string{"temperature": "%DB1:0:INT", "pressure": "%DB1:2:INT"}}); err != nil {
+		t.Fatal(err)
+	}
+	if len(opened) != 2 || opened[0].Address != "%DB1:2:INT" || opened[1].Address != "%DB1:0:INT" || opened[1].Unit != "Cel" {
+		t.Fatal(opened)
 	}
 }
 
@@ -826,7 +1153,7 @@ func BenchmarkDeadbandFilter(b *testing.B) {
 	filter := NewDeadbandFilter(3, 50*time.Millisecond)
 	base := time.Now()
 	for i := 0; i < b.N; i++ {
-		filter.Apply(100+uint16(i), base)
+		filter.Apply(float64(100+i), base)
 	}
 }
 

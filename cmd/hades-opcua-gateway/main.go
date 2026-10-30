@@ -132,7 +132,11 @@ func run() error {
 			failures.Add(1)
 		}
 		for _, signal := range opcuapilot.Signals {
-			reading := readings[signal.Name]
+			reading, ok := readings[signal.Name]
+			if !ok {
+				// Suppressed by the signal's deadband; nothing new to report.
+				continue
+			}
 			if reading.Quality == "bad" {
 				badReadings.Add(1)
 			}

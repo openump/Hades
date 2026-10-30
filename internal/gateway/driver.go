@@ -31,7 +31,7 @@ type Driver struct {
 	options                  DriverOptions
 	session                  *PersistentSession
 	guardrail                *EndpointGuardrail
-	deadbands                map[string]*DeadbandFilter
+	deadbands                deadbandSet
 	cmd                      *exec.Cmd
 	cancel                   context.CancelFunc
 	updates                  chan driverUpdate
@@ -39,12 +39,14 @@ type Driver struct {
 	stderr                   *boundedOutput
 	closeOnce                sync.Once
 	waitDone                 chan struct{}
-	statusMu                 sync.Mutex
-	lastStatus               ProducerStatus
+	status                   *statusEmitter
 }
 
+// DeadbandConfig configures report-by-exception for one signal: readings within
+// ±Epsilon of the last reported value are suppressed until MaxSilenceInterval
+// has elapsed, at which point the current value is reported as a heartbeat.
 type DeadbandConfig struct {
-	Epsilon            uint16
+	Epsilon            float64
 	MaxSilenceInterval time.Duration
 }
 
@@ -127,21 +129,21 @@ func OpenDriverWithOptions(ctx context.Context, binary, endpoint string, profile
 	}
 	stderrBuf := &boundedOutput{limit: 4096}
 	d := &Driver{
-		Binary:     binary,
-		Config:     file.Name(),
-		Endpoint:   endpoint,
-		Profile:    p,
-		options:    options,
-		session:    NewPersistentSession(endpoint),
-		guardrail:  NewEndpointGuardrail(endpoint, options.RatePerSecond, options.Burst, options.MaxInFlight),
-		deadbands:  buildDeadbandFilters(p, options),
-		updates:    make(chan driverUpdate, 1),
-		failures:   make(chan string, 1),
-		stderr:     stderrBuf,
-		cmd:        cmd,
-		cancel:     sidecarCancel,
-		waitDone:   make(chan struct{}),
-		lastStatus: ProducerStateGood,
+		Binary:    binary,
+		Config:    file.Name(),
+		Endpoint:  endpoint,
+		Profile:   p,
+		options:   options,
+		session:   NewPersistentSession(endpoint),
+		guardrail: NewEndpointGuardrail(endpoint, options.RatePerSecond, options.Burst, options.MaxInFlight),
+		deadbands: newDeadbandSet(options.Deadbands),
+		updates:   make(chan driverUpdate, 1),
+		failures:  make(chan string, 1),
+		stderr:    stderrBuf,
+		cmd:       cmd,
+		cancel:    sidecarCancel,
+		waitDone:  make(chan struct{}),
+		status:    newStatusEmitter(options),
 	}
 	if err := cmd.Start(); err != nil {
 		sidecarCancel()
@@ -179,18 +181,6 @@ func normalizeDriverOptions(options DriverOptions) DriverOptions {
 	return options
 }
 
-func buildDeadbandFilters(profile Profile, options DriverOptions) map[string]*DeadbandFilter {
-	filters := make(map[string]*DeadbandFilter, len(options.Deadbands))
-	for _, reg := range profile.Registers {
-		cfg, ok := options.Deadbands[reg.Name]
-		if !ok {
-			continue
-		}
-		filters[reg.Name] = NewDeadbandFilter(cfg.Epsilon, cfg.MaxSilenceInterval)
-	}
-	return filters
-}
-
 func (d *Driver) activeProfile() Profile {
 	if len(d.Profile.Registers) == 0 {
 		return DefaultLabProfile()
@@ -198,30 +188,29 @@ func (d *Driver) activeProfile() Profile {
 	return d.Profile
 }
 
+// ReadMap returns the latest raw sidecar batch. Deadbands are applied by Poll,
+// which can omit suppressed readings; ReadMap and Read always return raw values.
 func (d *Driver) ReadMap(ctx context.Context) (map[string]uint16, time.Time, string) {
 	attempt, done := context.WithTimeout(ctx, d.options.ReadTimeout)
 	defer done()
 	if err := d.guardrail.Enter(); err != nil {
-		event := d.guardrail.RecordFailure("scan-protection")
-		d.emitStatus(event)
-		return nil, d.options.Now(), "scan-protection"
+		return nil, d.options.Now(), guardReason(err)
 	}
 	defer d.guardrail.Leave()
 	select {
 	case update := <-d.updates:
-		values := d.applyDeadbands(update.values, update.stamp)
 		d.session.RecordPoll(CoalesceAdjacentReads(d.activeProfile().Registers), "")
 		recovery := d.guardrail.RecordSuccess()
-		d.emitStatus(recovery)
-		return values, update.stamp, ""
+		d.status.emit(recovery)
+		return update.values, update.stamp, ""
 	case reason := <-d.failures:
 		event := d.guardrail.RecordFailure(reason)
-		d.emitStatus(event)
+		d.status.emit(event)
 		return nil, d.options.Now(), reason
 	case <-attempt.Done():
 		reason := "read-timeout"
 		event := d.guardrail.RecordFailure(reason)
-		d.emitStatus(event)
+		d.status.emit(event)
 		return nil, d.options.Now(), reason
 	}
 }
@@ -236,18 +225,20 @@ func (d *Driver) Read(ctx context.Context) (*uint16, time.Time, string) {
 	return &v, stamp, ""
 }
 
+// Poll reads the latest sidecar batch. Readings suppressed by a configured
+// deadband are omitted from the result.
 func (d *Driver) Poll(ctx context.Context) (map[string]Reading, time.Time, string) {
 	values, stamp, reason := d.ReadMap(ctx)
 	p := d.activeProfile()
 	out := make(map[string]Reading, len(p.Registers))
 	for _, reg := range p.Registers {
-		if v, ok := values[reg.Name]; ok && values != nil {
-			out[reg.Name] = Reading{Value: v, Unit: reg.Unit, Quality: "good"}
+		if v, ok := values[reg.Name]; ok {
+			out[reg.Name] = Reading{Value: v, Unit: reg.Unit, Quality: "good", ObservedAt: stamp}
 		} else {
-			out[reg.Name] = Reading{Value: nil, Unit: reg.Unit, Quality: "bad", Reason: reason}
+			out[reg.Name] = Reading{Value: nil, Unit: reg.Unit, Quality: "bad", Reason: reason, ObservedAt: stamp}
 		}
 	}
-	return out, stamp, reason
+	return d.deadbands.filter(out, d.options.Now()), stamp, reason
 }
 
 func (d *Driver) Close() error {
@@ -321,38 +312,4 @@ func (d *Driver) pushFailure(reason string) {
 	case d.failures <- reason:
 	default:
 	}
-}
-
-func (d *Driver) applyDeadbands(values map[string]uint16, now time.Time) map[string]uint16 {
-	if len(d.deadbands) == 0 {
-		return values
-	}
-	filtered := make(map[string]uint16, len(values))
-	for name, value := range values {
-		filter, ok := d.deadbands[name]
-		if !ok {
-			filtered[name] = value
-			continue
-		}
-		result, _ := filter.Apply(value, now)
-		filtered[name] = result
-	}
-	return filtered
-}
-
-func (d *Driver) emitStatus(event ProducerStatusEvent) {
-	if d.options.StatusReporter == nil {
-		return
-	}
-	event.GatewayID = d.options.GatewayID
-	d.statusMu.Lock()
-	defer d.statusMu.Unlock()
-	if event.State == d.lastStatus && event.State == ProducerStateGood {
-		return
-	}
-	if event.State == d.lastStatus && event.State != ProducerStateGood {
-		return
-	}
-	d.lastStatus = event.State
-	d.options.StatusReporter(event)
 }

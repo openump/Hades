@@ -43,15 +43,15 @@ type PLC4GoDriver struct {
 	endpoint   string
 	tags       []PLC4GoTag
 	batches    [][]PLC4GoTag
+	connector  PLC4GoConnector
+	connMu     sync.Mutex
 	connection PLC4GoConnection
+	closed     bool
 	options    DriverOptions
 	session    *PersistentSession
 	guardrail  *EndpointGuardrail
-	statusMu   sync.Mutex
-	lastStatus ProducerStatus
-	deadbandMu sync.Mutex
-	lastValues map[string]uint16
-	lastAt     map[string]time.Time
+	status     *statusEmitter
+	deadbands  deadbandSet
 }
 
 func OpenPLC4GoDriver(ctx context.Context, connector PLC4GoConnector, endpoint string, tags []PLC4GoTag, options DriverOptions) (*PLC4GoDriver, error) {
@@ -74,13 +74,13 @@ func OpenPLC4GoDriver(ctx context.Context, connector PLC4GoConnector, endpoint s
 		endpoint:   endpoint,
 		tags:       append([]PLC4GoTag(nil), tags...),
 		batches:    batches,
+		connector:  connector,
 		connection: connection,
 		options:    options,
 		session:    NewPersistentSession(endpoint),
 		guardrail:  NewEndpointGuardrail(endpoint, options.RatePerSecond, options.Burst, options.MaxInFlight),
-		lastStatus: ProducerStateGood,
-		lastValues: make(map[string]uint16, len(tags)),
-		lastAt:     make(map[string]time.Time, len(tags)),
+		status:     newStatusEmitter(options),
+		deadbands:  newDeadbandSet(options.Deadbands),
 	}, nil
 }
 
@@ -98,26 +98,30 @@ func OpenPLC4GoDriverForProfile(ctx context.Context, connector PLC4GoConnector, 
 
 func (d *PLC4GoDriver) Poll(ctx context.Context) (map[string]Reading, time.Time, string) {
 	if err := d.guardrail.Enter(); err != nil {
-		event := d.guardrail.RecordFailure("scan-protection")
-		d.emitStatus(event)
-		return d.failureReadings("scan-protection"), d.options.Now(), "scan-protection"
+		reason := guardReason(err)
+		return d.deadbands.filter(d.failureReadings(reason), d.options.Now()), d.options.Now(), reason
 	}
 	defer d.guardrail.Leave()
 
 	readCtx, cancel := context.WithTimeout(ctx, d.options.ReadTimeout)
 	defer cancel()
 
+	d.connMu.Lock()
+	defer d.connMu.Unlock()
 	readings := make(map[string]Reading, len(d.tags))
 	for _, batch := range d.batches {
 		batchReadings, err := d.readBatch(readCtx, batch)
 		if err != nil {
+			// A timed-out or reset session may still deliver a stale response;
+			// drop it so the next poll starts from a fresh connection.
+			d.dropConnection()
 			reason := "read-error"
 			if errors.Is(err, context.DeadlineExceeded) || errors.Is(readCtx.Err(), context.DeadlineExceeded) {
 				reason = "read-timeout"
 			}
 			event := d.guardrail.RecordFailure(reason)
-			d.emitStatus(event)
-			return d.failureReadings(reason), d.options.Now(), reason
+			d.status.emit(event)
+			return d.deadbands.filter(d.failureReadings(reason), d.options.Now()), d.options.Now(), reason
 		}
 		for name, reading := range batchReadings {
 			readings[name] = reading
@@ -126,18 +130,41 @@ func (d *PLC4GoDriver) Poll(ctx context.Context) (map[string]Reading, time.Time,
 
 	d.session.RecordPoll(plansForTags(d.batches), "")
 	recovery := d.guardrail.RecordSuccess()
-	d.emitStatus(recovery)
-	return readings, d.options.Now(), ""
+	d.status.emit(recovery)
+	stamp := d.options.Now()
+	return d.deadbands.filter(readings, stamp), stamp, ""
 }
 
 func (d *PLC4GoDriver) Close() error {
+	d.connMu.Lock()
+	defer d.connMu.Unlock()
+	d.closed = true
 	if d.connection == nil {
 		return nil
 	}
-	return d.connection.Close()
+	err := d.connection.Close()
+	d.connection = nil
+	return err
+}
+
+func (d *PLC4GoDriver) dropConnection() {
+	if d.connection != nil {
+		_ = d.connection.Close()
+		d.connection = nil
+	}
 }
 
 func (d *PLC4GoDriver) readBatch(ctx context.Context, batch []PLC4GoTag) (map[string]Reading, error) {
+	if d.closed {
+		return nil, errors.New("plc4go driver is closed")
+	}
+	if d.connection == nil {
+		connection, err := d.connector.Connect(ctx, d.endpoint)
+		if err != nil {
+			return nil, err
+		}
+		d.connection = connection
+	}
 	observed := d.options.Now()
 	builder := d.connection.ReadRequestBuilder()
 	for _, tag := range batch {
@@ -157,11 +184,11 @@ func (d *PLC4GoDriver) readBatch(ctx context.Context, batch []PLC4GoTag) (map[st
 	for _, tag := range batch {
 		value, ok := values[tag.Name]
 		if !ok {
-			readings[tag.Name] = Reading{Value: nil, Unit: tag.Unit, Quality: "bad", Reason: "missing-tag"}
+			readings[tag.Name] = Reading{Value: nil, Unit: tag.Unit, Quality: "bad", Reason: "missing-tag", ObservedAt: observed}
 			continue
 		}
 		readings[tag.Name] = Reading{
-			Value:      d.applyDeadband(tag.Name, value, d.options.Now()),
+			Value:      value,
 			Unit:       tag.Unit,
 			Quality:    "good",
 			ObservedAt: observed,
@@ -177,41 +204,6 @@ func (d *PLC4GoDriver) failureReadings(reason string) map[string]Reading {
 		out[tag.Name] = Reading{Value: nil, Unit: tag.Unit, Quality: "bad", Reason: reason, ObservedAt: d.options.Now()}
 	}
 	return out
-}
-
-func (d *PLC4GoDriver) applyDeadband(name string, value uint16, now time.Time) uint16 {
-	cfg, ok := d.options.Deadbands[name]
-	if !ok || cfg.MaxSilenceInterval <= 0 {
-		return value
-	}
-	d.deadbandMu.Lock()
-	defer d.deadbandMu.Unlock()
-	last, seen := d.lastValues[name]
-	if !seen || now.Sub(d.lastAt[name]) >= cfg.MaxSilenceInterval {
-		d.lastValues[name] = value
-		d.lastAt[name] = now
-		return value
-	}
-	if absUint16Delta(value, last) <= cfg.Epsilon {
-		return last
-	}
-	d.lastValues[name] = value
-	d.lastAt[name] = now
-	return value
-}
-
-func (d *PLC4GoDriver) emitStatus(event ProducerStatusEvent) {
-	if d.options.StatusReporter == nil {
-		return
-	}
-	event.GatewayID = d.options.GatewayID
-	d.statusMu.Lock()
-	defer d.statusMu.Unlock()
-	if event.State == d.lastStatus {
-		return
-	}
-	d.lastStatus = event.State
-	d.options.StatusReporter(event)
 }
 
 func validatePLC4GoEndpoint(endpoint string) error {
@@ -305,13 +297,6 @@ func plansForTags(batches [][]PLC4GoTag) []ReadRequestPlan {
 		plans = append(plans, ReadRequestPlan{Registers: registers, StartAddress: 0, EndAddress: uint16(len(batch) - 1)})
 	}
 	return plans
-}
-
-func absUint16Delta(left, right uint16) uint16 {
-	if left >= right {
-		return left - right
-	}
-	return right - left
 }
 
 type ModbusTCPPLC4GoConnector struct {
@@ -430,14 +415,15 @@ func (r *modbusTCPPLC4GoReadRequest) Execute(ctx context.Context) (map[string]ui
 		}
 		startAddr := group[0].address
 		count := uint16(len(group))
-		request, err := buildModbusReadHoldingRegistersRequest(r.connection.nextTransactionID(), uint16(r.connection.unitID), startAddr, count)
+		transactionID := r.connection.nextTransactionID()
+		request, err := buildModbusReadHoldingRegistersRequest(transactionID, uint16(r.connection.unitID), startAddr, count)
 		if err != nil {
 			return nil, err
 		}
 		if err := writeModbusRequest(ctx, r.connection.conn, request); err != nil {
 			return nil, err
 		}
-		response, err := readModbusHoldingRegisterResponse(ctx, r.connection.conn)
+		response, err := readModbusHoldingRegisterResponse(ctx, r.connection.conn, transactionID, r.connection.unitID, count)
 		if err != nil {
 			return nil, err
 		}
@@ -524,7 +510,9 @@ func writeModbusRequest(ctx context.Context, conn net.Conn, request []byte) erro
 	return nil
 }
 
-func readModbusHoldingRegisterResponse(ctx context.Context, conn net.Conn) ([]uint16, error) {
+// readModbusHoldingRegisterResponse reads one FC03 response and checks that it
+// answers the request that was sent: same transaction, unit and register count.
+func readModbusHoldingRegisterResponse(ctx context.Context, conn net.Conn, transactionID uint16, unitID uint8, count uint16) ([]uint16, error) {
 	if deadline, ok := ctx.Deadline(); ok {
 		if err := conn.SetReadDeadline(deadline); err != nil {
 			return nil, err
@@ -535,27 +523,33 @@ func readModbusHoldingRegisterResponse(ctx context.Context, conn net.Conn) ([]ui
 	if _, err := io.ReadFull(conn, header); err != nil {
 		return nil, err
 	}
-	unitID := header[6]
 	responseLength := int(binary.BigEndian.Uint16(header[4:6]))
-	if responseLength < 3 {
+	// An exception PDU (function code + exception code) is the shortest valid frame.
+	if responseLength < 3 || responseLength > 254 {
 		return nil, fmt.Errorf("invalid modbus response length %d", responseLength)
 	}
 	remaining := make([]byte, responseLength-1)
 	if _, err := io.ReadFull(conn, remaining); err != nil {
 		return nil, err
 	}
-	if len(remaining) < 3 {
-		return nil, fmt.Errorf("modbus response truncated: %d bytes", len(remaining))
+	if got := binary.BigEndian.Uint16(header[0:2]); got != transactionID {
+		return nil, fmt.Errorf("modbus transaction id %d does not match request %d", got, transactionID)
 	}
-	if unitID != 0x01 && unitID != 0xFF {
-		return nil, fmt.Errorf("unexpected modbus unit id %d", unitID)
+	if protocolID := binary.BigEndian.Uint16(header[2:4]); protocolID != 0 {
+		return nil, fmt.Errorf("unexpected modbus protocol id %d", protocolID)
+	}
+	if header[6] != unitID {
+		return nil, fmt.Errorf("unexpected modbus unit id %d", header[6])
+	}
+	if remaining[0] == 0x83 {
+		return nil, fmt.Errorf("modbus exception code %d", remaining[1])
 	}
 	if remaining[0] != 0x03 {
 		return nil, fmt.Errorf("unexpected modbus function code %d", remaining[0])
 	}
 	byteCount := int(remaining[1])
-	if byteCount%2 != 0 || byteCount < 2 {
-		return nil, fmt.Errorf("unexpected modbus byte count %d", byteCount)
+	if byteCount != 2*int(count) {
+		return nil, fmt.Errorf("unexpected modbus byte count %d for %d registers", byteCount, count)
 	}
 	if len(remaining)-2 < byteCount {
 		return nil, fmt.Errorf("modbus response missing %d register bytes", byteCount-(len(remaining)-2))

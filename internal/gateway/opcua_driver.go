@@ -3,7 +3,6 @@ package gateway
 import (
 	"context"
 	"errors"
-	"sync"
 	"syscall"
 	"time"
 
@@ -21,20 +20,16 @@ type opcuaSubscriptionReader interface {
 }
 
 type OPCUADriver struct {
-	endpoint     string
-	signals      []opcuapilot.Signal
-	reader       opcuaBatchReader
-	opener       func(ctx context.Context) (opcuaBatchReader, error)
-	subscriber   opcuaSubscriptionReader
-	options      DriverOptions
-	session      *PersistentSession
-	guardrail    *EndpointGuardrail
-	statusMu     sync.Mutex
-	lastStatus   ProducerStatus
-	deadbandMu   sync.Mutex
-	lastReported map[string]float64
-	lastValues   map[string]any
-	lastAt       map[string]time.Time
+	endpoint   string
+	signals    []opcuapilot.Signal
+	reader     opcuaBatchReader
+	opener     func(ctx context.Context) (opcuaBatchReader, error)
+	subscriber opcuaSubscriptionReader
+	options    DriverOptions
+	session    *PersistentSession
+	guardrail  *EndpointGuardrail
+	status     *statusEmitter
+	deadbands  deadbandSet
 }
 
 func OpenOPCUADriver(ctx context.Context, endpoint, pki string, options DriverOptions) (*OPCUADriver, error) {
@@ -67,25 +62,22 @@ func NewOPCUADriverWithSource(endpoint string, reader opcuaBatchReader, subscrib
 	}
 	options = normalizeDriverOptions(options)
 	return &OPCUADriver{
-		endpoint:     endpoint,
-		signals:      append([]opcuapilot.Signal(nil), signals...),
-		reader:       reader,
-		subscriber:   subscriber,
-		options:      options,
-		session:      NewPersistentSession(endpoint),
-		guardrail:    NewEndpointGuardrail(endpoint, options.RatePerSecond, options.Burst, options.MaxInFlight),
-		lastStatus:   ProducerStateGood,
-		lastReported: make(map[string]float64, len(signals)),
-		lastValues:   make(map[string]any, len(signals)),
-		lastAt:       make(map[string]time.Time, len(signals)),
+		endpoint:   endpoint,
+		signals:    append([]opcuapilot.Signal(nil), signals...),
+		reader:     reader,
+		subscriber: subscriber,
+		options:    options,
+		session:    NewPersistentSession(endpoint),
+		guardrail:  NewEndpointGuardrail(endpoint, options.RatePerSecond, options.Burst, options.MaxInFlight),
+		status:     newStatusEmitter(options),
+		deadbands:  newDeadbandSet(options.Deadbands),
 	}
 }
 
 func (d *OPCUADriver) Poll(ctx context.Context) (map[string]Reading, time.Time, string) {
 	if err := d.guardrail.Enter(); err != nil {
-		event := d.guardrail.RecordFailure("scan-protection")
-		d.emitStatus(event)
-		return d.failureReadings("scan-protection"), d.options.Now(), "scan-protection"
+		reason := guardReason(err)
+		return d.deadbands.filter(d.failureReadings(reason), d.options.Now()), d.options.Now(), reason
 	}
 	defer d.guardrail.Leave()
 
@@ -99,8 +91,8 @@ func (d *OPCUADriver) Poll(ctx context.Context) (map[string]Reading, time.Time, 
 			reason = "read-timeout"
 		}
 		event := d.guardrail.RecordFailure(reason)
-		d.emitStatus(event)
-		return d.failureReadings(reason), d.options.Now(), reason
+		d.status.emit(event)
+		return d.deadbands.filter(d.failureReadings(reason), d.options.Now()), d.options.Now(), reason
 	}
 
 	stamp := time.Time{}
@@ -120,9 +112,6 @@ func (d *OPCUADriver) Poll(ctx context.Context) (map[string]Reading, time.Time, 
 		if reason, ok := reading["reason"].(string); ok {
 			current.Reason = reason
 		}
-		if current.Quality == "good" || current.Quality == "uncertain" {
-			current.Value = d.applyDeadband(signal.Name, current.Value, observed)
-		}
 		out[signal.Name] = current
 		if observed.After(stamp) {
 			stamp = observed
@@ -133,8 +122,8 @@ func (d *OPCUADriver) Poll(ctx context.Context) (map[string]Reading, time.Time, 
 	}
 	d.session.RecordPoll(nil, "")
 	recovery := d.guardrail.RecordSuccess()
-	d.emitStatus(recovery)
-	return out, stamp, ""
+	d.status.emit(recovery)
+	return d.deadbands.filter(out, d.options.Now()), stamp, ""
 }
 
 func (d *OPCUADriver) Close() error {
@@ -209,47 +198,6 @@ func (d *OPCUADriver) failureReadings(reason string) map[string]Reading {
 	return out
 }
 
-func (d *OPCUADriver) applyDeadband(name string, value any, now time.Time) any {
-	cfg, ok := d.options.Deadbands[name]
-	if !ok || cfg.MaxSilenceInterval <= 0 {
-		return value
-	}
-	numeric, ok := asFloat64(value)
-	if !ok {
-		return value
-	}
-	d.deadbandMu.Lock()
-	defer d.deadbandMu.Unlock()
-	last, seen := d.lastReported[name]
-	if !seen || now.Sub(d.lastAt[name]) >= cfg.MaxSilenceInterval {
-		d.lastReported[name] = numeric
-		d.lastValues[name] = value
-		d.lastAt[name] = now
-		return value
-	}
-	if absFloat64(numeric-last) <= float64(cfg.Epsilon) {
-		return d.lastValues[name]
-	}
-	d.lastReported[name] = numeric
-	d.lastValues[name] = value
-	d.lastAt[name] = now
-	return value
-}
-
-func (d *OPCUADriver) emitStatus(event ProducerStatusEvent) {
-	if d.options.StatusReporter == nil {
-		return
-	}
-	event.GatewayID = d.options.GatewayID
-	d.statusMu.Lock()
-	defer d.statusMu.Unlock()
-	if event.State == d.lastStatus {
-		return
-	}
-	d.lastStatus = event.State
-	d.options.StatusReporter(event)
-}
-
 func asFloat64(value any) (float64, bool) {
 	switch typed := value.(type) {
 	case float64:
@@ -273,11 +221,4 @@ func asFloat64(value any) (float64, bool) {
 	default:
 		return 0, false
 	}
-}
-
-func absFloat64(value float64) float64 {
-	if value < 0 {
-		return -value
-	}
-	return value
 }

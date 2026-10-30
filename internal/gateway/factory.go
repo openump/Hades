@@ -13,6 +13,9 @@ type FactoryOptions struct {
 	TelegrafBinary string
 	OPCUAPKI       string
 	PLC4Go         PLC4GoConnector
+	// PLC4GoTags maps each measurement to its controller tag address. Every
+	// measurement must be mapped; addresses are never derived from names.
+	PLC4GoTags map[string]string
 }
 
 type ProtocolDriverFactory struct {
@@ -81,7 +84,10 @@ func (f ProtocolDriverFactory) Open(ctx context.Context, cfg *sample.Config, end
 		if f.OpenPLC4Go == nil {
 			return nil, fmt.Errorf("plc4go opener is not configured")
 		}
-		tags := measurementsToPLC4GoTags(cfg)
+		tags, err := measurementsToPLC4GoTags(cfg, factoryOptions.PLC4GoTags)
+		if err != nil {
+			return nil, err
+		}
 		return f.OpenPLC4Go(ctx, factoryOptions.PLC4Go, endpoint, tags, options)
 	case "simulator":
 		return nil, fmt.Errorf("simulator does not use a gateway protocol driver")
@@ -123,10 +129,10 @@ func validatePLC4GoMetadata(cfg *sample.Config) error {
 	return nil
 }
 
-func measurementsToPLC4GoTags(cfg *sample.Config) []PLC4GoTag {
+func measurementsToPLC4GoTags(cfg *sample.Config, addresses map[string]string) ([]PLC4GoTag, error) {
 	measurements, ok := cfg.Metadata["measurements"].(map[string]any)
 	if !ok {
-		return nil
+		return nil, fmt.Errorf("metadata missing measurements")
 	}
 	names := make([]string, 0, len(measurements))
 	for name := range measurements {
@@ -134,12 +140,21 @@ func measurementsToPLC4GoTags(cfg *sample.Config) []PLC4GoTag {
 	}
 	sort.Strings(names)
 	tags := make([]PLC4GoTag, 0, len(names))
-	for i, name := range names {
+	for _, name := range names {
+		address := addresses[name]
+		if address == "" {
+			return nil, fmt.Errorf("plc4go measurement %q has no configured tag address", name)
+		}
 		tags = append(tags, PLC4GoTag{
 			Name:    name,
-			Address: fmt.Sprintf("holding-register:%d", i),
+			Address: address,
 			Unit:    sample.MetadataUnitOrDefault(measurements[name]),
 		})
 	}
-	return tags
+	for name := range addresses {
+		if _, ok := measurements[name]; !ok {
+			return nil, fmt.Errorf("plc4go tag address configured for unknown measurement %q", name)
+		}
+	}
+	return tags, nil
 }
