@@ -13,6 +13,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -499,64 +500,178 @@ func TestPersistentSessionTracksReuseAcrossPollCycles(t *testing.T) {
 	}
 }
 
-func TestPersistentTelegrafSidecarReusesSingleChildAcrossPolls(t *testing.T) {
+// fakeTelegraf writes a wrapper that re-executes this test binary as a Telegraf
+// 1.40.2 stand-in. mode selects the helper's behaviour in TestFakeTelegrafHelper.
+func fakeTelegraf(t *testing.T, mode string) (binary, starts string) {
+	t.Helper()
 	tmp := t.TempDir()
-	countFile := filepath.Join(tmp, "starts.txt")
-	script := filepath.Join(tmp, "fake-telegraf.sh")
-	body := strings.Join([]string{
-		"#!/bin/sh",
-		"if [ \"$1\" = \"--version\" ]; then",
-		"  echo 'Telegraf 1.40.2 (test)'",
-		"  exit 0",
-		"fi",
-		"echo started >> \"$HADES_TELEGRAF_STARTS\"",
-		"value=672",
-		"while true; do",
-		"  printf '{\"name\":\"hades_lab\",\"fields\":{\"temperature\":%s},\"tags\":{},\"timestamp\":1791979200000}\n' \"$value\"",
-		"  value=$((value + 1))",
-		"  sleep 0.05",
-		"done",
-	}, "\n")
-	if err := os.WriteFile(script, []byte(body), 0o755); err != nil {
+	starts = filepath.Join(tmp, "starts.txt")
+	binary = filepath.Join(tmp, "telegraf")
+	wrapper := fmt.Sprintf("#!/bin/sh\nHADES_FAKE_TELEGRAF=%s HADES_TELEGRAF_STARTS=%s exec %s -test.run='^TestFakeTelegrafHelper$' -- \"$@\"\n", mode, starts, os.Args[0])
+	if err := os.WriteFile(binary, []byte(wrapper), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	t.Setenv("HADES_TELEGRAF_STARTS", countFile)
-	driver, err := OpenDriverWithOptions(context.Background(), script, "tcp://127.0.0.1:1502", DefaultLabProfile(), DriverOptions{ReadTimeout: 500 * time.Millisecond, RatePerSecond: 100, Burst: 4})
+	return binary, starts
+}
+
+// TestFakeTelegrafHelper is the fake sidecar process, not a test. It reads the
+// socket_writer address from the generated config and streams one JSON batch
+// per 50ms, mimicking a long-lived Telegraf daemon.
+func TestFakeTelegrafHelper(t *testing.T) {
+	mode := os.Getenv("HADES_FAKE_TELEGRAF")
+	if mode == "" {
+		return
+	}
+	args := flagArgs()
+	if len(args) > 0 && args[0] == "--version" {
+		fmt.Println("Telegraf 1.40.2 (test)")
+		os.Exit(0)
+	}
+	f, _ := os.OpenFile(os.Getenv("HADES_TELEGRAF_STARTS"), os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600)
+	fmt.Fprintln(f, "started")
+	f.Close()
+	if mode == "stall" {
+		time.Sleep(5 * time.Second)
+		os.Exit(0)
+	}
+	config, err := os.ReadFile(args[1])
+	if err != nil {
+		os.Exit(2)
+	}
+	address := regexp.MustCompile(`address = "unix://([^"]+)"`).FindSubmatch(config)
+	if address == nil {
+		os.Exit(3)
+	}
+	conn, err := net.Dial("unix", string(address[1]))
+	if err != nil {
+		os.Exit(4)
+	}
+	for value := 672; ; value++ {
+		if _, err := fmt.Fprintf(conn, `{"name":"hades_lab","fields":{"temperature":%d},"tags":{},"timestamp":1791979200000}`+"\n", value); err != nil {
+			os.Exit(5)
+		}
+		if mode == "crash" && value == 673 {
+			os.Exit(1)
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+}
+
+func flagArgs() []string {
+	for i, arg := range os.Args {
+		if arg == "--" {
+			return os.Args[i+1:]
+		}
+	}
+	return nil
+}
+
+func countStarts(t *testing.T, path string) int {
+	t.Helper()
+	raw, _ := os.ReadFile(path)
+	return strings.Count(string(raw), "started")
+}
+
+func TestTailBufferKeepsRecentOutputWithoutFailing(t *testing.T) {
+	buffer := &tailBuffer{limit: 8}
+	for range 100 {
+		if n, err := buffer.Write([]byte("0123456789")); err != nil || n != 10 {
+			t.Fatal(n, err)
+		}
+	}
+	if got := buffer.String(); got != "23456789" {
+		t.Fatal(got)
+	}
+}
+
+func TestModbusFactoryRekeysMeasurementDeadbandToRegister(t *testing.T) {
+	cfg, err := sample.LoadContext("../..", "../../examples/site/modbus-lab.metadata.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got DriverOptions
+	factory := ProtocolDriverFactory{OpenTelegraf: func(_ context.Context, _, _ string, _ Profile, options DriverOptions) (ProtocolDriver, error) {
+		got = options
+		return &stubProtocolDriver{}, nil
+	}}
+	band := DeadbandConfig{Epsilon: 2, MaxSilenceInterval: time.Minute}
+	if _, err := factory.Open(context.Background(), cfg, "tcp://127.0.0.1:1502", DriverOptions{Deadbands: map[string]DeadbandConfig{"motor_temperature": band}}, FactoryOptions{TelegrafBinary: "/tmp/telegraf"}); err != nil {
+		t.Fatal(err)
+	}
+	if got.Deadbands["temperature"] != band {
+		t.Fatal("expected the measurement deadband to apply to the lab register", got.Deadbands)
+	}
+}
+
+func TestPersistentTelegrafSidecarReusesSingleChildAcrossPolls(t *testing.T) {
+	binary, starts := fakeTelegraf(t, "stream")
+	driver, err := OpenDriverWithOptions(context.Background(), binary, "tcp://127.0.0.1:1502", DefaultLabProfile(), DriverOptions{ReadTimeout: 2 * time.Second, RatePerSecond: 100, Burst: 4})
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer driver.Close()
-	values, _, reason := driver.ReadMap(context.Background())
-	if reason != "" || values["temperature"] != 672 {
-		t.Fatal(values, reason)
-	}
-	values, _, reason = driver.ReadMap(context.Background())
-	if reason != "" || values["temperature"] != 673 {
-		t.Fatal(values, reason)
-	}
-	starts, err := os.ReadFile(countFile)
+	config, err := os.ReadFile(driver.Config)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if strings.Count(strings.TrimSpace(string(starts)), "started") != 1 {
-		t.Fatal(string(starts))
+	if !strings.Contains(string(config), "[[outputs.socket_writer]]") || !strings.Contains(string(config), "unix://"+driver.Socket) || strings.Contains(string(config), "--once") {
+		t.Fatal(string(config))
+	}
+	info, err := os.Stat(filepath.Dir(driver.Socket))
+	if err != nil || info.Mode().Perm() != 0o700 {
+		t.Fatal("expected the sidecar socket in a private 0700 directory", info.Mode(), err)
+	}
+	last := uint16(0)
+	for range 5 {
+		values, _, reason := driver.ReadMap(context.Background())
+		if reason != "" || values["temperature"] <= last {
+			t.Fatal(values, reason)
+		}
+		last = values["temperature"]
+	}
+	if got := countStarts(t, starts); got != 1 || driver.SidecarStarts() != 1 {
+		t.Fatalf("expected one long-lived sidecar across polls, started %d", got)
+	}
+	dir := filepath.Dir(driver.Socket)
+	if err := driver.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(dir); !os.IsNotExist(err) {
+		t.Fatal("expected Close to remove the private sidecar directory", err)
 	}
 }
 
-func TestDriverEmitsProducerStatusOnRepeatedFailures(t *testing.T) {
-	tmp := t.TempDir()
-	script := filepath.Join(tmp, "fake-telegraf-timeout.sh")
-	body := strings.Join([]string{
-		"#!/bin/sh",
-		"if [ \"$1\" = \"--version\" ]; then",
-		"  echo 'Telegraf 1.40.2 (test)'",
-		"  exit 0",
-		"fi",
-		"sleep 5",
-	}, "\n")
-	if err := os.WriteFile(script, []byte(body), 0o755); err != nil {
+func TestSupervisorRestartsCrashedTelegrafSidecar(t *testing.T) {
+	binary, starts := fakeTelegraf(t, "crash")
+	driver, err := OpenDriverWithOptions(context.Background(), binary, "tcp://127.0.0.1:1502", DefaultLabProfile(), DriverOptions{ReadTimeout: 2 * time.Second, RatePerSecond: 100, Burst: 8})
+	if err != nil {
 		t.Fatal(err)
 	}
+	defer driver.Close()
+	sawFailure := false
+	deadline := time.Now().Add(10 * time.Second)
+	for driver.SidecarStarts() < 2 && time.Now().Before(deadline) {
+		if _, _, reason := driver.ReadMap(context.Background()); reason == "read-error" {
+			sawFailure = true
+		}
+	}
+	if driver.SidecarStarts() < 2 || countStarts(t, starts) < 2 {
+		t.Fatal("expected the supervisor to restart the crashed sidecar", driver.SidecarStarts())
+	}
+	if !sawFailure {
+		t.Fatal("expected the sidecar exit to surface as a read-error")
+	}
+	for time.Now().Before(deadline) {
+		values, _, reason := driver.ReadMap(context.Background())
+		if reason == "" && values["temperature"] >= 672 {
+			return
+		}
+	}
+	t.Fatal("expected readings to resume after the restart")
+}
+
+func TestDriverEmitsProducerStatusOnRepeatedFailures(t *testing.T) {
+	script, _ := fakeTelegraf(t, "stall")
 	states := []ProducerStatus{}
 	driver, err := OpenDriverWithOptions(context.Background(), script, "tcp://127.0.0.1:1502", DefaultLabProfile(), DriverOptions{
 		ReadTimeout:   100 * time.Millisecond,
@@ -688,6 +803,58 @@ func TestOPCUADriverMapsSignalsAndReusesPersistentSession(t *testing.T) {
 	}
 }
 
+type fakeOPCUASubscription struct {
+	results []scriptedOPCUAResult
+	calls   int
+	closed  int
+}
+
+func (s *fakeOPCUASubscription) Next(context.Context) ([]ua.DataValue, error) {
+	result := s.results[min(s.calls, len(s.results)-1)]
+	s.calls++
+	return result.values, result.err
+}
+
+func (s *fakeOPCUASubscription) Close(context.Context) error {
+	s.closed++
+	return nil
+}
+
+func TestOPCUADriverRecreatesSubscriptionAfterSessionFailure(t *testing.T) {
+	base := time.Now().UTC()
+	good := []ua.DataValue{{Value: 70.0, StatusCode: ua.Good, SourceTimestamp: base}}
+	subscriptions := []*fakeOPCUASubscription{
+		{results: []scriptedOPCUAResult{{values: good}, {err: errors.New("BadSessionIdInvalid")}}},
+		{results: []scriptedOPCUAResult{{values: good}}},
+	}
+	opened, created := 0, 0
+	driver := NewOPCUADriverWithSource("opc.tcp://127.0.0.1:4840", nil, nil, opcuapilot.Signals[:1], DriverOptions{ReadTimeout: 500 * time.Millisecond, RatePerSecond: 100, Burst: 4})
+	driver.opener = func(context.Context) (opcuaBatchReader, error) {
+		opened++
+		return &fakeOPCUAReader{batches: [][]ua.DataValue{good}}, nil
+	}
+	driver.subscribe = func(context.Context, opcuaBatchReader) (closableSubscription, error) {
+		subscription := subscriptions[created]
+		created++
+		return subscription, nil
+	}
+	for i, want := range []string{"", "read-error", ""} {
+		if _, _, reason := driver.Poll(context.Background()); reason != want {
+			t.Fatalf("poll %d: reason=%q, want %q", i, reason, want)
+		}
+	}
+	if opened != 2 || created != 2 {
+		t.Fatalf("expected a new session and subscription after failure, opened=%d created=%d", opened, created)
+	}
+	if subscriptions[0].calls != 2 {
+		t.Fatal("expected the first subscription to serve two polls without re-reading", subscriptions[0].calls)
+	}
+	driver.Close()
+	if subscriptions[1].closed != 1 {
+		t.Fatal("expected Close to delete the active subscription")
+	}
+}
+
 func TestOPCUADriverReadTimeoutClosesBlockedReader(t *testing.T) {
 	reader := &blockingOPCUAReader{unblock: make(chan struct{})}
 	driver := NewOPCUADriverWithSource("opc.tcp://127.0.0.1:4840", reader, nil, opcuapilot.Signals[:1], DriverOptions{
@@ -770,8 +937,15 @@ type fakePLC4GoRequest struct {
 	err    error
 }
 
-func (r *fakePLC4GoRequest) Execute(context.Context) (map[string]uint16, error) {
-	return r.values, r.err
+func (r *fakePLC4GoRequest) Execute(context.Context) (map[string]any, error) {
+	if r.err != nil {
+		return nil, r.err
+	}
+	values := make(map[string]any, len(r.values))
+	for name, value := range r.values {
+		values[name] = value
+	}
+	return values, nil
 }
 
 type stubProtocolDriver struct{}
@@ -1005,13 +1179,13 @@ func TestPLC4GoModbusConnectorReadsContiguousRegistersOverLoopback(t *testing.T)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := values["temperature"]; got != 0 {
+	if got := values["temperature"]; got != uint16(0) {
 		t.Fatalf("temperature=%d, want 0", got)
 	}
-	if got := values["pressure"]; got != 1 {
+	if got := values["pressure"]; got != uint16(1) {
 		t.Fatalf("pressure=%d, want 1", got)
 	}
-	if got := values["state"]; got != 5 {
+	if got := values["state"]; got != uint16(5) {
 		t.Fatalf("state=%d, want 5", got)
 	}
 	if err := <-serverErr; err != nil {

@@ -6,10 +6,13 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"net"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -25,21 +28,54 @@ func (b *boundedOutput) Write(p []byte) (int, error) {
 	return b.Buffer.Write(p)
 }
 
+// tailBuffer keeps the most recent limit bytes written to it and never fails,
+// so a chatty sidecar cannot block on, or lose, its stderr pipe across restarts.
+type tailBuffer struct {
+	mu    sync.Mutex
+	limit int
+	data  []byte
+}
+
+func (b *tailBuffer) Write(p []byte) (int, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	b.data = append(b.data, p...)
+	if extra := len(b.data) - b.limit; extra > 0 {
+		b.data = append(b.data[:0], b.data[extra:]...)
+	}
+	return len(p), nil
+}
+
+func (b *tailBuffer) String() string {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return string(b.data)
+}
+
+// Driver is the Tier 2 Telegraf sidecar. One long-lived Telegraf daemon polls
+// the controller and streams JSON batches into the gateway over a private Unix
+// domain socket (outputs.socket_writer); a supervisor restarts the daemon with
+// exponential backoff if it exits.
 type Driver struct {
 	Binary, Config, Endpoint string
-	Profile                  Profile
-	options                  DriverOptions
-	session                  *PersistentSession
-	guardrail                *EndpointGuardrail
-	deadbands                deadbandSet
-	cmd                      *exec.Cmd
-	cancel                   context.CancelFunc
-	updates                  chan driverUpdate
-	failures                 chan string
-	stderr                   *boundedOutput
-	closeOnce                sync.Once
-	waitDone                 chan struct{}
-	status                   *statusEmitter
+	// Socket is the Unix domain socket the sidecar writes batches to.
+	Socket    string
+	Profile   Profile
+	options   DriverOptions
+	session   *PersistentSession
+	guardrail *EndpointGuardrail
+	deadbands deadbandSet
+	dir       string
+	listener  net.Listener
+	ctx       context.Context
+	cancel    context.CancelFunc
+	updates   chan driverUpdate
+	failures  chan string
+	stderr    *tailBuffer
+	closeOnce sync.Once
+	done      sync.WaitGroup
+	status    *statusEmitter
+	starts    atomic.Int64
 }
 
 // DeadbandConfig configures report-by-exception for one signal: readings within
@@ -60,6 +96,9 @@ type DriverOptions struct {
 	StatusReporter func(ProducerStatusEvent)
 	Deadbands      map[string]DeadbandConfig
 	Now            func() time.Time
+	// Subscribe makes the OPC UA driver use MonitoredItem subscriptions instead
+	// of polled batch reads.
+	Subscribe bool
 }
 
 type driverUpdate struct {
@@ -84,7 +123,7 @@ func OpenDriverWithOptions(ctx context.Context, binary, endpoint string, profile
 	if binary == "" {
 		return nil, fmt.Errorf("explicit Telegraf binary required")
 	}
-	versionctx, cancel := context.WithTimeout(ctx, 3*time.Second)
+	versionctx, cancel := context.WithTimeout(ctx, sidecarVersionTimeout)
 	defer cancel()
 	cmd := exec.CommandContext(versionctx, binary, "--version")
 	output := &boundedOutput{limit: 4096}
@@ -96,64 +135,55 @@ func OpenDriverWithOptions(ctx context.Context, binary, endpoint string, profile
 	if !strings.HasPrefix(strings.TrimSpace(output.String()), "Telegraf 1.40.2 ") {
 		return nil, fmt.Errorf("driver must be pinned Telegraf 1.40.2")
 	}
-	config, err := DriverConfigForProfileWithInterval(endpoint, p, options.PollInterval)
+	dir, err := os.MkdirTemp("", "hades-telegraf-")
 	if err != nil {
 		return nil, err
 	}
-	file, err := os.CreateTemp("", "hades-lab-telegraf-*.conf")
+	socket := filepath.Join(dir, "sidecar.sock")
+	config, err := DriverConfigForSocket(endpoint, p, options.PollInterval, socket)
 	if err != nil {
+		os.RemoveAll(dir)
 		return nil, err
 	}
-	if _, err = file.WriteString(config); err != nil {
-		file.Close()
-		os.Remove(file.Name())
+	configPath := filepath.Join(dir, "telegraf.conf")
+	if err = os.WriteFile(configPath, []byte(config), 0o600); err != nil {
+		os.RemoveAll(dir)
 		return nil, err
 	}
-	if err = file.Close(); err != nil {
-		os.Remove(file.Name())
-		return nil, err
-	}
-	sidecarCtx, sidecarCancel := context.WithCancel(context.Background())
-	cmd = exec.CommandContext(sidecarCtx, binary, "--config", file.Name(), "--input-filter", "modbus", "--output-filter", "file")
-	stdout, err := cmd.StdoutPipe()
+	listener, err := net.Listen("unix", socket)
 	if err != nil {
-		sidecarCancel()
-		os.Remove(file.Name())
+		os.RemoveAll(dir)
 		return nil, err
 	}
-	stderrPipe, err := cmd.StderrPipe()
-	if err != nil {
-		sidecarCancel()
-		os.Remove(file.Name())
-		return nil, err
-	}
-	stderrBuf := &boundedOutput{limit: 4096}
+	supervisorCtx, supervisorCancel := context.WithCancel(context.Background())
 	d := &Driver{
 		Binary:    binary,
-		Config:    file.Name(),
+		Config:    configPath,
 		Endpoint:  endpoint,
+		Socket:    socket,
 		Profile:   p,
 		options:   options,
 		session:   NewPersistentSession(endpoint),
 		guardrail: NewEndpointGuardrail(endpoint, options.RatePerSecond, options.Burst, options.MaxInFlight),
 		deadbands: newDeadbandSet(options.Deadbands),
+		dir:       dir,
+		listener:  listener,
+		ctx:       supervisorCtx,
+		cancel:    supervisorCancel,
 		updates:   make(chan driverUpdate, 1),
 		failures:  make(chan string, 1),
-		stderr:    stderrBuf,
-		cmd:       cmd,
-		cancel:    sidecarCancel,
-		waitDone:  make(chan struct{}),
+		stderr:    &tailBuffer{limit: 4096},
 		status:    newStatusEmitter(options),
 	}
-	if err := cmd.Start(); err != nil {
-		sidecarCancel()
-		os.Remove(file.Name())
-		return nil, err
-	}
-	go d.consumeStdout(stdout)
-	go d.consumeStderr(stderrPipe)
-	go d.waitSidecar()
+	d.done.Add(2)
+	go d.acceptBatches()
+	go d.supervise(supervisorCtx)
 	return d, nil
+}
+
+// SidecarStarts reports how many times the supervisor has launched Telegraf.
+func (d *Driver) SidecarStarts() int64 {
+	return d.starts.Load()
 }
 
 func normalizeDriverOptions(options DriverOptions) DriverOptions {
@@ -244,24 +274,86 @@ func (d *Driver) Poll(ctx context.Context) (map[string]Reading, time.Time, strin
 func (d *Driver) Close() error {
 	var err error
 	d.closeOnce.Do(func() {
-		if d.cancel != nil {
-			d.cancel()
-		}
-		if d.cmd != nil && d.cmd.Process != nil {
-			_ = d.cmd.Process.Kill()
-		}
-		if d.waitDone != nil {
-			<-d.waitDone
-		}
-		if d.Config != "" {
-			err = os.Remove(d.Config)
-		}
+		d.cancel()
+		d.listener.Close()
+		d.done.Wait()
+		err = os.RemoveAll(d.dir)
 	})
 	return err
 }
 
-func (d *Driver) consumeStdout(stdout io.Reader) {
-	scanner := bufio.NewScanner(stdout)
+const (
+	// sidecarVersionTimeout bounds the pinned-version probe; a cold start on a
+	// loaded edge host can take several seconds.
+	sidecarVersionTimeout = 10 * time.Second
+	sidecarBaseBackoff    = 250 * time.Millisecond
+	sidecarMaxBackoff     = 30 * time.Second
+	// sidecarStableRun resets the restart backoff once a daemon has stayed up.
+	sidecarStableRun = 30 * time.Second
+)
+
+// supervise keeps one Telegraf daemon running until ctx is cancelled,
+// restarting it with exponential backoff after each exit.
+func (d *Driver) supervise(ctx context.Context) {
+	defer d.done.Done()
+	backoff := sidecarBaseBackoff
+	for {
+		started := time.Now()
+		d.runSidecar(ctx)
+		if ctx.Err() != nil {
+			return
+		}
+		d.pushFailure("read-error")
+		if time.Since(started) >= sidecarStableRun {
+			backoff = sidecarBaseBackoff
+		}
+		timer := time.NewTimer(backoff)
+		select {
+		case <-ctx.Done():
+			timer.Stop()
+			return
+		case <-timer.C:
+		}
+		backoff = min(backoff*2, sidecarMaxBackoff)
+	}
+}
+
+func (d *Driver) runSidecar(ctx context.Context) {
+	cmd := exec.CommandContext(ctx, d.Binary, "--config", d.Config, "--input-filter", "modbus", "--output-filter", "socket_writer")
+	cmd.Stdout = io.Discard
+	cmd.Stderr = d.stderr
+	cmd.WaitDelay = time.Second
+	if err := cmd.Start(); err != nil {
+		return
+	}
+	d.starts.Add(1)
+	_ = cmd.Wait()
+}
+
+// acceptBatches serves sidecar connections on the private socket. Telegraf
+// reconnects after a restart, so connections are accepted until Close.
+func (d *Driver) acceptBatches() {
+	defer d.done.Done()
+	var conns sync.WaitGroup
+	defer conns.Wait()
+	for {
+		conn, err := d.listener.Accept()
+		if err != nil {
+			return
+		}
+		conns.Add(1)
+		go func() {
+			defer conns.Done()
+			d.consumeBatches(conn)
+		}()
+	}
+}
+
+func (d *Driver) consumeBatches(conn net.Conn) {
+	defer conn.Close()
+	stop := context.AfterFunc(d.ctx, func() { conn.Close() })
+	defer stop()
+	scanner := bufio.NewScanner(conn)
 	buffer := make([]byte, 0, 64*1024)
 	scanner.Buffer(buffer, 128*1024)
 	for scanner.Scan() {
@@ -276,21 +368,7 @@ func (d *Driver) consumeStdout(stdout io.Reader) {
 		}
 		d.pushUpdate(driverUpdate{values: values, stamp: stamp})
 	}
-	if scanner.Err() != nil {
-		d.pushFailure("read-error")
-	}
-}
-
-func (d *Driver) consumeStderr(stderr io.Reader) {
-	_, _ = io.Copy(d.stderr, stderr)
-}
-
-func (d *Driver) waitSidecar() {
-	defer close(d.waitDone)
-	if d.cmd == nil {
-		return
-	}
-	if err := d.cmd.Wait(); err != nil && !strings.Contains(err.Error(), "killed") {
+	if scanner.Err() != nil && d.ctx.Err() == nil {
 		d.pushFailure("read-error")
 	}
 }
