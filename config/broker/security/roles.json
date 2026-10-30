@@ -124,6 +124,16 @@
           "acltype": "subscribeLiteral",
           "topic": "openump/v1/acme/berlin/assembly/line-01/press-04/event/+",
           "allow": true
+        },
+        {
+          "acltype": "publishClientReceive",
+          "topic": "openump/v1/acme/berlin/assembly/line-01/press-04/derived/+",
+          "allow": true
+        },
+        {
+          "acltype": "subscribeLiteral",
+          "topic": "openump/v1/acme/berlin/assembly/line-01/press-04/derived/+",
+          "allow": true
         }
       ]
     },
@@ -307,6 +317,11 @@
         {
           "acltype": "publishClientSend",
           "topic": "openump/v1/acme/berlin/assembly/line-01/press-04/event/+",
+          "allow": true
+        },
+        {
+          "acltype": "publishClientSend",
+          "topic": "openump/v1/acme/berlin/assembly/line-01/press-04/derived/+",
           "allow": true
         }
       ]
