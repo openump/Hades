@@ -112,3 +112,11 @@ func (r *Registry) ValidateInferenceEventTopic(topic string, event map[string]an
 	asset, _ := event["asset"].(string)
 	return r.validateSuffixedTopic(topic, asset, "event", inferenceType, "invalid inference-event publication topic")
 }
+
+// ValidateDerivedTopic binds a soft-sensor publication to
+// openump/v1/<enterprise>/<site>/<area>/<line>/<asset>/derived/<measurement>.
+// Derived values live on their own subtree so they are never read as device
+// telemetry, and so actuation preconditions cannot consume them.
+func (r *Registry) ValidateDerivedTopic(topic, asset, measurement string) error {
+	return r.validateSuffixedTopic(topic, asset, "derived", measurement, "invalid derived publication topic")
+}

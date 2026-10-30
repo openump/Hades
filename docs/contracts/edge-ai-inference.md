@@ -36,7 +36,11 @@ fixtures.
   a window needs before inference runs.
 - **Outputs:** 1–16 bindings.
   - A `telemetry` soft sensor declares a measurement and unit. It must not overwrite a
-    measurement the model reads, and no two outputs may write the same series.
+    measurement the model reads, and no two outputs may write the same series. The
+    `telemetry` kind name means "a numeric series", not the device topic: `hades-infer`
+    publishes these values on `…/<asset>/derived/<measurement>`, never on device
+    `telemetry` (Hades-036). The no-shadow rule is kept so a derived series name never
+    reuses an input's name.
   - An `inference-event` output declares an `inference_type` and severity scores, with
     `warning_score ≤ critical_score`.
   - Telemetry outputs cannot carry severity, and event outputs cannot carry a unit.
@@ -104,9 +108,11 @@ part of the Zeus ingest work (Zeus-001), together with a scoped transfer grant.
 
 **Deviation from the ticket.** The ticket suggested `hades-infer` publish to "`/raw` or
 `/event/+`". No MQTT `/raw` topic exists. Observations enter through authenticated HTTP
-ingress and the normalizer before becoming `telemetry`. Granting a new raw MQTT topic
-would bypass normalization, so soft-sensor outputs will use the ingress path like any
-gateway (Hades-036).
+ingress and the normalizer before becoming `telemetry`, and granting a new raw MQTT
+topic would bypass normalization. Hades-036 publishes soft-sensor values on their own
+`derived/<measurement>` subtree instead. They never enter device `telemetry`, where
+actuation preconditions read physical measurements. See
+[edge inference](../operations/edge-inference.md).
 
 Event topics are nine segments deep. The existing one-level consumer subscriptions
 (`<asset>/+`) do not match them, so consumers must opt in to inference events explicitly.

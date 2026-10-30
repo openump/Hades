@@ -9,3 +9,4 @@ topic deny openump/v1/+/+/+/+/+/command_receipt/#
 # Mosquitto deny blocks both publish and delivery; develop events on the secure profile,
 # where hades-infer and consumer-primary hold certificate identities.
 topic deny openump/v1/+/+/+/+/+/event/#
+topic deny openump/v1/+/+/+/+/+/derived/#
