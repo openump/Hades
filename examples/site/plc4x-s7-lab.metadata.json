@@ -1,0 +1,40 @@
+{
+  "schema_version": "1.0",
+  "message_id": "019a1234-5678-7000-8000-000000000041",
+  "asset_id": "urn:openump:acme:berlin:press-06",
+  "metadata_revision": 1,
+  "published_at": "2026-10-30T10:00:00.000Z",
+  "display_name": "Loopback S7 simulator lab fixture",
+  "asset_type": "protocol-fixture",
+  "hierarchy": {
+    "enterprise": "acme",
+    "site": "berlin",
+    "area": "assembly",
+    "line": "line-01",
+    "asset": "press-06"
+  },
+  "acquisition": {
+    "gateway_id": "lab-plc4x-01",
+    "protocol": "plc4go",
+    "expected_status_interval_ms": 1000
+  },
+  "measurements": {
+    "motor_temperature": {
+      "display_name": "Motor temperature",
+      "type": "number",
+      "unit": "Cel",
+      "expected_interval_ms": 1000,
+      "valid_range": {
+        "minimum": -40,
+        "maximum": 150
+      }
+    },
+    "cycle_counter": {
+      "display_name": "Cycle counter",
+      "type": "number",
+      "unit": "1",
+      "expected_interval_ms": 1000
+    }
+  },
+  "relationships": []
+}

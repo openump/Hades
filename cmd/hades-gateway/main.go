@@ -11,6 +11,7 @@ import (
 	"net/url"
 	"os"
 	"os/signal"
+	"sort"
 	"sync/atomic"
 	"syscall"
 	"time"
@@ -33,7 +34,8 @@ func run() error {
 	ingress := flag.String("ingress", "https://127.0.0.1:8081/observations", "authenticated normalizer ingress")
 	config := flag.String("config", "examples/site/modbus-lab.metadata.json", "approved local lab context")
 	root := flag.String("root", ".", "repository root")
-	count := flag.Int("count", 3, "observations before exit, 1..10000")
+	count := flag.Int("count", 3, "observations before exit, 1..10000 (polls for plc4go contexts, where deadbands vary envelopes per poll)")
+	acquisition := flag.String("acquisition", "", "gateway acquisition map; required for plc4go lab contexts")
 	credentials := transport.Flags()
 	logPath := operations.LogFlag()
 	flag.Parse()
@@ -60,28 +62,23 @@ func run() error {
 	if err != nil {
 		return err
 	}
+	client := &http.Client{Timeout: 5 * time.Second, Transport: &http.Transport{TLSClientConfig: tlsConfig, Proxy: nil, ResponseHeaderTimeout: 3 * time.Second}, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
+	defer client.CloseIdleConnections()
+	if protocol, _ := cfg.Metadata["acquisition"].(map[string]any)["protocol"].(string); protocol == "plc4go" {
+		return runPLC4Go(cfg, *source, *acquisition, *ingress, *count, client)
+	}
 	if _, ok := cfg.Metadata["measurements"].(map[string]any)["motor_temperature"].(map[string]any); !ok {
 		return fmt.Errorf("unsupported lab metadata")
 	}
 	interval := cfg.Interval
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
-	statusEncoder := json.NewEncoder(os.Stdout)
 	gatewayID := cfg.Metadata["acquisition"].(map[string]any)["gateway_id"].(string)
 	opened, err := gateway.OpenConfiguredDriver(ctx, cfg, *source, gateway.DriverOptions{
-		PollInterval: interval,
-		ReadTimeout:  2 * time.Second,
-		GatewayID:    gatewayID,
-		StatusReporter: func(event gateway.ProducerStatusEvent) {
-			_ = statusEncoder.Encode(map[string]any{
-				"type":        "producer_status",
-				"gateway_id":  event.GatewayID,
-				"endpoint":    event.Endpoint,
-				"state":       event.State,
-				"reason":      event.Reason,
-				"reported_at": event.At.UTC().Format(sample.Timestamp),
-			})
-		},
+		PollInterval:   interval,
+		ReadTimeout:    2 * time.Second,
+		GatewayID:      gatewayID,
+		StatusReporter: statusReporter(),
 	}, gateway.FactoryOptions{TelegrafBinary: *binary})
 	if err != nil {
 		return err
@@ -92,8 +89,6 @@ func run() error {
 		return fmt.Errorf("configured driver for modbus-tcp did not return a Telegraf implementation")
 	}
 	defer driver.Close()
-	client := &http.Client{Timeout: 5 * time.Second, Transport: &http.Transport{TLSClientConfig: tlsConfig, Proxy: nil, ResponseHeaderTimeout: 3 * time.Second}, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
-	defer client.CloseIdleConnections()
 	var acquired, failures, admitted, retries, pending, latencyUS atomic.Uint64
 	healthDone := make(chan struct{})
 	encoder := json.NewEncoder(os.Stdout)
@@ -144,6 +139,129 @@ func run() error {
 		admitted.Add(1)
 		encoder.Encode(map[string]any{"type": "gateway_admitted", "payload": json.RawMessage(raw), "boundary": "accepted_broker_ack"})
 		if sequence+1 < *count {
+			timer := time.NewTimer(max(time.Until(nextPoll), 0))
+			select {
+			case <-ctx.Done():
+				timer.Stop()
+				return nil
+			case <-timer.C:
+			}
+		}
+	}
+	return nil
+}
+
+func statusReporter() func(gateway.ProducerStatusEvent) {
+	encoder := json.NewEncoder(os.Stdout)
+	return func(event gateway.ProducerStatusEvent) {
+		_ = encoder.Encode(map[string]any{
+			"type":        "producer_status",
+			"gateway_id":  event.GatewayID,
+			"endpoint":    event.Endpoint,
+			"state":       event.State,
+			"reason":      event.Reason,
+			"reported_at": event.At.UTC().Format(sample.Timestamp),
+		})
+	}
+}
+
+// runPLC4Go is the gated PLC4X lab path: it requires a -tags plc4x binary, a
+// literal loopback endpoint and an acquisition map addressing every
+// measurement. All Hades-031 guardrails apply through the PLC4Go driver.
+func runPLC4Go(cfg *sample.Config, source, acquisitionPath, ingress string, count int, client *http.Client) error {
+	if acquisitionPath == "" {
+		return fmt.Errorf("plc4go lab contexts require -acquisition with a tag address per measurement")
+	}
+	if err := gateway.ValidateLabPLC4GoEndpoint(source); err != nil {
+		return err
+	}
+	connector, err := gateway.NewPLC4XGatewayConnector()
+	if err != nil {
+		return err
+	}
+	acq, err := gateway.LoadAcquisitionConfig(acquisitionPath)
+	if err != nil {
+		return err
+	}
+	measurements, ok := cfg.Metadata["measurements"].(map[string]any)
+	if !ok {
+		return fmt.Errorf("metadata missing measurements")
+	}
+	options := gateway.DriverOptions{
+		PollInterval:   cfg.Interval,
+		ReadTimeout:    2 * time.Second,
+		GatewayID:      cfg.Metadata["acquisition"].(map[string]any)["gateway_id"].(string),
+		StatusReporter: statusReporter(),
+	}
+	factoryOptions := gateway.FactoryOptions{PLC4Go: connector}
+	if err := acq.Apply(measurements, &options, &factoryOptions); err != nil {
+		return err
+	}
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+	driver, err := gateway.OpenConfiguredDriver(ctx, cfg, source, options, factoryOptions)
+	if err != nil {
+		return err
+	}
+	defer driver.Close()
+	names := make([]string, 0, len(measurements))
+	for name := range measurements {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	encoder := json.NewEncoder(os.Stdout)
+	var polls, failures, admitted, retries, pending, latencyUS atomic.Uint64
+	healthDone := make(chan struct{})
+	defer close(healthDone)
+	go func() {
+		ticker := time.NewTicker(time.Second)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-healthDone:
+				return
+			case <-ticker.C:
+				event, _ := json.Marshal(map[string]any{"type": "gateway_health", "protocol": "plc4go", "polls": polls.Load(), "acquisition_failures": failures.Load(), "admitted": admitted.Load(), "ingress_retries": retries.Load(), "pending_records": pending.Load(), "acquisition_us_sum": latencyUS.Load(), "clock_freshness": "unknown", "restart_loss_count": "unknown"})
+				log.Print(string(event))
+			}
+		}
+	}()
+	boot := sample.UUID()
+	sequence := 0
+	for poll := 0; poll < count; poll++ {
+		started := time.Now()
+		readings, completed, reason := driver.Poll(ctx)
+		nextPoll := time.Now().Add(cfg.Interval)
+		polls.Add(1)
+		latencyUS.Add(uint64(time.Since(started).Microseconds()))
+		if reason != "" {
+			failures.Add(1)
+		}
+		if ctx.Err() != nil {
+			return nil
+		}
+		for _, name := range names {
+			reading, ok := readings[name]
+			if !ok {
+				continue // suppressed by the signal's deadband
+			}
+			raw, err := gateway.EnvelopeForReading(cfg, name, reading, boot, sequence, completed)
+			if err != nil {
+				return err
+			}
+			sequence++
+			pending.Store(1)
+			if err := gateway.SubmitObserved(ctx, client, ingress, raw, func() { retries.Add(1) }); err != nil {
+				if ctx.Err() != nil {
+					return nil
+				}
+				return err
+			}
+			pending.Store(0)
+			admitted.Add(1)
+			encoder.Encode(map[string]any{"type": "gateway_admitted", "payload": json.RawMessage(raw), "boundary": "accepted_broker_ack"})
+		}
+		if poll+1 < count {
 			timer := time.NewTimer(max(time.Until(nextPoll), 0))
 			select {
 			case <-ctx.Done():

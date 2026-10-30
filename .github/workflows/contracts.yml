@@ -72,6 +72,49 @@ jobs:
       - name: Reachable Go vulnerability check
         run: go run golang.org/x/vuln/cmd/govulncheck@v1.9.0 -tags plc4x ./internal/gateway
 
+  plc4x-simulators:
+    # Hades-040: PLC4X reads against disposable loopback S7, EtherNet/IP, ADS and
+    # BACnet/IP simulators. Simulators are test-only and never shipped.
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    env:
+      GOTOOLCHAIN: go1.27.3
+      HADES_PLC_SIMULATORS: '1'
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
+        with:
+          go-version-file: go.mod
+          cache: true
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: '3.14.6'
+      - name: Install pinned simulators
+        run: |
+          python -m venv "$RUNNER_TEMP/plc-sim"
+          "$RUNNER_TEMP/plc-sim/bin/pip" install --require-hashes --no-deps -r tests/fixtures/plc-simulators/requirements.txt
+          ./scripts/build-ab-server "$RUNNER_TEMP/ab_server"
+      - name: Simulator matrix with race detector and evidence
+        env:
+          HADES_PLC_PYTHON: ${{ runner.temp }}/plc-sim/bin/python
+          HADES_AB_SERVER: ${{ runner.temp }}/ab_server
+          HADES_PLC_EVIDENCE: ${{ github.workspace }}/artifacts/plc-simulators/report.json
+        run: |
+          mkdir -p artifacts/plc-simulators
+          go test -race -tags plc4x -count=1 -run 'Simulator|CIPWire|CIPService|FixtureLedgers|BACnetNegative|GatedGateway' -v ./internal/gateway
+      - name: ADS simulator without race detector (known plc4go connect race)
+        env:
+          HADES_PLC_PYTHON: ${{ runner.temp }}/plc-sim/bin/python
+          HADES_PLC_EVIDENCE: ${{ github.workspace }}/artifacts/plc-simulators/report-ads.json
+        run: go test -tags plc4x -count=1 -run 'TestSimulatorADS' -v ./internal/gateway
+      - name: Preserve simulator evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: plc-simulator-evidence
+          path: artifacts/plc-simulators/
+          retention-days: 14
+
   broker:
     runs-on: ubuntu-24.04
     timeout-minutes: 15

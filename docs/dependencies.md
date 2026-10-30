@@ -76,6 +76,20 @@ loopback Modbus TCP fixture only; no S7, EIP, ADS or BACnet device was contacted
 The Tier 2 Telegraf sidecar uses Telegraf 1.40.2 `inputs.modbus` and
 `outputs.socket_writer` to a private Unix domain socket. No new dependency.
 
+## PLC protocol simulators (Hades-040, test-only)
+
+These disposable loopback fixtures run only in the `plc4x-simulators` CI job and local
+tests. None is linked into, packaged with, or redistributed by Hades.
+
+| Fixture | Pin | License | Notes |
+|---|---|---|---|
+| S7 | python-snap7 3.2.1 (pure Python, sha256 `05d65110…`) | MIT | Hash-locked in `tests/fixtures/plc-simulators/requirements.txt`. |
+| ADS | pyads 3.6.0 (per-platform wheel hashes) | MIT | Hades handler (`ads_server.py`) adds the TwinCAT tables PLC4X needs. |
+| BACnet/IP | bacpypes3 0.0.110 (sha256 `02abc0c9…`) | MIT per package metadata (`License-Expression: MIT`). The upstream repository has **no LICENSE file**, and a trove classifier says BSD. | Acceptable for a test-only fixture. Recorded here so it is not mistaken for a reviewed redistributable license. |
+| EtherNet/IP | libplctag `ab_server` at tag v2.7.2, commit `7712ed7f`, source archive sha256 `ed1f7869…` | Dual MPL-2.0 / LGPL-2.0-or-later; used **unmodified under MPL-2.0** | Weak copyleft reviewed per ADR-0001: built from source by `scripts/build-ab-server`, never distributed. Binds `0.0.0.0` (hard-coded); acceptable on an ephemeral CI runner. |
+
+The fixtures have no runtime dependencies and install with `--require-hashes --no-deps`.
+
 ## Actuation signatures (Hades-033)
 
 RFC8785/JCS uses the upstream Cyberphone JSON canonicalization implementation,
