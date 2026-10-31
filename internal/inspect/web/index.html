@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Hades Inspector</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<header>
+  <h1>Hades Inspector</h1>
+  <p class="note">Read-only local console. It cannot change site state or reach a PLC.</p>
+  <p id="connection" class="badge stale">connecting</p>
+</header>
+<main>
+  <section aria-labelledby="uns-h">
+    <h2 id="uns-h">UNS live wire</h2>
+    <div id="uns"></div>
+  </section>
+  <section aria-labelledby="act-h">
+    <h2 id="act-h">Actuator receipts and gates</h2>
+    <p class="note">Signed receipts from <code>command_receipt</code>. Mailbox registers are not exposed to this console.</p>
+    <div id="receipts"></div>
+  </section>
+  <section aria-labelledby="q-h">
+    <h2 id="q-h">Quarantine</h2>
+    <p class="note">Counts from the normalizer health endpoint. Rejected payloads stay on the normalizer's private store.</p>
+    <dl id="quarantine"></dl>
+  </section>
+  <section aria-labelledby="link-h">
+    <h2 id="link-h">Certificates and services</h2>
+    <div id="certificates"></div>
+    <div id="services"></div>
+  </section>
+</main>
+<script src="app.js"></script>
+</body>
+</html>
