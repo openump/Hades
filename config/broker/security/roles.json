@@ -79,6 +79,14 @@
           "rolename": "hades-infer"
         }
       ]
+    },
+    {
+      "username": "hades-mcp",
+      "roles": [
+        {
+          "rolename": "hades-mcp"
+        }
+      ]
     }
   ],
   "roles": [
@@ -322,6 +330,46 @@
         {
           "acltype": "publishClientSend",
           "topic": "openump/v1/acme/berlin/assembly/line-01/press-04/derived/+",
+          "allow": true
+        }
+      ]
+    },
+    {
+      "rolename": "hades-mcp",
+      "acls": [
+        {
+          "acltype": "subscribeLiteral",
+          "topic": "openump/v1/acme/berlin/assembly/line-01/press-04/telemetry",
+          "allow": true
+        },
+        {
+          "acltype": "publishClientReceive",
+          "topic": "openump/v1/acme/berlin/assembly/line-01/press-04/telemetry",
+          "allow": true
+        },
+        {
+          "acltype": "subscribeLiteral",
+          "topic": "openump/v1/acme/berlin/assembly/line-01/press-04/status",
+          "allow": true
+        },
+        {
+          "acltype": "publishClientReceive",
+          "topic": "openump/v1/acme/berlin/assembly/line-01/press-04/status",
+          "allow": true
+        },
+        {
+          "acltype": "publishClientSend",
+          "topic": "openump/v1/acme/berlin/assembly/line-01/press-04/command/+",
+          "allow": true
+        },
+        {
+          "acltype": "subscribeLiteral",
+          "topic": "openump/v1/acme/berlin/assembly/line-01/press-04/command_receipt/+",
+          "allow": true
+        },
+        {
+          "acltype": "publishClientReceive",
+          "topic": "openump/v1/acme/berlin/assembly/line-01/press-04/command_receipt/+",
           "allow": true
         }
       ]

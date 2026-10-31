@@ -90,6 +90,19 @@ tests. None is linked into, packaged with, or redistributed by Hades.
 
 The fixtures have no runtime dependencies and install with `--require-hashes --no-deps`.
 
+## Industrial MCP (Hades-034)
+
+`github.com/modelcontextprotocol/go-sdk` v1.8.0 (2026-09-04) is the official MCP Go SDK.
+It is in a licensing transition: new contributions are Apache-2.0 and earlier MIT
+contributions remain MIT. Both are permissive under ADR-0001.
+
+Linked transitive dependencies:
+- `github.com/google/jsonschema-go` v0.4.3, `github.com/yosida95/uritemplate/v3` v3.0.2,
+  `github.com/segmentio/encoding` v0.5.4 and `github.com/segmentio/asm` v1.2.1;
+- `golang.org/x/oauth2` v0.37.0 (BSD-3-Clause). The SDK's core package imports its `auth`
+  package for a bearer-token type, so oauth2 is linked but never exercised: `hades-mcp`
+  authenticates clients with mTLS certificates, not OAuth.
+
 ## Actuation signatures (Hades-033)
 
 RFC8785/JCS uses the upstream Cyberphone JSON canonicalization implementation,

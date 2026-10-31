@@ -15,6 +15,9 @@ import (
 
 // uuidV7 returns an RFC 9562 version 7 UUID for at: 48-bit Unix milliseconds,
 // version 7, the RFC variant and 74 random bits. Event identities require v7.
+// UUIDv7 returns an RFC 9562 version 7 UUID for at.
+func UUIDv7(at time.Time) string { return uuidV7(at) }
+
 func uuidV7(at time.Time) string {
 	var b [16]byte
 	if _, err := rand.Read(b[6:]); err != nil {

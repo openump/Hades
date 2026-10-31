@@ -66,7 +66,7 @@ func run() error {
 	}
 	identities := []string{"broker", "ingress", "history-proxy", "gateway-press-04", "normalizer", "consumer-primary", "consumer-secondary", "history-adapter", "transfer-adapter", "cloud-receiver", "admin"}
 	if *tests {
-		identities = append(identities, "outsider", "hades-actuator", "command-proposer", "hades-infer")
+		identities = append(identities, "outsider", "hades-actuator", "command-proposer", "hades-infer", "hades-mcp")
 	}
 	for _, name := range identities {
 		leafKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
