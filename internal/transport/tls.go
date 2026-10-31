@@ -36,7 +36,7 @@ func load(p Paths) (*tls.Config, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &tls.Config{MinVersion: tls.VersionTLS12, RootCAs: pool, ClientCAs: pool, Certificates: []tls.Certificate{certificate}}, nil
+	return &tls.Config{MinVersion: tls.VersionTLS13, RootCAs: pool, ClientCAs: pool, Certificates: []tls.Certificate{certificate}}, nil
 }
 func Client(p Paths) (*tls.Config, error) {
 	if p == (Paths{}) {

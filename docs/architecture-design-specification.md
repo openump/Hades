@@ -231,7 +231,8 @@ replay protection. See [actuator operations](operations/actuator.md) and
 ## 5. Trust, resource and operational boundaries
 
 - Local reference service links use explicit mTLS identities and role/topic ACLs;
-  the Go transport minimum is TLS 1.2. Do not label every supported link TLS 1.3-only.
+  TLS 1.3 is the minimum on every authenticated link (Go services, the
+  transfer receiver client and the secure Mosquitto profile); TLS 1.2 peers are refused.
   Read and write-control permissions are separate. Signature keys are locally
   provisioned trust; they are never fetched from a command payload.
 - Historian backends remain behind a read-only authenticated proxy. Cloud access
