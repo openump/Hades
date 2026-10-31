@@ -103,6 +103,8 @@ with tempfile.TemporaryDirectory(prefix='hades-security-') as scratch:
    subprocess.run(['go','test','-race','./internal/actuator','./internal/transfer','-run','TestMTLSCommandAndReceiptBrokerPath|TestSupervisedActuatorLiveStatusAndKill|TestSignedReceiptBrokerIntake','-count=1'],env=actuator_env,check=True)
    infer_env=dict(os.environ,HADES_INFER_TEST_BROKER='tls://127.0.0.1:'+mp,HADES_INFER_TEST_PKI=str(v1))
    subprocess.run(['go','test','-race','./cmd/hades-infer','-run','TestSupervisedInferenceOverMTLSBroker','-count=1','-v'],env=infer_env,check=True)
+   mcp_env=dict(os.environ,HADES_MCP_TEST_BROKER='tls://127.0.0.1:'+mp,HADES_MCP_TEST_PKI=str(v1))
+   subprocess.run(['go','test','-race','./cmd/hades-mcp','-run','TestMCPProposalRoutesThroughRealActuator','-count=1','-v'],env=mcp_env,check=True)
   # Untrusted/no client certificate and trusted but unprivileged identity.
   pub(None,topic,False);pub('outsider',topic,False);pub('consumer-primary',topic,False);pub('normalizer','openump/v1/other/site/area/line/asset/telemetry',False)
   pub('normalizer',topic);pub('history-adapter',topic,False);pub('transfer-adapter',topic,False)
@@ -125,6 +127,9 @@ with tempfile.TemporaryDirectory(prefix='hades-security-') as scratch:
   for identity in ('gateway-press-04','normalizer','history-adapter','transfer-adapter','hades-actuator','command-proposer'):
    pub(identity,event_topic,False);pub(identity,derived_topic,False)
   denied_sub('consumer-secondary',derived_topic.rsplit('/',1)[0]+'/+')
+  # Industrial MCP (Hades-034): proposes commands only; never telemetry, receipts or other assets.
+  pub('hades-mcp',command_topic);pub('hades-mcp',command_topic.replace('/press-04/','/other-asset/'),False)
+  pub('hades-mcp',topic,False);pub('hades-mcp',receipt_topic,False);pub('hades-mcp',event_topic,False)
   # End to end: the opted-in consumer receives what hades-infer publishes.
   listener=subprocess.Popen(command('sub','consumer-primary',v1)+['-t',event_topic.rsplit('/',1)[0]+'/+','-C','1','-W','10','-v'],stdout=subprocess.PIPE,stderr=subprocess.STDOUT)
   time.sleep(2)

@@ -14,7 +14,9 @@ func TestRoleAndManagementIsolation(t *testing.T) {
 	for _, test := range []struct {
 		peer, method, path string
 		status             int
-	}{{"history-adapter", "POST", "/api/v1/import/prometheus", 204}, {"consumer-primary", "GET", "/api/v1/query_range", 204}, {"consumer-secondary", "POST", "/api/v1/import/prometheus", 403}, {"history-adapter", "GET", "/api/v1/admin/tsdb/delete_series", 403}, {"consumer-primary", "GET", "/metrics", 403}, {"admin", "GET", "/health", 204}, {"outsider", "GET", "/api/v1/query", 403}} {
+	}{{"history-adapter", "POST", "/api/v1/import/prometheus", 204}, {"consumer-primary", "GET", "/api/v1/query_range", 204}, {"consumer-secondary", "POST", "/api/v1/import/prometheus", 403}, {"history-adapter", "GET", "/api/v1/admin/tsdb/delete_series", 403}, {"consumer-primary", "GET", "/metrics", 403}, {"admin", "GET", "/health", 204}, {"outsider", "GET", "/api/v1/query", 403},
+		// hades-mcp: bounded range queries only, never export, instant queries or POST.
+		{"hades-mcp", "GET", "/api/v1/query_range", 204}, {"hades-mcp", "GET", "/api/v1/export", 403}, {"hades-mcp", "GET", "/api/v1/query", 403}, {"hades-mcp", "POST", "/api/v1/query_range", 403}, {"hades-mcp", "POST", "/api/v1/import/prometheus", 403}} {
 		r := httptest.NewRequest(test.method, test.path, nil)
 		r.TLS = &tls.ConnectionState{VerifiedChains: [][]*x509.Certificate{{{Subject: pkix.Name{CommonName: test.peer}}}}}
 		w := httptest.NewRecorder()
