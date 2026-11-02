@@ -54,6 +54,44 @@ and [integration evidence](../pilot/integration-evidence.md).
 
 Physical PLC access and controller/firmware qualification remain outside this software pilot.
 
+## Security-control evidence pack (`Hades-037`)
+
+`hades-check -cra-report` evaluates a reviewed secure release and writes an
+evidence pack for a CRA / IEC 62443-4-2 assessment. **It is not a conformity
+assessment, CE marking or certification**; every output says so.
+
+```sh
+go run ./cmd/hades-site -action prepare -root "$RELEASE" -revision site-a \
+  -project hades-site-a -profile secure -security-dir "$HADES_SECURITY_DIR" > "$RELEASE/site.json"
+go run ./cmd/hades-check -root "$RELEASE" -cra-report -site-config site.json \
+  -out-dir evidence/site-a -binaries artifacts/hades-history-proxy,artifacts/hades-normalizer \
+  -policy /etc/hades/actuation-policy.json
+```
+
+It writes `sbom.cdx.json` (CycloneDX 1.5, built from the module list embedded
+in the given deployed binaries, so it lists exactly what is linked, with go.sum
+SHA-256 hashes and reviewed license identifiers), `cra-attestation.json` and
+`cra-compliance-report.md`, and exits non-zero unless every mandatory control
+passes and no control fails:
+
+| Control | IEC 62443-4-2 | Mandatory |
+| --- | --- | --- |
+| `transport-tls13`: every broker listener has a certificate, `tls_version tlsv1.3` and required client certificates | CR 1.1, CR 3.1 | yes |
+| `identity-no-anonymous`: no anonymous access, client certificate required, identity as username, no static ACL file, global (not per-listener) settings | CR 1.1, CR 1.2 | yes |
+| `identity-certificate-validity`: every certificate in the manifest's credential directory is in its validity window and chains to that directory's `ca.crt` (other CA certificates are never trust anchors) | CR 1.2, CR 1.9 | yes |
+| `authz-least-privilege`: default deny; no `#` and no `+` before the last level; only `hades-actuator`, `command-proposer` and `hades-mcp` may publish any filter that can match a command or receipt topic; only `admin` may publish `$CONTROL` | CR 2.1 | yes |
+| `integrity-artifact-digests`: SHA-256 of each deployed binary, each with readable Go build information for the SBOM | CR 3.4 | yes |
+| `integrity-site-configuration`: secure manifest verified against the release files (`site.Validate`); revision and manifest digest recorded | CR 3.4 | yes |
+| `resilience-resource-limits`: bounded broker queues, inflight, packet and message sizes, clients; control API off | CR 7.1 | yes |
+| `integrity-actuation-policy`: policy revision and SHA-256 recorded; policies are unsigned, so signature status is `NOT_ASSESSED` | CR 3.4 | no |
+| `resilience-runtime-guardrails`: WAL bounds and PLC rate limits are runtime flags; verify on the node | CR 2.8, CR 7.1 | no |
+
+`NOT_ASSESSED` is never counted as a pass. The Go services' TLS 1.3 floor is a
+property of the source build (`internal/transport`), not inferred from binary
+digests. Runtime container image digests are
+not part of the SBOM: the reference broker and historian images are built
+locally from `deploy/*/Dockerfile`, whose pinned bases the manifest digests.
+
 ## Troubleshooting and recovery
 
 | Symptom | First check / response |

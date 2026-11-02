@@ -83,11 +83,11 @@ func TestReadOnlyClientCannotHijackProposerSession(t *testing.T) {
 		return s
 	}
 	ts := httptest.NewUnstartedServer(newHTTPHandler(roles, build))
-	ts.TLS = &tls.Config{Certificates: []tls.Certificate{serverCert}, ClientCAs: pool, ClientAuth: tls.RequireAndVerifyClientCert, MinVersion: tls.VersionTLS12}
+	ts.TLS = &tls.Config{Certificates: []tls.Certificate{serverCert}, ClientCAs: pool, ClientAuth: tls.RequireAndVerifyClientCert, MinVersion: tls.VersionTLS13}
 	ts.StartTLS()
 	defer ts.Close()
 	clientFor := func(cn string) *http.Client {
-		return &http.Client{Timeout: 5 * time.Second, Transport: &http.Transport{TLSClientConfig: &tls.Config{RootCAs: pool, Certificates: []tls.Certificate{certs[cn]}, MinVersion: tls.VersionTLS12}}}
+		return &http.Client{Timeout: 5 * time.Second, Transport: &http.Transport{TLSClientConfig: &tls.Config{RootCAs: pool, Certificates: []tls.Certificate{certs[cn]}, MinVersion: tls.VersionTLS13}}}
 	}
 	initialize := `{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"t","version":"0"}}}`
 

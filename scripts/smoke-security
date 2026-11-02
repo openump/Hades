@@ -108,6 +108,17 @@ with tempfile.TemporaryDirectory(prefix='hades-security-') as scratch:
    inspector_env=dict(os.environ,HADES_INSPECTOR_TEST_BROKER='tls://127.0.0.1:'+mp,HADES_INSPECTOR_TEST_PKI=str(v1))
    subprocess.run(['go','test','-race','./cmd/hades-inspector','-run','TestInspectorShowsLiveTelemetryAndOnlyVerifiedReceipts','-count=1','-v'],env=inspector_env,check=True)
   # Untrusted/no client certificate and trusted but unprivileged identity.
+  # IEC 62443-4-2 CR 1.1/3.1: the broker negotiates TLS 1.3 and refuses TLS 1.2.
+  import ssl as _ssl
+  for maximum,allowed in ((_ssl.TLSVersion.TLSv1_2,False),(_ssl.TLSVersion.TLSv1_3,True)):
+   probe=_ssl.create_default_context(cafile=str(v1/'ca.crt'));probe.load_cert_chain(str(v1/'normalizer.crt'),str(v1/'normalizer.key'))
+   probe.check_hostname=False;probe.maximum_version=maximum
+   try:
+    with socket.create_connection(('127.0.0.1',int(mp)),timeout=5) as raw, probe.wrap_socket(raw) as tlsconn:
+     negotiated=tlsconn.version()
+   except (_ssl.SSLError,ConnectionError,OSError):
+    negotiated=None
+   assert (negotiated=='TLSv1.3')==allowed and (negotiated is not None)==allowed,(maximum,negotiated)
   pub(None,topic,False);pub('outsider',topic,False);pub('consumer-primary',topic,False);pub('normalizer','openump/v1/other/site/area/line/asset/telemetry',False)
   pub('normalizer',topic);pub('history-adapter',topic,False);pub('transfer-adapter',topic,False)
   # Control contracts do not grant telemetry identities write-plane access.

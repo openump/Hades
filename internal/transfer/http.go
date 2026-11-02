@@ -73,7 +73,7 @@ func NewSink(endpoint, enterprise string, cfg *tls.Config) (*Sink, error) {
 		return nil, fmt.Errorf("verified mTLS credentials required")
 	}
 	verifiedTLS := cfg.Clone()
-	verifiedTLS.MinVersion = max(tls.VersionTLS12, verifiedTLS.MinVersion)
+	verifiedTLS.MinVersion = max(tls.VersionTLS13, verifiedTLS.MinVersion)
 	tr := &http.Transport{TLSClientConfig: verifiedTLS, MaxConnsPerHost: 1, MaxIdleConnsPerHost: 1, ResponseHeaderTimeout: 10 * time.Second, MaxResponseHeaderBytes: 8192}
 	return &Sink{url: endpoint, enterprise: enterprise, client: &http.Client{Transport: tr, Timeout: 10 * time.Second, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}}, nil
 }

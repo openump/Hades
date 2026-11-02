@@ -59,7 +59,7 @@ func writeTestPKI(t *testing.T, dir string) *tls.Config {
 	issue("gateway", 3, x509.ExtKeyUsageClientAuth)
 	pool := x509.NewCertPool()
 	pool.AddCert(ca)
-	return &tls.Config{Certificates: []tls.Certificate{server}, ClientCAs: pool, ClientAuth: tls.RequireAndVerifyClientCert, MinVersion: tls.VersionTLS12}
+	return &tls.Config{Certificates: []tls.Certificate{server}, ClientCAs: pool, ClientAuth: tls.RequireAndVerifyClientCert, MinVersion: tls.VersionTLS13}
 }
 
 func buildGateway(t *testing.T, tags ...string) string {

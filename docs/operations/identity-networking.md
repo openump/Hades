@@ -4,7 +4,13 @@ Hades-013 provides a hardened reference profile separate from anonymous
 loopback development. MQTT uses mutual TLS with Mosquitto 2.1.2's upstream
 Dynamic Security plugin; HTTPS ingress and historian access use Go mutual TLS.
 TLS requires a trusted issuer, valid certificate and private key; server names
-are verified and TLS 1.2 is the minimum. Cleartext remote URLs, partial credential
+are verified and TLS 1.3 is the minimum (`tls_version tlsv1.3` on the broker;
+TLS 1.2 clients are refused).
+
+**Upgrade note (Hades-037):** the floor applies to outbound links too. The
+`hades-transfer` receiver endpoint, and any load balancer or TLS-terminating
+proxy in front of it, must offer TLS 1.3; a TLS 1.2-only receiver fails the
+handshake and records stay in the transfer WAL until it is upgraded. Cleartext remote URLs, partial credential
 sets and credentialed cleartext downgrades are rejected. A secure normalizer also
 requires its ingress TLS files. No private material is committed.
 
