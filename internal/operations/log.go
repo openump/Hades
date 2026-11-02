@@ -84,8 +84,11 @@ func (l *Log) Close() error {
 	l.lock.Close()
 	return err
 }
-func LogFlag() *string {
-	return flag.String("log-file", "", "optional private rotated diagnostic log (5 MiB x 2)")
+func LogFlag() *string { return LogFlagOn(flag.CommandLine) }
+
+// LogFlagOn registers the diagnostic log flag on fs.
+func LogFlagOn(fs *flag.FlagSet) *string {
+	return fs.String("log-file", "", "optional private rotated diagnostic log (5 MiB x 2)")
 }
 func ConfigureLog(path string) (func(), error) {
 	if path == "" {

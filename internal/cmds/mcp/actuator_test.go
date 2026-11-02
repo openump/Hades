@@ -1,4 +1,4 @@
-package main
+package mcp
 
 import (
 	"context"
@@ -33,7 +33,7 @@ func TestMCPProposalRoutesThroughRealActuator(t *testing.T) {
 	if broker == "" || pki == "" {
 		t.Skip("explicit disposable mTLS broker required")
 	}
-	root, _ := filepath.Abs("../..")
+	root, _ := filepath.Abs("../../..")
 	dir, err := os.MkdirTemp("/tmp", "h34-mcp-")
 	if err != nil {
 		t.Fatal(err)

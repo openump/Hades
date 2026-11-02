@@ -1,0 +1,28 @@
+#!/bin/sh
+# docker compose --profile demo: the multicall image brings up the full demo
+# slice with no Go toolchain; telemetry reaches the historian and a consumer,
+# and the loopback-only historian is unreachable from the edge network.
+set -eu
+cd "$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)"
+project=${COMPOSE_PROJECT_NAME:-hades-demo-smoke}
+export COMPOSE_PROJECT_NAME="$project"
+export HADES_MQTT_PORT=${HADES_DEMO_MQTT_PORT:-18951}
+alpine=alpine:3.24@sha256:294b683cb724975bec92580e1e685676bd4b50bda910ddb8c51d4cabeaec77e6
+compose() { docker compose -f deploy/compose.yaml --profile demo "$@"; }
+trap 'compose logs --no-color --tail 20 >&2 || true; compose down -v >/dev/null 2>&1 || true' EXIT INT TERM
+compose up --build -d --wait --wait-timeout 180
+count=0
+for _ in $(seq 1 90); do
+  count=$(compose exec -T demo-historian wget -qO- 'http://127.0.0.1:8428/api/v1/export?match[]=hades_observation_value' 2>/dev/null \
+    | python3 -I -c 'import json,sys; print(sum(len(json.loads(l)["values"]) for l in sys.stdin if l.strip()))' 2>/dev/null || echo 0)
+  [ "$count" -ge 3 ] && break
+  sleep 1
+done
+[ "$count" -ge 3 ] || { echo "no telemetry reached the demo historian" >&2; exit 1; }
+[ "$(compose logs consumer | grep -c '"type":"telemetry"')" -ge 1 ] || { echo "consumer received no telemetry" >&2; exit 1; }
+if docker run --rm --network "${project}_edge" "$alpine" wget -q -T 3 -O /dev/null http://broker:8428/health 2>/dev/null; then
+  echo "demo historian is reachable from the edge network" >&2; exit 1
+fi
+echo "demo-compose: multicall image brought the slice up; $count values reached the historian; historian unreachable from the edge network"
+trap - EXIT INT TERM
+compose down -v >/dev/null

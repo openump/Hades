@@ -8,7 +8,7 @@ credentials, private archives, and site data stay outside Git.
 
 | Artifact | Version/source pin | Delivery / qualification |
 | --- | --- | --- |
-| Hades Go CLIs (18 binaries) | `go.mod`: Go 1.27.3; `go.sum` pins modules | `go build ./cmd/...`; CI cross-builds Linux amd64/arm64 (`hades-check`, `hades-simulator`, `hades-consumer`, `hades-normalizer`, `hades-history`, `hades-history-proxy`, `hades-gateway`, `hades-opcua-gateway`, `hades-transfer`, `hades-pki`, `hades-site`, `hades-service`, `hades-capacity`, `hades-actuator`, `hades-infer`, `hades-mcp`, `hades-inspector`, `hades-ctl`). No release binaries published. |
+| Hades Go CLIs (18 binaries, also one `hades` multicall) | `go.mod`: Go 1.27.3; `go.sum` pins modules | `go build ./cmd/...`; CI cross-builds Linux amd64/arm64 (`hades-check`, `hades-simulator`, `hades-consumer`, `hades-normalizer`, `hades-history`, `hades-history-proxy`, `hades-gateway`, `hades-opcua-gateway`, `hades-transfer`, `hades-pki`, `hades-site`, `hades-service`, `hades-capacity`, `hades-actuator`, `hades-infer`, `hades-mcp`, `hades-inspector`, `hades-ctl`, `hades`). No release binaries published. |
 | Mosquitto | 2.1.2 source hash, APK pins and Alpine digest in `deploy/broker/Dockerfile` | Locally built image tag; Linux CI runtime tested. Record resulting local image ID. |
 | VictoriaMetrics community | 1.154.0 OCI index in `deploy/historian/Dockerfile` | Linux reference runtime tested; storage-format migration excluded. |
 | Bento Bloblang | 1.22.0 module in `go.mod`/`go.sum` | Embedded mapping engine in normalizer (`internal/normalize`); full connector runtime not deployed. |
@@ -38,6 +38,7 @@ credentials, private archives, and site data stay outside Git.
 | `hades-site` | `./cmd/hades-site` | Site manifest validator, Compose rollout controller, and cold backup/restore CLI |
 | `hades-service` | `./cmd/hades-service` | Digest-bound native systemd supervisor and pre-start verifier |
 | `hades-capacity` | `./cmd/hades-capacity` | Reference and whole-stack capacity/outage/retention benchmark harness |
+| `hades` | `./cmd/hades` | Multicall: every role above as `hades <role>` or a `hades-<role>` symlink, plus `init`/`up`/`status`/`check -site-dir` bootstrap (`Hades-041`); image `deploy/Hades.Dockerfile` |
 | `hades-ctl` | `./cmd/hades-ctl` | Read-only operator CLI; `top` is an SSH terminal dashboard over `hades-inspector` |
 
 See [dependency inventory and notices](../dependencies.md). Hades original sources are licensed under `Apache-2.0` ([LICENSE](../../LICENSE), [ADR-0001](../decisions/0001-license-policy.md)); preserve upstream dependency notices and transitive SBOMs when redistributing binaries. The dated dependency inventory's early capability notes are historical; use linked implementation/CI evidence for current tests.

@@ -67,9 +67,101 @@ services:
         max-file: "2"
     networks: [edge]
 
+  # All-in-one evaluation slice (Hades-041), no Go toolchain needed:
+  #   docker compose -f deploy/compose.yaml --profile demo up --build -d --wait
+  # Every role is the same multicall image; Compose is the supervisor. The demo
+  # containers share the broker's network namespace, so every cleartext hop is
+  # genuinely loopback, as the Hades-013 rule requires. Anonymous development
+  # profile, not a secure site. The demo historian is loopback-only inside that
+  # namespace; query it with
+  #   docker compose -f deploy/compose.yaml --profile demo exec demo-historian \
+  #     wget -qO- 'http://127.0.0.1:8428/api/v1/export?match[]=hades_observation_value' 
+  demo-historian:
+    profiles: [demo]
+    image: openump/hades-victoriametrics:1.154.0-dev
+    build:
+      context: historian
+    network_mode: service:broker
+    command:
+      # Loopback only: reachable from the demo roles that share this namespace,
+      # never from other containers on the edge network.
+      - -httpListenAddr=127.0.0.1:8428
+      - -storageDataPath=/storage
+      - -retentionPeriod=1d
+      - -dedup.minScrapeInterval=1ms
+      - -inmemoryDataFlushInterval=1s
+      - -memory.allowedPercent=50
+      - -maxInsertRequestSize=1MiB
+    volumes:
+      - demo-historian-data:/storage
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    mem_limit: 256m
+    restart: unless-stopped
+    depends_on:
+      broker: {condition: service_healthy}
+    healthcheck:
+      test: [CMD, wget, -q, -O, /dev/null, http://127.0.0.1:8428/health]
+      interval: 5s
+      timeout: 3s
+      retries: 6
+      start_period: 5s
+  history:
+    profiles: [demo]
+    image: openump/hades:dev
+    build:
+      context: ..
+      dockerfile: deploy/Hades.Dockerfile
+    network_mode: service:broker
+    # history prints "history_ready" only after its MQTT subscription is
+    # acknowledged; tee it to a file so the healthcheck observes real readiness.
+    entrypoint: [/bin/sh, -c, "set -o pipefail; hades history -broker mqtt://127.0.0.1:1883 -historian http://127.0.0.1:8428 -intake /var/lib/hades/wal -quarantine /var/lib/hades/quarantine | tee /var/lib/hades/events.jsonl"]
+    depends_on:
+      demo-historian: {condition: service_healthy}
+    volumes:
+      - history-data:/var/lib/hades
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    mem_limit: 128m
+    restart: unless-stopped
+    healthcheck:
+      test: [CMD-SHELL, "grep -q history_ready /var/lib/hades/events.jsonl"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+      start_period: 5s
+  simulator:
+    profiles: [demo]
+    image: openump/hades:dev
+    network_mode: service:broker
+    entrypoint: [/bin/sh, -c, "while hades simulator -count 1 -scenario normal -timeout 20s >/dev/null; do sleep 2; done"]
+    depends_on:
+      history: {condition: service_healthy}
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    mem_limit: 64m
+    restart: unless-stopped
+  consumer:
+    profiles: [demo]
+    image: openump/hades:dev
+    network_mode: service:broker
+    entrypoint: [/bin/sh, -c, "while hades consumer -count 1 -timeout 60s; do :; done"]
+    depends_on:
+      broker: {condition: service_healthy}
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    mem_limit: 64m
+    restart: unless-stopped
+
 volumes:
   broker-data:
   historian-data:
+  history-data:
+  demo-historian-data:
 networks:
   edge:
     driver: bridge

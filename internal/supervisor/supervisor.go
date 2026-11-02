@@ -99,6 +99,10 @@ func hashFile(path string) (string, error) {
 	return fmt.Sprintf("%x", hasher.Sum(nil)), nil
 }
 func Validate(cfg Config) error { return validate(cfg, hashFile) }
+
+// HashFile returns the SHA-256 Validate pins for an artifact, with the same
+// absolute-path, no-symlink and stability checks.
+func HashFile(path string) (string, error) { return hashFile(path) }
 func validate(cfg Config, hash func(string) (string, error)) error {
 	if !identifier.MatchString(cfg.Revision) || !filepath.IsAbs(cfg.State) || !filepath.IsAbs(cfg.Directory) || cfg.State == "/" || len(cfg.Ready) < 1 || len(cfg.Ready) > 128 || cfg.LogBytes < 256 || cfg.LogBytes > 5*1024*1024 || len(cfg.Args) > 128 || len(cfg.Files) > 32 {
 		return fmt.Errorf("invalid bounded service configuration")
