@@ -38,7 +38,7 @@ jobs:
           python -m unittest discover -s tests -v
       - name: Build Linux targets without cgo
         run: |
-          for tool in hades-check hades-simulator hades-consumer hades-normalizer hades-history hades-pki hades-history-proxy hades-gateway hades-transfer hades-site hades-capacity hades-service hades-opcua-gateway hades-actuator hades-infer hades-mcp hades-inspector hades-ctl; do
+          for tool in hades-check hades-simulator hades-consumer hades-normalizer hades-history hades-pki hades-history-proxy hades-gateway hades-transfer hades-site hades-capacity hades-service hades-opcua-gateway hades-actuator hades-infer hades-mcp hades-inspector hades-ctl hades; do
             CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o "artifacts/$tool-amd64" "./cmd/$tool"
             CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -o "artifacts/$tool-arm64" "./cmd/$tool"
           done
@@ -149,6 +149,10 @@ jobs:
         run: ./scripts/smoke-history
       - name: Independent consumer stack
         run: ./scripts/smoke-stack
+      - name: One-command bootstrap (hades init, check, up)
+        run: ./scripts/smoke-up
+      - name: All-in-one demo image (compose --profile demo)
+        run: ./scripts/smoke-demo-compose
       - name: Cloud outage isolation and receipt replay
         run: ./scripts/run-outage-scenario
       - name: Cloud outage report

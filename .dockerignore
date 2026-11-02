@@ -1,0 +1,11 @@
+# Build context for repository-root images (deploy/Hades.Dockerfile and
+# deploy/historian/Proxy.Dockerfile): sources, contracts, the example catalog
+# and the one prebuilt artifact the secure history-proxy image copies.
+.git
+artifacts/*
+!artifacts/hades-history-proxy
+runtime
+benchmarks
+tests
+**/__pycache__
+**/*.log

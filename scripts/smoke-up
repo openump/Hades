@@ -1,0 +1,81 @@
+#!/bin/sh
+# One-command bootstrap: hades init --profile demo, hades check, hades up; then
+# assert every supervised service is healthy, telemetry reaches the historian
+# and a consumer, and SIGTERM tears the whole tree and the dependencies down.
+set -eu
+cd "$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)"
+work=$(mktemp -d)
+mqtt=${HADES_UP_MQTT_PORT:-18931}
+vm=${HADES_UP_VM_PORT:-18938}
+up=''
+cleanup() {
+  if [ -n "$up" ]; then kill -TERM "$up" 2>/dev/null || true; wait "$up" 2>/dev/null || true; fi
+  # The site's own Compose project, as recorded by hades init.
+  if [ -f "$work/site/site.json" ]; then
+    project=$(python3 -I -c 'import json,sys; print(json.load(open(sys.argv[1]))["compose_project"])' "$work/site/site.json")
+    env -u COMPOSE_PROJECT_NAME docker compose -p "$project" -f deploy/compose.yaml --profile history down -v >/dev/null 2>&1 || true
+  fi
+  rm -rf "$work"
+}
+trap cleanup EXIT INT TERM
+go build -o "$work/hades" ./cmd/hades
+"$work/hades" init -profile demo -out-dir "$work/site" -mqtt-port "$mqtt" -historian-port "$vm" >/dev/null
+"$work/hades" check -site-dir "$work/site"
+"$work/hades" up -site-dir "$work/site" -interval 1s > "$work/up.jsonl" 2>&1 &
+up=$!
+python3 -I - "$work" "$mqtt" "$vm" "$up" <<'PY'
+import json, os, pathlib, signal, subprocess, sys, time, urllib.parse, urllib.request
+work, mqtt, vm, up = sys.argv[1], sys.argv[2], sys.argv[3], int(sys.argv[4])
+log = pathlib.Path(work, 'up.jsonl')
+def events():
+    out = []
+    for line in log.read_text().splitlines():
+        try: out.append(json.loads(line))
+        except ValueError: pass
+    return out
+def wait_for(check, label, seconds=240):
+    end = time.time() + seconds
+    while time.time() < end:
+        if check(): return
+        try:
+            os.kill(up, 0)
+        except OSError:
+            raise SystemExit(f'hades up exited before {label}:\n' + log.read_text())
+        time.sleep(1)
+    raise SystemExit(f'timed out waiting for {label}:\n' + log.read_text())
+wait_for(lambda: any(e.get('type') == 'site_up' for e in events()), 'site_up')
+healthy = {e['service'] for e in events() if e.get('type') == 'service_healthy'}
+site = json.loads(pathlib.Path(work, 'site/site.json').read_text())
+assert healthy == set(site['services']), (healthy, site['services'])
+status = subprocess.run([f'{work}/hades', 'status', '-site-dir', f'{work}/site'], capture_output=True, text=True)
+assert status.returncode == 0 and all(json.loads(l)['ready'] for l in status.stdout.splitlines()), status.stdout + status.stderr
+# A consumer sees the simulator's telemetry on the broker.
+consumer = subprocess.run([f'{work}/hades', 'consumer', '-broker', f'mqtt://127.0.0.1:{mqtt}', '-count', '2', '-timeout', '60s'], capture_output=True, text=True, timeout=90)
+assert consumer.returncode == 0 and '"type":"telemetry"' in consumer.stdout, consumer.stdout + consumer.stderr
+# The historian stores it.
+def stored():
+    q = urllib.parse.urlencode({'match[]': 'hades_observation_value'})
+    try:
+        body = urllib.request.urlopen(f'http://127.0.0.1:{vm}/api/v1/export?{q}', timeout=3).read().decode()
+    except OSError:
+        return 0
+    return sum(len(json.loads(l)['values']) for l in body.splitlines() if l)
+wait_for(lambda: stored() >= 3, 'telemetry in the historian', 90)
+values = stored()
+# SIGTERM stops the whole tree and the dependencies.
+os.kill(up, signal.SIGTERM)
+end = time.time() + 60
+while time.time() < end:
+    try: os.kill(up, 0); time.sleep(.5)
+    except OSError: break
+else:
+    raise SystemExit('hades up did not stop on SIGTERM')
+kinds = [e.get('type') for e in events()]
+assert kinds[-3:] == ['site_stopping', 'site_stopped', 'dependencies_stopped'], kinds[-5:]
+left = subprocess.run(['pgrep', '-f', f'{work}/hades'], capture_output=True, text=True).stdout.split()
+assert not left, ('processes left after teardown', left)
+running = subprocess.run(['docker', 'compose', '-p', site['compose_project'], '-f', 'deploy/compose.yaml', '--profile', 'history', 'ps', '--status', 'running', '-q'], capture_output=True, text=True).stdout.split()
+assert not running, ('dependencies still running after teardown', running)
+print(f'up: hades init/check/up brought {sorted(healthy)} healthy, {values} values reached the historian and a consumer, SIGTERM stopped every process and the dependencies')
+PY
+up=''

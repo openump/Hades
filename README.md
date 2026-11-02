@@ -48,13 +48,39 @@ component responsibilities, supervision, trust boundaries and execution flow.
 
 ## Quick start
 
+**One command, no Go toolchain:** the all-in-one demo runs the broker, the
+historian, a simulator, history and a consumer from one multicall image.
+
+```sh
+git clone https://github.com/openump/Hades.git
+cd Hades
+docker compose -f deploy/compose.yaml --profile demo up --build -d --wait
+docker compose -f deploy/compose.yaml --profile demo exec demo-historian \
+  wget -qO- 'http://127.0.0.1:8428/api/v1/export?match[]=hades_observation_value' | head -c 300
+docker compose -f deploy/compose.yaml --profile demo down
+```
+
+**With Go,** the single `hades` binary scaffolds a site and runs it in the
+foreground under digest-pinned supervision; Ctrl+C stops everything:
+
+```sh
+go build -o hades ./cmd/hades
+./hades init --profile demo --out-dir my-site   # site.json, catalog/, wal/, quarantine/, services/
+./hades check --site-dir my-site
+./hades up --site-dir my-site                   # or simply: ./hades up --demo
+```
+
+`hades` is also every standalone binary: `hades normalizer …` or a symlink
+`hades-normalizer -> hades` behaves exactly like `cmd/hades-normalizer`. See
+[the multicall guide](docs/operations/multicall.md).
+
+### Step by step
+
 Try synthetic telemetry and a validating consumer on your own machine.
 **Prerequisites:** Git, Go 1.27.3 and Docker with Compose. A Go installation with
 toolchain management can obtain the version pinned in [go.mod](go.mod).
 
 ```sh
-git clone https://github.com/openump/Hades.git
-cd Hades
 docker compose -f deploy/compose.yaml up --build -d --wait
 ```
 

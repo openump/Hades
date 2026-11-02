@@ -13,11 +13,14 @@ import (
 
 type Paths struct{ CA, Cert, Key string }
 
-func Flags() *Paths {
+func Flags() *Paths { return FlagsOn(flag.CommandLine) }
+
+// FlagsOn registers the TLS credential flags on fs.
+func FlagsOn(fs *flag.FlagSet) *Paths {
 	p := &Paths{}
-	flag.StringVar(&p.CA, "tls-ca", "", "trusted PEM CA file")
-	flag.StringVar(&p.Cert, "tls-cert", "", "local certificate file")
-	flag.StringVar(&p.Key, "tls-key", "", "private key file")
+	fs.StringVar(&p.CA, "tls-ca", "", "trusted PEM CA file")
+	fs.StringVar(&p.Cert, "tls-cert", "", "local certificate file")
+	fs.StringVar(&p.Key, "tls-key", "", "private key file")
 	return p
 }
 func load(p Paths) (*tls.Config, error) {

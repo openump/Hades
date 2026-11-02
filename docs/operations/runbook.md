@@ -54,6 +54,13 @@ and [integration evidence](../pilot/integration-evidence.md).
 
 Physical PLC access and controller/firmware qualification remain outside this software pilot.
 
+## One binary and one-command bootstrap (`Hades-041`)
+
+`hades` is every role in one binary (`hades <role>` or a `hades-<role>` symlink).
+`hades init --profile demo --out-dir my-site && hades up --site-dir my-site` starts a
+supervised demo slice in the foreground; `docker compose -f deploy/compose.yaml --profile demo up`
+does the same without Go. See [the multicall guide](multicall.md).
+
 ## Terminal dashboard over SSH (`Hades-039`)
 
 `hades-ctl top` is a read-only `htop`-style view of one node over SSH. It polls
