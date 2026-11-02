@@ -1,0 +1,20 @@
+name: Pre-build the broker image (with retries)
+description: >
+  Build the reference broker image before any smoke script, retrying a
+  transient failure fetching the pinned Mosquitto source from mosquitto.org.
+  Later `compose up --build` calls on the same runner reuse BuildKit's cached
+  layers. The source checksum is still verified by the Dockerfile.
+runs:
+  using: composite
+  steps:
+    - shell: bash
+      run: |
+        for attempt in 1 2 3 4; do
+          if docker build -q -t openump/hades-mosquitto:2.1.2-dev deploy/broker >/dev/null; then
+            echo "broker image built (attempt $attempt)"; exit 0
+          fi
+          [ "$attempt" = 4 ] && break
+          echo "::warning::broker image build failed (attempt $attempt); retrying in $((attempt * 20))s"
+          sleep $((attempt * 20))
+        done
+        echo "::error::broker image build failed after 4 attempts"; exit 1

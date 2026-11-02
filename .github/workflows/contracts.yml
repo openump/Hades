@@ -129,6 +129,8 @@ jobs:
         with:
           go-version-file: go.mod
           cache: true
+      - name: Pre-build broker image (retries a transient mosquitto.org failure)
+        uses: ./.github/actions/prebuild-broker
       - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
           python-version: '3.14.6'
@@ -178,6 +180,8 @@ jobs:
         with:
           go-version-file: go.mod
           cache: true
+      - name: Pre-build broker image (retries a transient mosquitto.org failure)
+        uses: ./.github/actions/prebuild-broker
       - name: mTLS identities, ACL denials, management isolation and rotation
         run: ./scripts/smoke-security
       - name: Pinned Telegraf lab gateway through TLS to history
@@ -204,6 +208,8 @@ jobs:
         with:
           go-version-file: go.mod
           cache: true
+      - name: Pre-build broker image (retries a transient mosquitto.org failure)
+        uses: ./.github/actions/prebuild-broker
       - name: Isolated crash, capacity and blocked-consumer matrix
         run: ./scripts/run-recovery
       - name: Measured ID ledger
@@ -221,6 +227,8 @@ jobs:
         with:
           go-version-file: go.mod
           cache: true
+      - name: Pre-build broker image (retries a transient mosquitto.org failure)
+        uses: ./.github/actions/prebuild-broker
       - name: Reviewed secure rollout and isolated cold restore
         run: ./scripts/smoke-site-recovery
       - name: Recovery boundary and timing evidence
@@ -236,6 +244,8 @@ jobs:
         with:
           go-version-file: go.mod
           cache: true
+      - name: Pre-build broker image (retries a transient mosquitto.org failure)
+        uses: ./.github/actions/prebuild-broker
       - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
           python-version: '3.14.6'
@@ -269,6 +279,8 @@ jobs:
         with:
           go-version-file: go.mod
           cache: true
+      - name: Pre-build broker image (retries a transient mosquitto.org failure)
+        uses: ./.github/actions/prebuild-broker
       - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
           python-version: '3.14.6'
