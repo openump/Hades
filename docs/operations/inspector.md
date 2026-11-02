@@ -54,3 +54,50 @@ The console reads only what Hades already exposes read-only.
 Adding read-only diagnostic endpoints to the normalizer, transfer and actuator would fill
 these gaps. Each would widen that service's attack surface, so it is a separate, reviewed
 change.
+
+## Terminal dashboard (`hades-ctl top`, Hades-039)
+
+Where plant policy blocks browser port forwarding, use the terminal dashboard
+over plain SSH. It polls the same read-only snapshot:
+
+```sh
+ssh -t ipc-press-04 hades-ctl top              # interactive, refreshes every 1s (-t allocates a terminal)
+ssh -t ipc-press-04 hades-ctl top -interval 5s
+ssh ipc-press-04 hades-ctl top -once > support/top.txt   # every pane, no colour
+```
+
+| Key | Action |
+| --- | --- |
+| `Tab` / `Shift+Tab`, `1`–`4` | Switch pane |
+| `j`/`k`, arrows | Scroll the pane |
+| `/` | Filter telemetry tags (Enter keeps it, Esc clears it) |
+| `q`, `Ctrl+C` | Quit; `SIGTERM`/`SIGHUP` also exit cleanly |
+
+The four panes are supervisor and resources, UNS telemetry, quarantine and
+certificates, and actuator receipts. They show exactly what the inspector
+exposes, so they have the same gaps listed above. Run on the node itself,
+`top` also reads each supervised child's RSS and CPU from `/proc`, using the
+child PIDs the inspector reports, and shows total stack RSS against the
+250 MB budget. CPU needs two samples, so it shows `n/a` until the second poll;
+`-once` takes two samples 0.5 s apart. Uptime and digest state come from the
+supervisor probe: `verified`, `MISMATCH` when the supervisor reports a changed
+definition or binary, and `unknown` when the supervisor cannot be reached.
+Update rates are not shown: the snapshot holds only the latest value.
+
+- **Read-only:** the only network call is `GET /ui/api/snapshot`, and no key
+  issues anything else. Redirects are never followed. `-inspector` must be a
+  loopback `http` address; reach a remote node over SSH and run `hades-ctl` there.
+- **Untrusted text:** every value, unit, topic, subject and error is printed with
+  control characters replaced, so plant data cannot send escape sequences to
+  the operator's terminal.
+- **Unreachable inspector:** a red `DAEMON UNREACHABLE` banner shows the error
+  and the time since the last data. Polling continues, and the banner clears by
+  itself when the inspector is back. `-once` prints the banner and exits
+  non-zero.
+- **Terminal safety:** raw mode and the alternate screen are always restored
+  on `q`, `Ctrl+C`, `SIGTERM` or `SIGHUP`. Frames repaint in place without
+  clearing the screen, so there is no flicker, and repaint at once on window
+  resize. Without a terminal (a pipe, cron, or `ssh` without `-t`), `top` prints
+  one frame like `-once` and says so on stderr.
+- **Footprint:** nothing runs in any Hades daemon while `top` is closed. Each
+  poll reads at most 4 MiB.
