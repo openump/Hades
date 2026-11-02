@@ -18,6 +18,10 @@ NoNewPrivileges=true
 ProtectSystem=strict
 ProtectHome=true
 PrivateTmp=true
+# systemd creates the per-instance state and log directories, owned by hades;
+# ProtectSystem=strict would otherwise refuse to start on a missing path.
+StateDirectory=hades/%i
+LogsDirectory=hades/%i
 ReadWritePaths=/var/lib/hades/%i /var/log/hades/%i
 UMask=0077
 StandardOutput=journal

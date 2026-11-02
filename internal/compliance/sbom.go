@@ -40,6 +40,32 @@ var licenses = map[string]string{
 	"github.com/fatih/color":                      "MIT",
 	"github.com/mattn/go-isatty":                  "MIT",
 	"github.com/mattn/go-colorable":               "MIT",
+	// Linked transitively (bento, OpenTelemetry), reviewed from each module's
+	// license text for Hades-042. otel appends a BSD-3-Clause section to
+	// Apache-2.0, and yaml.v3 is MIT for its libyaml ports and Apache-2.0
+	// otherwise, so both are conjunctions.
+	"github.com/Jeffail/gabs/v2":         "MIT",
+	"github.com/OneOfOne/xxhash":         "Apache-2.0",
+	"github.com/aymerick/douceur":        "MIT",
+	"github.com/cespare/xxhash/v2":       "MIT",
+	"github.com/djherbis/buffer":         "MIT",
+	"github.com/go-logr/logr":            "Apache-2.0",
+	"github.com/go-logr/stdr":            "Apache-2.0",
+	"github.com/gofrs/uuid":              "MIT",
+	"github.com/gorilla/css":             "BSD-3-Clause",
+	"github.com/matoous/go-nanoid/v2":    "MIT",
+	"github.com/microcosm-cc/bluemonday": "BSD-3-Clause",
+	"github.com/segmentio/ksuid":         "MIT",
+	"github.com/tilinna/z85":             "MIT",
+	"github.com/xeipuuv/gojsonpointer":   "Apache-2.0",
+	"github.com/xeipuuv/gojsonreference": "Apache-2.0",
+	"github.com/xeipuuv/gojsonschema":    "Apache-2.0",
+	"go.opentelemetry.io/auto/sdk":       "Apache-2.0",
+	"go.opentelemetry.io/otel":           "Apache-2.0 AND BSD-3-Clause",
+	"go.opentelemetry.io/otel/metric":    "Apache-2.0 AND BSD-3-Clause",
+	"go.opentelemetry.io/otel/trace":     "Apache-2.0 AND BSD-3-Clause",
+	"google.golang.org/protobuf":         "BSD-3-Clause",
+	"gopkg.in/yaml.v3":                   "MIT AND Apache-2.0",
 }
 
 // Component is a CycloneDX 1.5 component.
@@ -159,4 +185,31 @@ func goSumHash(sum string) (string, bool) {
 		return "", false
 	}
 	return hex.EncodeToString(raw), true
+}
+
+// BinarySBOM returns the CycloneDX SBOM of one Go binary's embedded module
+// list: exactly what is linked, with reviewed licenses.
+// version, when set, is the release version: it names the SBOM subject and
+// the application component instead of "site" and Go's "(devel)".
+func BinarySBOM(binary []byte, version string) (*BOM, error) {
+	inv := newInventory()
+	if err := inv.add(binary); err != nil {
+		return nil, err
+	}
+	bom := inv.bom()
+	if version != "" {
+		bom.Metadata.Component = component("application", "github.com/openump/Hades", version, "")
+		for i, c := range bom.Components {
+			if c.Type == "application" {
+				fixed := component("application", c.Name, version, "")
+				for j, d := range bom.Dependencies {
+					if d.Ref == c.BOMRef {
+						bom.Dependencies[j].Ref = fixed.BOMRef
+					}
+				}
+				bom.Components[i] = fixed
+			}
+		}
+	}
+	return bom, nil
 }

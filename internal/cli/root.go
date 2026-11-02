@@ -31,6 +31,9 @@ import (
 	"github.com/openump/Hades/internal/cmds/transfer"
 )
 
+// Version is stamped by scripts/package-release (-X); "dev" otherwise.
+var Version = "dev"
+
 // Roles maps each standalone binary name to its command. hades-opcua-mock is
 // a test fixture behind a build tag and is deliberately not a role.
 var Roles = map[string]func([]string) int{
@@ -83,8 +86,13 @@ func Run(argv []string, stdout, stderr io.Writer) int {
 			return CheckSite(dir, stdout, stderr)
 		}
 		return check.Main(args)
+	case "release":
+		return Release(args, stdout, stderr)
 	case "top":
 		return ctl.Main(append([]string{"top"}, args...))
+	case "version", "--version":
+		fmt.Fprintln(stdout, "hades", Version)
+		return 0
 	case "roles":
 		for _, r := range RoleNames() {
 			fmt.Fprintln(stdout, r)
@@ -118,6 +126,7 @@ Bootstrap:
   status   show the supervised services of a site
   top      read-only terminal dashboard (hades-ctl top)
   check    -site-dir <dir> validates a scaffolded site; otherwise hades-check
+  release  keygen|pubkey|sign|sign-file|verify|notices|sbom|tarball
 
 Every standalone binary is also a command, with the same flags:
 `)

@@ -198,9 +198,13 @@ func TestCheckDetectsTampering(t *testing.T) {
 		t.Fatal("an invalid catalog must fail check")
 	}
 	dir, site = fresh()
+	// Run check from an untouched copy: rewriting the binary that is executing
+	// would be killed on macOS (code signature) before it could report.
+	checker := filepath.Join(t.TempDir(), "hades-checker")
 	raw, _ := os.ReadFile(site.Binary)
+	os.WriteFile(checker, raw, 0o755)
 	os.WriteFile(site.Binary, append(raw, 0), 0o755) // the pinned binary changes
-	if r := invoke(t, "hades", hades+"", "check", "-site-dir", dir); r.code == 0 || !strings.Contains(r.stderr, "digest mismatch") {
+	if r := invoke(t, "hades", checker, "check", "-site-dir", dir); r.code == 0 || !strings.Contains(r.stderr, "digest mismatch") {
 		t.Fatalf("a changed binary must fail check: %+v", r)
 	}
 }

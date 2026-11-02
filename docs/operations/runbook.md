@@ -54,6 +54,12 @@ and [integration evidence](../pilot/integration-evidence.md).
 
 Physical PLC access and controller/firmware qualification remain outside this software pilot.
 
+## Packages, verified install and air-gapped bundles (`Hades-042`)
+
+Install from the signed `.deb`/`.rpm`, with `install.sh` (Ed25519 signature and
+SHA-256 verified before extraction), or offline from the air-gapped bundle with
+`install-offline.sh --pubkey <trusted key>`. See [packaging](packaging.md).
+
 ## One binary and one-command bootstrap (`Hades-041`)
 
 `hades` is every role in one binary (`hades <role>` or a `hades-<role>` symlink).

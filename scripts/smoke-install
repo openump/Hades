@@ -1,0 +1,32 @@
+#!/bin/sh
+# install.sh --from-archive in clean Ubuntu 24.04 (/bin/sh = dash): a valid
+# signed release installs; a tampered archive, a tampered checksums.txt, a
+# forged signature, a missing signature and a wrong release key each refuse
+# and install nothing.  Usage: scripts/smoke-install <dist-dir> <version>
+set -eu
+dist=$(CDPATH= cd -- "${1:?dist directory}" && pwd)
+version=${2:?version}
+arch=$(uname -m); case "$arch" in x86_64|amd64) arch=amd64 ;; aarch64|arm64) arch=arm64 ;; esac
+ubuntu=ubuntu:24.04@sha256:fe81560990fae86dc4743202b2cb4d3df98d0bcf949173cecef15ce1127ef852
+docker run --rm -v "$dist:/dist:ro" -e V="$version" -e A="$arch" "$ubuntu" sh -c '
+set -eu
+apt-get -qq update >/dev/null && apt-get -qq install -y openssl >/dev/null 2>&1
+test "$(readlink -f /bin/sh)" = /usr/bin/dash
+name=hades_${V}_linux_${A}.tar.gz
+fresh() { rm -rf /r /p && cp -R /dist /r; }
+refuses() { # label, then the install must fail and leave nothing installed
+  if sh /r/install.sh --from-archive /r/$name --prefix /p >/tmp/out 2>&1; then echo "NOT REFUSED: $1"; cat /tmp/out; exit 1; fi
+  test ! -e /p/bin/hades || { echo "installed despite: $1"; exit 1; }
+  echo "refused: $1 ($(tail -1 /tmp/out | sed "s/^install.sh: //"))"
+}
+fresh; sh /r/install.sh --from-archive /r/$name --prefix /p; /p/bin/hades version; test "$(readlink /p/bin/hades-normalizer)" = hades
+fresh; printf x >> /r/$name; refuses "tampered archive"
+fresh; sed -i "1s/^./0/" /r/checksums.txt; refuses "tampered checksums.txt"
+fresh; head -c 64 /dev/urandom > /r/checksums.txt.sig; refuses "forged signature"
+fresh; rm /r/checksums.txt.sig; refuses "missing signature"
+fresh; openssl genpkey -algorithm ed25519 -out /tmp/k 2>/dev/null; openssl pkeyutl -sign -inkey /tmp/k -rawin -in /r/checksums.txt -out /r/checksums.txt.sig; refuses "signed by another key"
+# Tamper and re-sign the checksum with another key: still refused (key is pinned).
+fresh; printf x >> /r/$name; s=$(sha256sum /r/$name | cut -d" " -f1); sed -i "s/^[0-9a-f]*  $name\$/$s  $name/" /r/checksums.txt
+openssl pkeyutl -sign -inkey /tmp/k -rawin -in /r/checksums.txt -out /r/checksums.txt.sig; refuses "tampered archive with matching checksum re-signed by attacker key"
+echo "install: valid release installed; all tampering refused with nothing installed"
+'

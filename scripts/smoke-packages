@@ -1,0 +1,40 @@
+#!/bin/sh
+# Install the built .deb in clean Ubuntu 24.04 and the .rpm in clean Rocky 9,
+# and check the service account, hardened directories, /usr/bin symlinks, the
+# registered (not enabled) unit, shipped notices/SBOM/schemas, and removal
+# keeping site data.  Usage: scripts/smoke-packages <dist-dir> <version>
+set -eu
+dist=$(CDPATH= cd -- "${1:?dist directory}" && pwd)
+version=${2:?version}
+arch=$(uname -m); case "$arch" in x86_64|amd64) arch=amd64 ;; aarch64|arm64) arch=arm64 ;; esac
+ubuntu=ubuntu:24.04@sha256:fe81560990fae86dc4743202b2cb4d3df98d0bcf949173cecef15ce1127ef852
+rocky=rockylinux/rockylinux:9@sha256:8101994123cf3d0a8fee517bee7f39e555c7d92bd2d9eb3303cc988a0eeed00f
+check='
+set -eu
+getent passwd hades | grep -q ":/usr/sbin/nologin$" || { echo "hades user missing or has a login shell"; exit 1; }
+getent group hades >/dev/null
+test "$(stat -c "%a %U %G" /etc/hades)" = "750 root hades"
+test "$(stat -c "%a %U %G" /var/lib/hades)" = "750 hades hades"
+test -x /usr/bin/hades && hades version | grep -q "hades '"$version"'"
+for role in hades-service hades-normalizer hades-history hades-transfer hades-gateway hades-actuator hades-check hades-pki hades-site; do
+  test "$(readlink /usr/bin/$role)" = hades || { echo "/usr/bin/$role is not a hades symlink"; exit 1; }
+done
+hades-check -h 2>&1 | grep -q "Usage of hades-check"
+grep -q "^ExecStart=/usr/bin/%i" /usr/lib/systemd/system/hades-service@.service
+test ! -e /etc/systemd/system/multi-user.target.wants/hades-service@*.service
+test -s /usr/share/doc/hades/THIRD_PARTY_NOTICES.md && test -s /usr/share/doc/hades/sbom.cdx.json && test -s /usr/share/doc/hades/LICENSE
+test -s /usr/share/hades/schemas/v1/telemetry.schema.json
+touch /var/lib/hades/site-data
+'
+echo "== deb on Ubuntu 24.04"
+docker run --rm -v "$dist:/dist:ro" "$ubuntu" sh -c "
+  apt-get -qq update >/dev/null && apt-get -qq install -y /dist/hades_${version}_linux_${arch}.deb >/dev/null
+  $check
+  apt-get -qq remove -y hades >/dev/null
+  test ! -e /usr/bin/hades && test -e /var/lib/hades/site-data && echo 'deb: installed, verified, removed with site data kept'"
+echo "== rpm on Rocky 9"
+docker run --rm -v "$dist:/dist:ro" "$rocky" sh -c "
+  dnf -q -y install /dist/hades_${version}_linux_${arch}.rpm >/dev/null 2>&1
+  $check
+  dnf -q -y remove hades >/dev/null 2>&1
+  test ! -e /usr/bin/hades && test -e /var/lib/hades/site-data && echo 'rpm: installed, verified, removed with site data kept'"

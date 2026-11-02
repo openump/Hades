@@ -1,0 +1,125 @@
+#!/bin/sh
+# Reproducible Hades release: linux amd64/arm64 .deb + .rpm + tarballs and
+# darwin amd64/arm64 tarballs, generated notices and SBOM, sha256 checksums
+# signed with the Ed25519 release key, and a Homebrew formula template.
+#
+#   HADES_VERSION=1.0.0 HADES_RELEASE_KEY=/secure/release.key scripts/package-release
+#
+# The same source, version and SOURCE_DATE_EPOCH give byte-identical artifacts.
+set -eu
+cd "$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)"
+version=${HADES_VERSION:?set HADES_VERSION (semver, e.g. 1.0.0)}
+key=${HADES_RELEASE_KEY:?set HADES_RELEASE_KEY to the Ed25519 release private key}
+out=${HADES_DIST:-dist}
+epoch=${SOURCE_DATE_EPOCH:-$(git log -1 --format=%ct)}
+nfpm=goreleaser/nfpm:v2.48.0@sha256:d57a1452e7a019896b355f7b1ec67262278f6c503631f652d4fce7aef9ac8df7
+case "$version" in *[!0-9.]*|.*|*.|*..*) echo "HADES_VERSION must be numeric semver" >&2; exit 2;; esac
+work=$(mktemp -d)
+trap 'rm -rf "$work"' EXIT INT TERM
+# Never delete an arbitrary directory: only an empty one or a previous release.
+if [ -e "$out" ] && [ -n "$(ls -A "$out" 2>/dev/null)" ] && [ ! -f "$out/checksums.txt" ]; then
+  echo "HADES_DIST=$out exists and is not a previous release output; refusing to delete it" >&2; exit 2
+fi
+rm -rf "$out" && mkdir -p "$out"
+out=$(CDPATH= cd -- "$out" && pwd)
+export GOFLAGS=-trimpath CGO_ENABLED=0 GOMODCACHE="${GOMODCACHE:-$(go env GOMODCACHE)}"
+ldflags="-s -w -buildid= -X github.com/openump/Hades/internal/cli.Version=$version"
+# A host build runs the release tooling (notices, sbom, tarball, signing).
+go build -ldflags="-buildid=" -o "$work/hades-tool" ./cmd/hades
+roles=$("$work/hades-tool" roles)
+
+clamp() { # set every path under $1 (symlinks too) to SOURCE_DATE_EPOCH
+  stamp=$(date -u -r "$epoch" +%Y%m%d%H%M.%S 2>/dev/null || date -u -d "@$epoch" +%Y%m%d%H%M.%S)
+  find "$1" -exec touch -h -t "$stamp" {} +
+}
+stage() { # os arch -> $work/<os>-<arch>
+  dir="$work/$1-$2"; mkdir -p "$dir/links" "$dir/share" "$dir/doc"
+  GOOS=$1 GOARCH=$2 go build -buildvcs=false -ldflags="$ldflags" -o "$dir/hades" ./cmd/hades
+  for role in $roles; do ln -s hades "$dir/links/$role"; done
+  "$work/hades-tool" release notices -binary "$dir/hades" -goroot "$(go env GOROOT)" -out "$dir/doc/THIRD_PARTY_NOTICES.md"
+  "$work/hades-tool" release sbom -binary "$dir/hades" -version "$version" -out "$dir/doc/sbom.cdx.json"
+  cp LICENSE "$dir/doc/LICENSE"
+  # Contract root for hades init/check: schemas plus the reviewed example catalog.
+  cp -R schemas "$dir/share/schemas"
+  mkdir -p "$dir/share/examples" && cp -R examples/site "$dir/share/examples/site"
+  sed 's#ExecStart=/usr/local/bin/%i#ExecStart=/usr/bin/%i#; s#^\# Copy to /etc/systemd/system and supply#\# Installed by the hades package; supply#' \
+    deploy/systemd/hades-service@.service > "$dir/hades-service@.service"
+}
+
+for arch in amd64 arm64; do
+  stage linux "$arch"
+  dir="$work/linux-$arch"
+  for packager in deb rpm; do
+    mkdir -p "$work/pkg"
+    # nfpm keeps each staged file's own mtime inside tree entries: clamp every
+    # staged path to SOURCE_DATE_EPOCH so the packages are byte-reproducible.
+    clamp "$dir"
+    # nfpm expands env vars in scalar fields but not in contents src paths, so
+    # render the stage path into a per-arch copy of the reviewed definition.
+    sed "s#\${STAGE}#$dir#g" deploy/packaging/nfpm.yaml > "$dir/nfpm.yaml"
+    # A fixed hostname: rpm records it as BUILDHOST, and Docker's default is random.
+    docker run --rm --hostname hades-release --user "$(id -u):$(id -g)" -v "$PWD:/src:ro" -v "$work:$work" -w /src \
+      -e NFPM_ARCH="$arch" -e HADES_VERSION="$version" -e SOURCE_DATE_EPOCH="$epoch" \
+      "$nfpm" package --config "$dir/nfpm.yaml" --packager "$packager" --target "$work/pkg" >/dev/null
+  done
+  mv "$work/pkg/"* "$out/"
+  # The static binary tarball (also what install.sh and the air-gap bundle use).
+  tree="$work/tar-linux-$arch"; mkdir -p "$tree"
+  cp "$dir/hades" "$tree/"; cp -R "$dir/links/." "$tree/"; cp "$dir/doc/"* "$tree/"
+  "$work/hades-tool" release tarball -src "$tree" -prefix "hades_${version}_linux_${arch}" -epoch "$epoch" -out "$out/hades_${version}_linux_${arch}.tar.gz"
+  cp "$dir/doc/sbom.cdx.json" "$out/hades_${version}_linux_${arch}.sbom.cdx.json"
+done
+# nfpm names packages by distribution convention; normalize to the ticket's names.
+for f in "$out"/*.deb "$out"/*.rpm; do
+  case "$f" in
+    *amd64.deb|*x86_64.rpm) arch=amd64 ;;
+    *arm64.deb|*aarch64.rpm) arch=arm64 ;;
+    *) echo "unexpected package $f" >&2; exit 1 ;;
+  esac
+  mv "$f" "$out/hades_${version}_linux_${arch}.${f##*.}"
+done
+for arch in amd64 arm64; do
+  stage darwin "$arch"
+  tree="$work/tar-darwin-$arch"; mkdir -p "$tree"
+  cp "$work/darwin-$arch/hades" "$tree/"; cp -R "$work/darwin-$arch/links/." "$tree/"; cp "$work/darwin-$arch/doc/"* "$tree/"
+  "$work/hades-tool" release tarball -src "$tree" -prefix "hades_${version}_darwin_${arch}" -epoch "$epoch" -out "$out/hades_${version}_darwin_${arch}.tar.gz"
+done
+# install.sh with the release public key pinned (signed with everything else).
+pub=$("$work/hades-tool" release pubkey -key "$key" | sed '1d;$d')
+sed "s#^@HADES_RELEASE_PUBLIC_KEY@\$#$pub#" scripts/install.sh > "$out/install.sh"
+chmod 0755 "$out/install.sh"
+[ "$(grep -c "^$pub\$" "$out/install.sh")" = 1 ] && ! grep -q '^@HADES_RELEASE_PUBLIC_KEY@$' "$out/install.sh" \
+  || { echo "release key was not pinned into install.sh exactly once" >&2; exit 1; }
+"$work/hades-tool" release sign -dir "$out" -key "$key"
+# Homebrew formula template (no tap is published; see docs/operations/packaging.md).
+sum() { grep "  $1\$" "$out/checksums.txt" | cut -d' ' -f1; }
+cat > "$work/hades.rb" <<RUBY
+# Generated by scripts/package-release for Hades $version. Template only:
+# publish it to a tap after reviewing; it is not a release artifact to sign.
+class Hades < Formula
+  desc "OpenUMP Hades industrial edge stack (multicall binary)"
+  homepage "https://github.com/openump/Hades"
+  version "$version"
+  license "Apache-2.0"
+  on_macos do
+    on_arm do
+      url "https://github.com/openump/Hades/releases/download/v$version/hades_${version}_darwin_arm64.tar.gz"
+      sha256 "$(sum "hades_${version}_darwin_arm64.tar.gz")"
+    end
+    on_intel do
+      url "https://github.com/openump/Hades/releases/download/v$version/hades_${version}_darwin_amd64.tar.gz"
+      sha256 "$(sum "hades_${version}_darwin_amd64.tar.gz")"
+    end
+  end
+  def install
+    bin.install "hades"
+    Dir["hades-*"].each { |link| bin.install_symlink "hades" => File.basename(link) if File.symlink?(link) }
+    doc.install "LICENSE", "THIRD_PARTY_NOTICES.md", "sbom.cdx.json"
+  end
+  test do
+    system bin/"hades", "roles"
+  end
+end
+RUBY
+mkdir -p "$out/homebrew" && mv "$work/hades.rb" "$out/homebrew/hades.rb"
+echo "release $version in $out:"; ls "$out"

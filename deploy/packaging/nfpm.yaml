@@ -1,0 +1,43 @@
+# nfpm package definition for Hades (Hades-042). Built by scripts/package-release
+# with a pinned nfpm image; ${STAGE} holds the per-architecture staged files.
+name: hades
+arch: ${NFPM_ARCH}
+platform: linux
+version: ${HADES_VERSION}
+version_schema: semver
+release: "1"
+section: net
+priority: optional
+maintainer: OpenUMP Hades <hades@openump.org>
+description: |
+  OpenUMP Hades industrial edge stack: one multicall binary for every role
+  (normalizer, history, transfer, gateways, actuator, supervisor, tooling).
+vendor: OpenUMP
+homepage: https://github.com/openump/Hades
+license: Apache-2.0
+contents:
+  - src: ${STAGE}/hades
+    dst: /usr/bin/hades
+    file_info: {mode: 0755}
+  - src: ${STAGE}/links/
+    dst: /usr/bin/
+    type: tree
+  - src: ${STAGE}/hades-service@.service
+    dst: /usr/lib/systemd/system/hades-service@.service
+    file_info: {mode: 0644}
+  - src: ${STAGE}/share/
+    dst: /usr/share/hades/
+    type: tree
+  - src: ${STAGE}/doc/
+    dst: /usr/share/doc/hades/
+    type: tree
+scripts:
+  postinstall: deploy/packaging/postinst.sh
+  postremove: deploy/packaging/postremove.sh
+overrides:
+  deb:
+    # passwd (useradd/groupadd) is essential on Debian/Ubuntu; adduser is not
+    # installed on minimal images and could not be fetched on an air-gapped host.
+    depends: [passwd]
+  rpm:
+    depends: [shadow-utils]
