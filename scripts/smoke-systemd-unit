@@ -1,0 +1,35 @@
+#!/bin/sh
+# Start the packaged hades-service@ unit under real systemd (Ubuntu 24.04,
+# privileged container): the per-instance state/log directories are created
+# by systemd, the role runs as the hades user under ProtectSystem=strict, and
+# writes only to its state directory.  Usage: scripts/smoke-systemd-unit <dist> <version>
+set -eu
+dist=$(CDPATH= cd -- "${1:?dist directory}" && pwd)
+version=${2:?version}
+arch=$(uname -m); case "$arch" in x86_64|amd64) arch=amd64 ;; aarch64|arm64) arch=arm64 ;; esac
+name=hades-systemd-smoke-$$
+image=hades-systemd-smoke:local
+printf '%s\n' 'FROM ubuntu:24.04@sha256:fe81560990fae86dc4743202b2cb4d3df98d0bcf949173cecef15ce1127ef852' \
+  'RUN apt-get -qq update && apt-get -qq install -y --no-install-recommends systemd systemd-sysv >/dev/null && apt-get clean' \
+  'CMD ["/sbin/init"]' | docker build -q -t "$image" - >/dev/null
+cleanup() { docker stop -t 5 "$name" >/dev/null 2>&1 || true; docker rm "$name" >/dev/null 2>&1 || true; }
+trap cleanup EXIT INT TERM
+docker run -d --name "$name" --privileged --cgroupns=host -v /sys/fs/cgroup:/sys/fs/cgroup:rw -v "$dist:/dist:ro" "$image" >/dev/null
+for _ in $(seq 1 30); do docker exec "$name" systemctl is-system-running >/dev/null 2>&1 && break; sleep 1; done
+run_in() { docker exec "$name" "$@"; }
+run_in dpkg -i "/dist/hades_${version}_linux_${arch}.deb" >/dev/null
+run_in sh -c 'echo "HADES_ARGS=-out /var/lib/hades/hades-pki/pki" > /etc/hades/hades-pki.env'
+run_in systemctl start hades-service@hades-pki
+for _ in $(seq 1 20); do [ "$(run_in systemctl show -p ActiveState --value hades-service@hades-pki)" = inactive ] && break; sleep 1; done
+[ "$(run_in systemctl show -p Result --value hades-service@hades-pki)" = success ] || { run_in journalctl -u hades-service@hades-pki --no-pager -o cat; exit 1; }
+[ "$(run_in stat -c '%U %G' /var/lib/hades/hades-pki)" = "hades hades" ]
+[ "$(run_in stat -c '%U %G' /var/log/hades/hades-pki)" = "hades hades" ]
+[ "$(run_in stat -c '%U %a' /var/lib/hades/hades-pki/pki/ca.key)" = "hades 600" ]
+# Writes outside the state directory are confined by ProtectSystem=strict.
+run_in sh -c 'echo "HADES_ARGS=-out /usr/local/pki" > /etc/hades/hades-pki.env'
+run_in systemctl reset-failed hades-service@hades-pki 2>/dev/null || true
+run_in systemctl start hades-service@hades-pki || true
+for _ in $(seq 1 20); do [ "$(run_in systemctl show -p ActiveState --value hades-service@hades-pki)" != activating ] && break; sleep 1; done
+[ "$(run_in systemctl show -p Result --value hades-service@hades-pki)" != success ] && ! run_in test -e /usr/local/pki/ca.key \
+  || { echo "a write outside the state directory was not confined"; exit 1; }
+echo "systemd: packaged unit ran as hades in its systemd-created state directory; writes elsewhere confined"

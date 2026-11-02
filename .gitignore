@@ -13,3 +13,4 @@ data/
 logs/
 artifacts/
 .DS_Store
+dist/

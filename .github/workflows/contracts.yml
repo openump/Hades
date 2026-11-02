@@ -284,3 +284,38 @@ jobs:
           name: opcua-pilot-reference
           path: artifacts/opcua-pilot/
           retention-days: 14
+  packaging:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Throwaway release key (CI only; never a production key)
+        run: |
+          mkdir -p "$RUNNER_TEMP/keys"
+          go run ./cmd/hades release keygen -key "$RUNNER_TEMP/keys/release.key" -pub "$RUNNER_TEMP/keys/release.pub"
+      - name: Reproducible release (built twice, byte-identical)
+        env:
+          HADES_VERSION: 0.0.0
+        run: |
+          HADES_RELEASE_KEY="$RUNNER_TEMP/keys/release.key" HADES_DIST=dist ./scripts/package-release
+          HADES_RELEASE_KEY="$RUNNER_TEMP/keys/release.key" HADES_DIST="$RUNNER_TEMP/dist2" ./scripts/package-release >/dev/null
+          diff dist/checksums.txt "$RUNNER_TEMP/dist2/checksums.txt"
+          go run ./cmd/hades release verify -dir dist -pub "$RUNNER_TEMP/keys/release.pub"
+          openssl pkeyutl -verify -pubin -inkey "$RUNNER_TEMP/keys/release.pub" -rawin -in dist/checksums.txt -sigfile dist/checksums.txt.sig
+      - name: .deb on clean Ubuntu 24.04 and .rpm on clean Rocky 9
+        run: ./scripts/smoke-packages dist 0.0.0
+      - name: Packaged unit under real systemd (sandboxed, runs as hades)
+        run: ./scripts/smoke-systemd-unit dist 0.0.0
+      - name: install.sh verification and tamper refusal
+        run: ./scripts/smoke-install dist 0.0.0
+      - name: Air-gapped bundle installed with --network none
+        env:
+          HADES_VERSION: 0.0.0
+          HADES_ARCH: amd64
+        run: |
+          HADES_RELEASE_KEY="$RUNNER_TEMP/keys/release.key" HADES_RELEASE_PUB="$RUNNER_TEMP/keys/release.pub" ./scripts/build-airgap-bundle dist
+          ./scripts/smoke-airgap dist/hades-airgap-0.0.0-amd64.tar.zst "$RUNNER_TEMP/keys/release.pub"

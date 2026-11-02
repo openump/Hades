@@ -1,0 +1,50 @@
+#!/bin/sh
+# Air-gapped install: extract the bundle and run install-offline.sh in a clean
+# Ubuntu 24.04 container with --network none; the installed hades must pass
+# `hades check -site-dir` on a site scaffolded offline. Tampered files, an
+# unlisted extra file and verification against a wrong trusted key refuse.
+# Image loading needs a Docker daemon, so it runs against the host daemon.
+#   Usage: scripts/smoke-airgap <bundle.tar.zst> <trusted-release.pub>
+set -eu
+bundle=$(cd "$(dirname "$1")" && pwd)/$(basename "$1")
+pub=$(cd "$(dirname "$2")" && pwd)/$(basename "$2")
+ubuntu=ubuntu:24.04@sha256:fe81560990fae86dc4743202b2cb4d3df98d0bcf949173cecef15ce1127ef852
+mkdir -p "$HOME/.cache"
+work=$(mktemp -d "$HOME/.cache/hades-airgap.XXXXXX")
+trap 'rm -rf "$work"' EXIT INT TERM
+zstd -q -d -c "$bundle" | tar -C "$work" -xf -
+b=$(basename "$(ls -d "$work"/hades-airgap-*)")
+cp "$pub" "$work/trusted.pub"
+openssl genpkey -algorithm ed25519 2>/dev/null | openssl pkey -pubout -out "$work/wrong.pub"
+# The offline host: a base image plus openssl, baked in while online.
+tag=hades-airgap-host:smoke
+printf 'FROM %s\nRUN apt-get -qq update && apt-get -qq install -y --no-install-recommends openssl >/dev/null && rm -rf /var/lib/apt/lists/*\n' "$ubuntu" \
+  | docker build -q -t "$tag" - >/dev/null
+offline() { docker run --rm --network none -v "$work:/m:ro" "$tag" sh -c "set -eu; cp -R /m/$b /b; $1"; }
+
+offline 'test -z "$(ip route 2>/dev/null)"; ! getent hosts github.com >/dev/null 2>&1
+  sh /b/install-offline.sh --pubkey /m/trusted.pub --no-images
+  getent passwd hades >/dev/null && test "$(readlink /usr/bin/hades-normalizer)" = hades
+  # A site scaffolded offline from the packaged contract root passes hades check.
+  hades init -profile demo -out-dir /srv/site -root /usr/share/hades >/dev/null
+  hades check -site-dir /srv/site
+  echo "offline install: installed $(hades version) with --network none; hades check passed"'
+refuse() {
+  if offline "$2; sh /b/install-offline.sh --pubkey ${3:-/m/trusted.pub} --no-images" >"$work/out" 2>&1; then
+    echo "NOT REFUSED: $1"; cat "$work/out"; exit 1
+  fi
+  echo "refused: $1 ($(grep "install-offline.sh:" "$work/out" | tail -1 | sed 's/^install-offline.sh: //'))"
+}
+refuse "tampered package" 'printf x >> "$(ls /b/hades_*_linux_*.deb)"'
+refuse "tampered image archive" 'printf x >> "$(ls /b/images/*.tar | head -1)"'
+refuse "unlisted extra file" 'echo evil > /b/payload.sh'
+refuse "smuggled symlink matching the package name" 'echo evil > /tmp/evil.deb; ln -s /tmp/evil.deb /b/hades_9.9.9_linux_amd64.deb'
+refuse "symlink replacing a listed file" 'f=$(ls /b/hades_*_linux_*.deb); mv "$f" /tmp/real.deb; ln -s /tmp/real.deb "$f"'
+refuse "verified against a key the operator does not trust" 'true' /m/wrong.pub
+# Image loading and content-ID checks against the host Docker daemon.
+( cd "$work/$b" && while read -r id image file; do
+    docker load -q -i "$file" >/dev/null
+    [ "$(docker image inspect --format '{{.Id}}' "$image")" = "$id" ] || { echo "image ID mismatch for $image"; exit 1; }
+  done < images.txt )
+echo "images: $(wc -l < "$work/$b/images.txt" | tr -d ' ') runtime images loaded with matching content IDs"
+echo "airgap: offline install passed; all tampering refused"
