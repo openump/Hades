@@ -1,0 +1,500 @@
+[
+  {
+    "name": "valid-derived-value",
+    "kind": "derived-value",
+    "valid": true,
+    "error": "",
+    "payload": {
+      "schema_version": "1.0",
+      "observation_id": "019a1234-5678-7000-8000-000000000430",
+      "asset": "urn:openump:acme:berlin:press-04",
+      "measurement": "estimated_bearing_wear",
+      "value": 12.5,
+      "unit": "%",
+      "observed_at": "2026-10-15T08:01:00.000Z",
+      "window_start_ms": 1792051200000,
+      "window_end_ms": 1792051260000,
+      "model_id": "press-04-vibration-iforest",
+      "model_version": "1.2.0",
+      "confidence": 0.82
+    }
+  },
+  {
+    "name": "zero-value-and-confidence",
+    "kind": "derived-value",
+    "valid": true,
+    "error": "",
+    "payload": {
+      "schema_version": "1.0",
+      "observation_id": "019a1234-5678-7000-8000-000000000430",
+      "asset": "urn:openump:acme:berlin:press-04",
+      "measurement": "estimated_bearing_wear",
+      "value": 0,
+      "unit": "%",
+      "observed_at": "2026-10-15T08:01:00.000Z",
+      "window_start_ms": 1792051200000,
+      "window_end_ms": 1792051260000,
+      "model_id": "press-04-vibration-iforest",
+      "model_version": "1.2.0",
+      "confidence": 0
+    }
+  },
+  {
+    "name": "missing-observation-id",
+    "kind": "derived-value",
+    "valid": false,
+    "error": "schema",
+    "payload": {
+      "schema_version": "1.0",
+      "asset": "urn:openump:acme:berlin:press-04",
+      "measurement": "estimated_bearing_wear",
+      "value": 12.5,
+      "unit": "%",
+      "observed_at": "2026-10-15T08:01:00.000Z",
+      "window_start_ms": 1792051200000,
+      "window_end_ms": 1792051260000,
+      "model_id": "press-04-vibration-iforest",
+      "model_version": "1.2.0",
+      "confidence": 0.82
+    }
+  },
+  {
+    "name": "missing-value",
+    "kind": "derived-value",
+    "valid": false,
+    "error": "schema",
+    "payload": {
+      "schema_version": "1.0",
+      "observation_id": "019a1234-5678-7000-8000-000000000430",
+      "asset": "urn:openump:acme:berlin:press-04",
+      "measurement": "estimated_bearing_wear",
+      "unit": "%",
+      "observed_at": "2026-10-15T08:01:00.000Z",
+      "window_start_ms": 1792051200000,
+      "window_end_ms": 1792051260000,
+      "model_id": "press-04-vibration-iforest",
+      "model_version": "1.2.0",
+      "confidence": 0.82
+    }
+  },
+  {
+    "name": "missing-unit",
+    "kind": "derived-value",
+    "valid": false,
+    "error": "schema",
+    "payload": {
+      "schema_version": "1.0",
+      "observation_id": "019a1234-5678-7000-8000-000000000430",
+      "asset": "urn:openump:acme:berlin:press-04",
+      "measurement": "estimated_bearing_wear",
+      "value": 12.5,
+      "observed_at": "2026-10-15T08:01:00.000Z",
+      "window_start_ms": 1792051200000,
+      "window_end_ms": 1792051260000,
+      "model_id": "press-04-vibration-iforest",
+      "model_version": "1.2.0",
+      "confidence": 0.82
+    }
+  },
+  {
+    "name": "missing-observed-at",
+    "kind": "derived-value",
+    "valid": false,
+    "error": "schema",
+    "payload": {
+      "schema_version": "1.0",
+      "observation_id": "019a1234-5678-7000-8000-000000000430",
+      "asset": "urn:openump:acme:berlin:press-04",
+      "measurement": "estimated_bearing_wear",
+      "value": 12.5,
+      "unit": "%",
+      "window_start_ms": 1792051200000,
+      "window_end_ms": 1792051260000,
+      "model_id": "press-04-vibration-iforest",
+      "model_version": "1.2.0",
+      "confidence": 0.82
+    }
+  },
+  {
+    "name": "missing-window-start-ms",
+    "kind": "derived-value",
+    "valid": false,
+    "error": "schema",
+    "payload": {
+      "schema_version": "1.0",
+      "observation_id": "019a1234-5678-7000-8000-000000000430",
+      "asset": "urn:openump:acme:berlin:press-04",
+      "measurement": "estimated_bearing_wear",
+      "value": 12.5,
+      "unit": "%",
+      "observed_at": "2026-10-15T08:01:00.000Z",
+      "window_end_ms": 1792051260000,
+      "model_id": "press-04-vibration-iforest",
+      "model_version": "1.2.0",
+      "confidence": 0.82
+    }
+  },
+  {
+    "name": "missing-window-end-ms",
+    "kind": "derived-value",
+    "valid": false,
+    "error": "schema",
+    "payload": {
+      "schema_version": "1.0",
+      "observation_id": "019a1234-5678-7000-8000-000000000430",
+      "asset": "urn:openump:acme:berlin:press-04",
+      "measurement": "estimated_bearing_wear",
+      "value": 12.5,
+      "unit": "%",
+      "observed_at": "2026-10-15T08:01:00.000Z",
+      "window_start_ms": 1792051200000,
+      "model_id": "press-04-vibration-iforest",
+      "model_version": "1.2.0",
+      "confidence": 0.82
+    }
+  },
+  {
+    "name": "missing-model-id",
+    "kind": "derived-value",
+    "valid": false,
+    "error": "schema",
+    "payload": {
+      "schema_version": "1.0",
+      "observation_id": "019a1234-5678-7000-8000-000000000430",
+      "asset": "urn:openump:acme:berlin:press-04",
+      "measurement": "estimated_bearing_wear",
+      "value": 12.5,
+      "unit": "%",
+      "observed_at": "2026-10-15T08:01:00.000Z",
+      "window_start_ms": 1792051200000,
+      "window_end_ms": 1792051260000,
+      "model_version": "1.2.0",
+      "confidence": 0.82
+    }
+  },
+  {
+    "name": "missing-model-version",
+    "kind": "derived-value",
+    "valid": false,
+    "error": "schema",
+    "payload": {
+      "schema_version": "1.0",
+      "observation_id": "019a1234-5678-7000-8000-000000000430",
+      "asset": "urn:openump:acme:berlin:press-04",
+      "measurement": "estimated_bearing_wear",
+      "value": 12.5,
+      "unit": "%",
+      "observed_at": "2026-10-15T08:01:00.000Z",
+      "window_start_ms": 1792051200000,
+      "window_end_ms": 1792051260000,
+      "model_id": "press-04-vibration-iforest",
+      "confidence": 0.82
+    }
+  },
+  {
+    "name": "missing-confidence",
+    "kind": "derived-value",
+    "valid": false,
+    "error": "schema",
+    "payload": {
+      "schema_version": "1.0",
+      "observation_id": "019a1234-5678-7000-8000-000000000430",
+      "asset": "urn:openump:acme:berlin:press-04",
+      "measurement": "estimated_bearing_wear",
+      "value": 12.5,
+      "unit": "%",
+      "observed_at": "2026-10-15T08:01:00.000Z",
+      "window_start_ms": 1792051200000,
+      "window_end_ms": 1792051260000,
+      "model_id": "press-04-vibration-iforest",
+      "model_version": "1.2.0"
+    }
+  },
+  {
+    "name": "non-v7-observation-id",
+    "kind": "derived-value",
+    "valid": false,
+    "error": "schema",
+    "payload": {
+      "schema_version": "1.0",
+      "observation_id": "019a1234-5678-4000-8000-000000000430",
+      "asset": "urn:openump:acme:berlin:press-04",
+      "measurement": "estimated_bearing_wear",
+      "value": 12.5,
+      "unit": "%",
+      "observed_at": "2026-10-15T08:01:00.000Z",
+      "window_start_ms": 1792051200000,
+      "window_end_ms": 1792051260000,
+      "model_id": "press-04-vibration-iforest",
+      "model_version": "1.2.0",
+      "confidence": 0.82
+    }
+  },
+  {
+    "name": "string-value",
+    "kind": "derived-value",
+    "valid": false,
+    "error": "schema",
+    "payload": {
+      "schema_version": "1.0",
+      "observation_id": "019a1234-5678-7000-8000-000000000430",
+      "asset": "urn:openump:acme:berlin:press-04",
+      "measurement": "estimated_bearing_wear",
+      "value": "12.5",
+      "unit": "%",
+      "observed_at": "2026-10-15T08:01:00.000Z",
+      "window_start_ms": 1792051200000,
+      "window_end_ms": 1792051260000,
+      "model_id": "press-04-vibration-iforest",
+      "model_version": "1.2.0",
+      "confidence": 0.82
+    }
+  },
+  {
+    "name": "boolean-value",
+    "kind": "derived-value",
+    "valid": false,
+    "error": "schema",
+    "payload": {
+      "schema_version": "1.0",
+      "observation_id": "019a1234-5678-7000-8000-000000000430",
+      "asset": "urn:openump:acme:berlin:press-04",
+      "measurement": "estimated_bearing_wear",
+      "value": true,
+      "unit": "%",
+      "observed_at": "2026-10-15T08:01:00.000Z",
+      "window_start_ms": 1792051200000,
+      "window_end_ms": 1792051260000,
+      "model_id": "press-04-vibration-iforest",
+      "model_version": "1.2.0",
+      "confidence": 0.82
+    }
+  },
+  {
+    "name": "null-value",
+    "kind": "derived-value",
+    "valid": false,
+    "error": "schema",
+    "payload": {
+      "schema_version": "1.0",
+      "observation_id": "019a1234-5678-7000-8000-000000000430",
+      "asset": "urn:openump:acme:berlin:press-04",
+      "measurement": "estimated_bearing_wear",
+      "value": null,
+      "unit": "%",
+      "observed_at": "2026-10-15T08:01:00.000Z",
+      "window_start_ms": 1792051200000,
+      "window_end_ms": 1792051260000,
+      "model_id": "press-04-vibration-iforest",
+      "model_version": "1.2.0",
+      "confidence": 0.82
+    }
+  },
+  {
+    "name": "confidence-above-one",
+    "kind": "derived-value",
+    "valid": false,
+    "error": "schema",
+    "payload": {
+      "schema_version": "1.0",
+      "observation_id": "019a1234-5678-7000-8000-000000000430",
+      "asset": "urn:openump:acme:berlin:press-04",
+      "measurement": "estimated_bearing_wear",
+      "value": 12.5,
+      "unit": "%",
+      "observed_at": "2026-10-15T08:01:00.000Z",
+      "window_start_ms": 1792051200000,
+      "window_end_ms": 1792051260000,
+      "model_id": "press-04-vibration-iforest",
+      "model_version": "1.2.0",
+      "confidence": 1.2
+    }
+  },
+  {
+    "name": "non-semver-model-version",
+    "kind": "derived-value",
+    "valid": false,
+    "error": "schema",
+    "payload": {
+      "schema_version": "1.0",
+      "observation_id": "019a1234-5678-7000-8000-000000000430",
+      "asset": "urn:openump:acme:berlin:press-04",
+      "measurement": "estimated_bearing_wear",
+      "value": 12.5,
+      "unit": "%",
+      "observed_at": "2026-10-15T08:01:00.000Z",
+      "window_start_ms": 1792051200000,
+      "window_end_ms": 1792051260000,
+      "model_id": "press-04-vibration-iforest",
+      "model_version": "v1",
+      "confidence": 0.82
+    }
+  },
+  {
+    "name": "uppercase-measurement",
+    "kind": "derived-value",
+    "valid": false,
+    "error": "schema",
+    "payload": {
+      "schema_version": "1.0",
+      "observation_id": "019a1234-5678-7000-8000-000000000430",
+      "asset": "urn:openump:acme:berlin:press-04",
+      "measurement": "Bearing",
+      "value": 12.5,
+      "unit": "%",
+      "observed_at": "2026-10-15T08:01:00.000Z",
+      "window_start_ms": 1792051200000,
+      "window_end_ms": 1792051260000,
+      "model_id": "press-04-vibration-iforest",
+      "model_version": "1.2.0",
+      "confidence": 0.82
+    }
+  },
+  {
+    "name": "unknown-field",
+    "kind": "derived-value",
+    "valid": false,
+    "error": "schema",
+    "payload": {
+      "schema_version": "1.0",
+      "observation_id": "019a1234-5678-7000-8000-000000000430",
+      "asset": "urn:openump:acme:berlin:press-04",
+      "measurement": "estimated_bearing_wear",
+      "value": 12.5,
+      "unit": "%",
+      "observed_at": "2026-10-15T08:01:00.000Z",
+      "window_start_ms": 1792051200000,
+      "window_end_ms": 1792051260000,
+      "model_id": "press-04-vibration-iforest",
+      "model_version": "1.2.0",
+      "confidence": 0.82,
+      "quality": "good"
+    }
+  },
+  {
+    "name": "device-telemetry-shape",
+    "kind": "derived-value",
+    "valid": false,
+    "error": "schema",
+    "payload": {
+      "schema_version": "1.0",
+      "observation_id": "019a1234-5678-7000-8000-000000000430",
+      "asset": "urn:openump:acme:berlin:press-04",
+      "measurement": "estimated_bearing_wear",
+      "unit": "%",
+      "observed_at": "2026-10-15T08:01:00.000Z",
+      "window_start_ms": 1792051200000,
+      "window_end_ms": 1792051260000,
+      "model_id": "press-04-vibration-iforest",
+      "model_version": "1.2.0",
+      "confidence": 0.82,
+      "measurements": {
+        "estimated_bearing_wear": {
+          "value": 12.5,
+          "unit": "%",
+          "quality": "good"
+        }
+      }
+    }
+  },
+  {
+    "name": "bad-timestamp",
+    "kind": "derived-value",
+    "valid": false,
+    "error": "schema",
+    "payload": {
+      "schema_version": "1.0",
+      "observation_id": "019a1234-5678-7000-8000-000000000430",
+      "asset": "urn:openump:acme:berlin:press-04",
+      "measurement": "estimated_bearing_wear",
+      "value": 12.5,
+      "unit": "%",
+      "observed_at": "2026-10-15T08:01:00Z",
+      "window_start_ms": 1792051200000,
+      "window_end_ms": 1792051260000,
+      "model_id": "press-04-vibration-iforest",
+      "model_version": "1.2.0",
+      "confidence": 0.82
+    }
+  },
+  {
+    "name": "empty-window",
+    "kind": "derived-value",
+    "valid": false,
+    "error": "context",
+    "payload": {
+      "schema_version": "1.0",
+      "observation_id": "019a1234-5678-7000-8000-000000000430",
+      "asset": "urn:openump:acme:berlin:press-04",
+      "measurement": "estimated_bearing_wear",
+      "value": 12.5,
+      "unit": "%",
+      "observed_at": "2026-10-15T08:01:00.000Z",
+      "window_start_ms": 1792051260000,
+      "window_end_ms": 1792051260000,
+      "model_id": "press-04-vibration-iforest",
+      "model_version": "1.2.0",
+      "confidence": 0.82
+    }
+  },
+  {
+    "name": "inverted-window",
+    "kind": "derived-value",
+    "valid": false,
+    "error": "context",
+    "payload": {
+      "schema_version": "1.0",
+      "observation_id": "019a1234-5678-7000-8000-000000000430",
+      "asset": "urn:openump:acme:berlin:press-04",
+      "measurement": "estimated_bearing_wear",
+      "value": 12.5,
+      "unit": "%",
+      "observed_at": "2026-10-15T08:01:00.000Z",
+      "window_start_ms": 1792051260001,
+      "window_end_ms": 1792051260000,
+      "model_id": "press-04-vibration-iforest",
+      "model_version": "1.2.0",
+      "confidence": 0.82
+    }
+  },
+  {
+    "name": "observed-before-window-end",
+    "kind": "derived-value",
+    "valid": false,
+    "error": "context",
+    "payload": {
+      "schema_version": "1.0",
+      "observation_id": "019a1234-5678-7000-8000-000000000430",
+      "asset": "urn:openump:acme:berlin:press-04",
+      "measurement": "estimated_bearing_wear",
+      "value": 12.5,
+      "unit": "%",
+      "observed_at": "2026-10-15T08:00:59.999Z",
+      "window_start_ms": 1792051200000,
+      "window_end_ms": 1792051260000,
+      "model_id": "press-04-vibration-iforest",
+      "model_version": "1.2.0",
+      "confidence": 0.82
+    }
+  },
+  {
+    "name": "observed-after-window-end",
+    "kind": "derived-value",
+    "valid": false,
+    "error": "context",
+    "payload": {
+      "schema_version": "1.0",
+      "observation_id": "019a1234-5678-7000-8000-000000000430",
+      "asset": "urn:openump:acme:berlin:press-04",
+      "measurement": "estimated_bearing_wear",
+      "value": 12.5,
+      "unit": "%",
+      "observed_at": "2026-10-15T08:01:00.001Z",
+      "window_start_ms": 1792051200000,
+      "window_end_ms": 1792051260000,
+      "model_id": "press-04-vibration-iforest",
+      "model_version": "1.2.0",
+      "confidence": 0.82
+    }
+  }
+]

@@ -49,6 +49,10 @@ func (a *Adapter) Subscribe(ctx context.Context, address string, diagnostic func
 	topics := make([]string, 0, len(assets))
 	for _, asset := range assets {
 		topics = append(topics, asset.Prefix+"telemetry")
+		if a.derived != nil {
+			// Opt-in: soft-sensor values on their own subtree (Hades-043).
+			topics = append(topics, asset.Prefix+"derived/+")
+		}
 	}
 	hash := sha256.Sum256([]byte(a.cfg.Prefix + "telemetry"))
 	id := fmt.Sprintf("hades-history-%x", hash[:12])
@@ -74,6 +78,17 @@ func (a *Adapter) Subscribe(ctx context.Context, address string, diagnostic func
 			for _, t := range topics {
 				subs = append(subs, paho.SubscribeOptions{Topic: t, QoS: 1, RetainAsPublished: true})
 			}
+			if a.derived == nil {
+				// The session persists across restarts; drop a derived/+
+				// subscription left by an earlier run with derived ingestion on.
+				filters := make([]string, 0, len(assets))
+				for _, asset := range assets {
+					filters = append(filters, asset.Prefix+"derived/+")
+				}
+				if _, uerr := m.Unsubscribe(subctx, &paho.Unsubscribe{Topics: filters}); uerr != nil {
+					log.Printf("historian: clearing stale derived subscription: %v", uerr)
+				}
+			}
 			ack, err := m.Subscribe(subctx, &paho.Subscribe{Subscriptions: subs})
 			if err == nil && len(ack.Reasons) != len(subs) {
 				err = fmt.Errorf("history subscription rejected")
@@ -92,7 +107,7 @@ func (a *Adapter) Subscribe(ctx context.Context, address string, diagnostic func
 		packet := event.Packet
 		var err error
 		if packet.Retain {
-			err = fmt.Errorf("retained telemetry rejected")
+			err = fmt.Errorf("retained message rejected")
 		} else {
 			_, err = a.Intake(packet.Topic, packet.Payload)
 		}

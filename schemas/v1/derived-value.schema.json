@@ -1,0 +1,72 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:openump:schema:1.0:derived-value",
+  "type": "object",
+  "properties": {
+    "schema_version": {
+      "const": "1.0"
+    },
+    "observation_id": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$(?![\\s\\S])",
+      "maxLength": 36
+    },
+    "asset": {
+      "$ref": "urn:openump:schema:1.0:common#/$defs/asset_id"
+    },
+    "measurement": {
+      "$ref": "urn:openump:schema:1.0:common#/$defs/measurement_name"
+    },
+    "value": {
+      "type": "number",
+      "minimum": -1e+308,
+      "maximum": 1e+308
+    },
+    "unit": {
+      "$ref": "urn:openump:schema:1.0:common#/$defs/unit"
+    },
+    "observed_at": {
+      "$ref": "urn:openump:schema:1.0:common#/$defs/timestamp"
+    },
+    "window_start_ms": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 9007199254740991
+    },
+    "window_end_ms": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 9007199254740991
+    },
+    "model_id": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9-]{0,62}[a-z0-9]$(?![\\s\\S])",
+      "maxLength": 64
+    },
+    "model_version": {
+      "type": "string",
+      "pattern": "^(0|[1-9][0-9]{0,8})\\.(0|[1-9][0-9]{0,8})\\.(0|[1-9][0-9]{0,8})$(?![\\s\\S])",
+      "maxLength": 32
+    },
+    "confidence": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1
+    }
+  },
+  "required": [
+    "schema_version",
+    "observation_id",
+    "asset",
+    "measurement",
+    "value",
+    "unit",
+    "observed_at",
+    "window_start_ms",
+    "window_end_ms",
+    "model_id",
+    "model_version",
+    "confidence"
+  ],
+  "additionalProperties": false
+}

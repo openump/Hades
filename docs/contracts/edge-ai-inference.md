@@ -70,6 +70,27 @@ The semantic rules:
   `anomaly_score ≥ threshold`, and `info` requires `anomaly_score < threshold`;
 - contributors are unique.
 
+### Derived value (Hades-043)
+
+`urn:openump:schema:1.0:derived-value` is the versioned contract for soft-sensor
+values on `…/<asset>/derived/<measurement>`. It carries `observation_id` (UUIDv7),
+`asset`, `measurement`, a numeric `value`, `unit`, `observed_at`, `window_start_ms`,
+`window_end_ms`, `model_id`, `model_version` and `confidence` (0–1).
+
+The semantic rules:
+- the window must be non-empty;
+- `observed_at` must equal `window_end_ms` exactly, so a value describes the data it
+  was computed from, not the publish time.
+
+**Declaration.** A derived measurement is declared in the **signed model manifest**,
+not in the asset metadata. A consumer accepts a value only when a verified manifest for
+its `model_id@model_version` declares a `telemetry` soft-sensor output for that asset and
+measurement with the same unit. The name must also **not** be one of the asset's device
+measurements, so a derived series can never be read as physical telemetry.
+(`contracts.ValidateDerivedDeclaration`.) Declaring soft sensors in asset metadata would
+have changed the metadata schema's baseline hash, and would let device telemetry carry
+the same name.
+
 ## Signature profile
 
 The manifest signature reuses the Hades-032 command signature shape: Ed25519 over the
@@ -102,9 +123,12 @@ hold certificate identities.
 - end-to-end delivery from `hades-infer` to `consumer-primary`;
 - the denial for `consumer-secondary`.
 
-Cloud export of inference events through `hades-transfer` is not granted here. The
-transfer exporter handles telemetry, metadata and status only; adding events to it is
-part of the Zeus ingest work (Zeus-001), together with a scoped transfer grant.
+Cloud export of inference events and derived values through `hades-transfer` is not
+granted. The transfer exporter handles telemetry, metadata and status only.
+**Decision (Hades-043):** derived values stay local to `hades-history` until the Zeus
+receiver contract (Zeus-001) defines how to ingest them. Exporting them then needs a
+scoped transfer grant for `derived/+` and that receiver contract. `scripts/smoke-security`
+proves `transfer-adapter` cannot subscribe to `derived/+` today.
 
 **Deviation from the ticket.** The ticket suggested `hades-infer` publish to "`/raw` or
 `/event/+`". No MQTT `/raw` topic exists. Observations enter through authenticated HTTP
@@ -119,7 +143,13 @@ Event topics are nine segments deep. The existing one-level consumer subscriptio
 
 ## Compatibility and verification
 
-The change is additive. All 16 prior contract files keep their baseline hashes; the
+**Hades-043.** `derived-value` is additive in the same way: all 21 prior baseline
+entries keep their hashes; the baseline adds the schema, an example and a fixture file
+(`examples/contracts/derived/`). Bundles without the schema still compile and refuse
+the kind (tested for both seven- and nine-schema bundles), and site manifests do not
+require it, so existing signed site bundles stay valid.
+
+**Hades-035.** The change is additive. All 16 prior contract files keep their baseline hashes; the
 baseline adds two schemas and three fixture files. The validator selects message kinds
 from the schema IDs present:
 - the telemetry profile is required;

@@ -180,6 +180,16 @@
           "acltype": "subscribeLiteral",
           "topic": "openump/v1/acme/berlin/assembly/line-01/press-04/telemetry",
           "allow": true
+        },
+        {
+          "acltype": "publishClientReceive",
+          "topic": "openump/v1/acme/berlin/assembly/line-01/press-04/derived/+",
+          "allow": true
+        },
+        {
+          "acltype": "subscribeLiteral",
+          "topic": "openump/v1/acme/berlin/assembly/line-01/press-04/derived/+",
+          "allow": true
         }
       ]
     },

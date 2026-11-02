@@ -104,6 +104,74 @@ func inferenceEventSemantics(event map[string]any) error {
 	return nil
 }
 
+// derivedValueSemantics checks soft-sensor rules a schema cannot express:
+// a non-empty window and an observation time equal to the window end, so a
+// value always describes the data it was computed from.
+func derivedValueSemantics(value map[string]any) error {
+	if number(value["window_end_ms"]) <= number(value["window_start_ms"]) {
+		return fail("context", "empty or inverted derived-value window")
+	}
+	stamp, err := time.Parse("2006-01-02T15:04:05.000Z", value["observed_at"].(string))
+	if err != nil || float64(stamp.UnixMilli()) != number(value["window_end_ms"]) {
+		return fail("context", "derived observed_at is not the end of its window")
+	}
+	return nil
+}
+
+// SoftSensor is one soft-sensor output a verified model manifest declares.
+type SoftSensor struct {
+	ModelID, ModelVersion, Asset, Measurement, Unit string
+}
+
+// DerivedDeclarations indexes the soft-sensor outputs of verified manifests
+// by model_id@model_version and asset/measurement.
+type DerivedDeclarations map[string]SoftSensor
+
+func derivedKey(modelID, modelVersion, asset, measurement string) string {
+	return modelID + "@" + modelVersion + "\x00" + asset + "\x00" + measurement
+}
+
+// Add records a declared soft-sensor output.
+func (d DerivedDeclarations) Add(s SoftSensor) {
+	d[derivedKey(s.ModelID, s.ModelVersion, s.Asset, s.Measurement)] = s
+}
+
+// CheckDeclarationsAgainstDevices refuses soft-sensor outputs named like one
+// of their asset's device measurements. Run when a bundle is loaded, so a
+// misnamed output is rejected up front rather than failing every window.
+// devices maps an asset to its metadata measurements.
+func (d DerivedDeclarations) CheckDeclarationsAgainstDevices(devices func(asset string) map[string]any) error {
+	for _, s := range d {
+		if _, device := devices(s.Asset)[s.Measurement]; device {
+			return fail("context", "soft-sensor output %s reuses a device measurement name of %s", s.Measurement, s.Asset)
+		}
+	}
+	return nil
+}
+
+// ValidateDerivedDeclaration binds a schema-valid derived value to its
+// producing model: a verified manifest for model_id@model_version must declare
+// a soft-sensor output for this asset and measurement with the same unit. The
+// name must also not be one of the asset's device measurements, so a derived
+// series can never be read as physical telemetry.
+func ValidateDerivedDeclaration(value map[string]any, declared DerivedDeclarations, deviceMeasurements map[string]any) error {
+	measurement, _ := value["measurement"].(string)
+	if _, device := deviceMeasurements[measurement]; device {
+		return fail("context", "derived value claims a device measurement")
+	}
+	modelID, _ := value["model_id"].(string)
+	version, _ := value["model_version"].(string)
+	asset, _ := value["asset"].(string)
+	d, ok := declared[derivedKey(modelID, version, asset, measurement)]
+	if !ok {
+		return fail("context", "measurement is not a declared soft-sensor output of a verified model")
+	}
+	if d.Unit != value["unit"] {
+		return fail("context", "derived unit differs from the model declaration")
+	}
+	return nil
+}
+
 // ValidateInferenceEventTopic binds an event to
 // openump/v1/<enterprise>/<site>/<area>/<line>/<asset>/event/<inference_type>,
 // rechecking the asset against the registry through its telemetry topic.

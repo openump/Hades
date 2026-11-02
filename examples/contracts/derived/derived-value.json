@@ -1,0 +1,14 @@
+{
+  "schema_version": "1.0",
+  "observation_id": "019a1234-5678-7000-8000-000000000430",
+  "asset": "urn:openump:acme:berlin:press-04",
+  "measurement": "estimated_bearing_wear",
+  "value": 12.5,
+  "unit": "%",
+  "observed_at": "2026-10-15T08:01:00.000Z",
+  "window_start_ms": 1792051200000,
+  "window_end_ms": 1792051260000,
+  "model_id": "press-04-vibration-iforest",
+  "model_version": "1.2.0",
+  "confidence": 0.82
+}

@@ -60,3 +60,36 @@ def validate_event_topic(topic, event, registry):
     if len(parts) != 9 or parts[7:] != ['event', event['inference_type']]:
         raise ValueError('invalid inference-event topic')
     validate_topic('/'.join(parts[:7] + ['telemetry']), event['asset'], registry)
+
+
+def validate_derived(value):
+    from datetime import datetime, timezone
+    if value['window_end_ms'] <= value['window_start_ms']:
+        raise ValueError('empty or inverted window')
+    observed = datetime.strptime(value['observed_at'], '%Y-%m-%dT%H:%M:%S.%fZ').replace(tzinfo=timezone.utc)
+    if round(observed.timestamp() * 1000) != value['window_end_ms']:
+        raise ValueError('observed_at is not the end of the window')
+
+
+def validate_derived_declaration(value, manifests, device_measurements):
+    """A verified manifest must declare the soft sensor with the same unit, and
+    the name must not be a device measurement."""
+    if value['measurement'] in device_measurements:
+        raise ValueError('derived value claims a device measurement')
+    for manifest in manifests:
+        if (manifest['model_id'], manifest['model_version']) != (value['model_id'], value['model_version']):
+            continue
+        for output in manifest['outputs']:
+            if output['kind'] == 'telemetry' and (output['asset'], output['measurement']) == (value['asset'], value['measurement']):
+                if output['unit'] != value['unit']:
+                    raise ValueError('derived unit differs from the model declaration')
+                return
+    raise ValueError('not a declared soft-sensor output of a verified model')
+
+
+def validate_derived_topic(topic, value, registry):
+    from tools.contracts import validate_topic
+    parts = topic.split('/')
+    if len(parts) != 9 or parts[7:] != ['derived', value['measurement']]:
+        raise ValueError('invalid derived topic')
+    validate_topic('/'.join(parts[:7] + ['telemetry']), value['asset'], registry)

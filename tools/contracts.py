@@ -44,7 +44,7 @@ def validate_payload(kind, raw):
     from referencing import Registry, Resource
 
     if kind not in ('telemetry', 'metadata', 'status', 'command', 'command-receipt', 'actuation-policy',
-                    'model-manifest', 'inference-event'):
+                    'model-manifest', 'inference-event', 'derived-value'):
         raise ValueError('unsupported message type')
     if not isinstance(raw, bytes) or len(raw) > 65536:
         raise ValueError('payload must be bytes of at most 65536 bytes')
@@ -112,6 +112,9 @@ def validate_payload(kind, raw):
     if kind == "inference-event":
         from tools.inference_contracts import validate_event
         validate_event(payload)
+    if kind == "derived-value":
+        from tools.inference_contracts import validate_derived
+        validate_derived(payload)
     return payload
 
 

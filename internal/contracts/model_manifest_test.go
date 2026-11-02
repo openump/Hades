@@ -90,7 +90,7 @@ func TestControlProfileStillCompilesWithoutEdgeAISchemas(t *testing.T) {
 		if err != nil || entry.IsDir() {
 			return err
 		}
-		if path == "v1/model-manifest.schema.json" || path == "v1/inference-event.schema.json" {
+		if path == "v1/model-manifest.schema.json" || path == "v1/inference-event.schema.json" || path == "v1/derived-value.schema.json" {
 			return nil
 		}
 		raw, err := os.ReadFile("../../schemas/" + path)
@@ -104,8 +104,10 @@ func TestControlProfileStillCompilesWithoutEdgeAISchemas(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := v.Validate("model-manifest", []byte(`{}`)); err == nil {
-		t.Fatal("a seven-schema bundle must not accept Edge AI kinds")
+	for _, kind := range []string{"model-manifest", "inference-event", "derived-value"} {
+		if _, err := v.Validate(kind, []byte(`{}`)); err == nil {
+			t.Fatalf("a seven-schema bundle must not accept Edge AI kind %s", kind)
+		}
 	}
 	command, _ := os.ReadFile("../../examples/contracts/control/command.json")
 	if _, err := v.Validate("command", command); err != nil {
@@ -162,5 +164,35 @@ func TestSchemaProfilesSelectedByPresentIDs(t *testing.T) {
 	files["v1/extra.schema.json"] = &fstest.MapFile{Data: []byte(`{"$schema":"https://json-schema.org/draft/2020-12/schema","$id":"urn:openump:schema:1.0:extra","type":"object"}`)}
 	if _, err := New(files); err == nil {
 		t.Fatal("expected an unknown schema ID to fail")
+	}
+}
+
+// TestNineSchemaBundleStillCompilesWithoutDerivedValue keeps Hades-035/036
+// site bundles (telemetry, control, model-manifest, inference-event) valid
+// after derived-value is added: each Edge AI schema is compiled when present.
+func TestNineSchemaBundleStillCompilesWithoutDerivedValue(t *testing.T) {
+	files := fstest.MapFS{}
+	err := fs.WalkDir(os.DirFS("../../schemas"), ".", func(path string, entry fs.DirEntry, err error) error {
+		if err != nil || entry.IsDir() || path == "v1/derived-value.schema.json" {
+			return err
+		}
+		raw, err := os.ReadFile("../../schemas/" + path)
+		files[path] = &fstest.MapFile{Data: raw}
+		return err
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	v, err := New(files)
+	if err != nil {
+		t.Fatal(err)
+	}
+	event, _ := os.ReadFile("../../examples/contracts/inference/inference-event.json")
+	if _, err := v.Validate("inference-event", event); err != nil {
+		t.Fatal(err)
+	}
+	derived, _ := os.ReadFile("../../examples/contracts/derived/derived-value.json")
+	if _, err := v.Validate("derived-value", derived); err == nil {
+		t.Fatal("a bundle without the derived-value schema must not accept derived values")
 	}
 }

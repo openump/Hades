@@ -100,12 +100,59 @@ Each derived value names its producing model (`model_id`, `model_version`) and t
 window it summarizes (`window_start_ms`, `window_end_ms`). `observed_at` is the window end,
 not the publish time, so a value always describes the data it was computed from.
 
-`hades-infer` publishes `derived/+` only for its asset. `consumer-primary` opts in to
-receive it. The development profile denies `derived/#` to anonymous clients.
+`hades-infer` publishes `derived/+` only for its asset. `consumer-primary` and
+`history-adapter` may read it; no other identity can, and the transfer exporter cannot.
+The development profile denies `derived/#` to anonymous clients.
 
-`Registry.ValidateDerivedTopic` binds a derived topic to its asset. The payload is a
-Hades-036 wire format validated by the producer. A formal versioned contract would join
-the Hades-035 profile when a consumer such as history needs to ingest derived values.
+Before publishing, `hades-infer` validates each value against the
+[`derived-value` contract](../contracts/edge-ai-inference.md#derived-value-hades-043),
+checks the active manifest declares it, that the name is not a device measurement, and
+that the topic binds to its asset and measurement. A value that fails is not published
+and counts against the model's failure budget.
+
+## Storing soft-sensor values in history (Hades-043)
+
+Derived ingestion in `hades-history` is **off by default**. Enable it by naming the
+model bundles whose soft sensors may be stored:
+
+```sh
+hades-history ... -derived-bundles /etc/hades/models/press-04-thermal \
+  -derived-keys /etc/hades/model-release-keys.json
+```
+
+Each bundle is verified like `hades-infer` verifies it (manifest schema, Ed25519
+signature, artifact digest). `hades-history` then also subscribes to `derived/+` and
+stores a value only if its model and version are among the verified bundles, the
+manifest declares it with the same unit, and its name is not a device measurement.
+
+Derived values are stored under their **own metrics**, never the device ones:
+
+```text
+hades_derived_value{asset_id,measurement,unit,model_id,model_version} <value> <window end>
+hades_derived_confidence{...same labels...} <confidence> <window end>
+```
+
+No query over `hades_observation_value` can include a derived value. There is one series
+per asset, measurement and model version (no per-window label), so the series count stays
+bounded. Derived records share the WAL, deduplication, retry and restart recovery of
+device telemetry. `hades-infer` derives each `observation_id` from the model, series and
+window, so a re-sent window deduplicates; a *different* value for the same model window
+is a conflict. Health reports `derived_admitted` and `derived_ingestion`.
+
+Values already taken in are delivered even after their model version is retired or
+`-derived-bundles` is removed; only new values are checked against the current bundles.
+Keep the bundles of every model version still publishing: a value from a version not
+listed is refused (and quarantined as a diagnostic, like any invalid message). Without
+`-derived-bundles`, `hades-history` also removes any `derived/+` subscription an earlier
+run left on its persistent broker session.
+
+Startup fails if `-derived-bundles` is set but the site's schema bundle has no
+`derived-value` schema, or a declared soft sensor reuses a device measurement name.
+`hades-infer` refuses such a bundle at load for the same reasons, instead of failing
+every window.
+
+Derived values are **not exported to Zeus**; see the
+[contract decision](../contracts/edge-ai-inference.md#mqtt-and-acl-separation).
 
 ## Memory
 
