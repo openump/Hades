@@ -7,11 +7,14 @@ cd "$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)"
 work=$(mktemp -d)
 mqtt=${HADES_UP_MQTT_PORT:-18931}
 vm=${HADES_UP_VM_PORT:-18938}
-project=hades-site
 up=''
 cleanup() {
   if [ -n "$up" ]; then kill -TERM "$up" 2>/dev/null || true; wait "$up" 2>/dev/null || true; fi
-  docker compose -p "$project" -f deploy/compose.yaml --profile history down -v >/dev/null 2>&1 || true
+  # The site's own Compose project, as recorded by hades init.
+  if [ -f "$work/site/site.json" ]; then
+    project=$(python3 -I -c 'import json,sys; print(json.load(open(sys.argv[1]))["compose_project"])' "$work/site/site.json")
+    env -u COMPOSE_PROJECT_NAME docker compose -p "$project" -f deploy/compose.yaml --profile history down -v >/dev/null 2>&1 || true
+  fi
   rm -rf "$work"
 }
 trap cleanup EXIT INT TERM
@@ -71,7 +74,7 @@ kinds = [e.get('type') for e in events()]
 assert kinds[-3:] == ['site_stopping', 'site_stopped', 'dependencies_stopped'], kinds[-5:]
 left = subprocess.run(['pgrep', '-f', f'{work}/hades'], capture_output=True, text=True).stdout.split()
 assert not left, ('processes left after teardown', left)
-running = subprocess.run(['docker', 'compose', '-p', 'hades-site', '-f', 'deploy/compose.yaml', '--profile', 'history', 'ps', '--status', 'running', '-q'], capture_output=True, text=True).stdout.split()
+running = subprocess.run(['docker', 'compose', '-p', site['compose_project'], '-f', 'deploy/compose.yaml', '--profile', 'history', 'ps', '--status', 'running', '-q'], capture_output=True, text=True).stdout.split()
 assert not running, ('dependencies still running after teardown', running)
 print(f'up: hades init/check/up brought {sorted(healthy)} healthy, {values} values reached the historian and a consumer, SIGTERM stopped every process and the dependencies')
 PY

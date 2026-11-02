@@ -4,7 +4,9 @@
 # and the loopback-only historian is unreachable from the edge network.
 set -eu
 cd "$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)"
-project=${COMPOSE_PROJECT_NAME:-hades-demo-smoke}
+# Always a private project: never inherit COMPOSE_PROJECT_NAME, or the teardown
+# below would remove the caller's stack (it did, in the CI broker job).
+project=hades-demo-smoke-$$
 export COMPOSE_PROJECT_NAME="$project"
 export HADES_MQTT_PORT=${HADES_DEMO_MQTT_PORT:-18951}
 alpine=alpine:3.24@sha256:294b683cb724975bec92580e1e685676bd4b50bda910ddb8c51d4cabeaec77e6
