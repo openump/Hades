@@ -140,6 +140,16 @@ with tempfile.TemporaryDirectory(prefix='hades-security-') as scratch:
   for identity in ('gateway-press-04','normalizer','history-adapter','transfer-adapter','hades-actuator','command-proposer'):
    pub(identity,event_topic,False);pub(identity,derived_topic,False)
   denied_sub('consumer-secondary',derived_topic.rsplit('/',1)[0]+'/+')
+  # Opt-in derived history (Hades-043): only hades-infer publishes derived/+; only
+  # opted-in identities may read it, and the transfer exporter never can.
+  for identity in ('transfer-adapter','consumer-secondary','hades-inspector','hades-mcp','normalizer','gateway-press-04'):
+   denied_sub(identity,derived_topic.rsplit('/',1)[0]+'/+')
+  pub('history-adapter',derived_topic,False);pub('consumer-primary',derived_topic,False)
+  derived_listener=subprocess.Popen(command('sub','history-adapter',v1)+['-t',derived_topic.rsplit('/',1)[0]+'/+','-C','1','-W','10','-v'],stdout=subprocess.PIPE,stderr=subprocess.STDOUT)
+  time.sleep(2)
+  subprocess.run(command('pub','hades-infer',v1)+['-t',derived_topic,'-m','derived-probe'],check=True,capture_output=True,timeout=8)
+  delivered,_=derived_listener.communicate(timeout=15)
+  assert derived_listener.returncode==0 and b'derived-probe' in delivered,(derived_listener.returncode,delivered)
   # Industrial MCP (Hades-034): proposes commands only; never telemetry, receipts or other assets.
   pub('hades-mcp',command_topic);pub('hades-mcp',command_topic.replace('/press-04/','/other-asset/'),False)
   pub('hades-mcp',topic,False);pub('hades-mcp',receipt_topic,False);pub('hades-mcp',event_topic,False)

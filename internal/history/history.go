@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 	"sync"
 	"time"
 
@@ -57,6 +58,8 @@ type Adapter struct {
 	records                                                     map[string]Record
 	samples                                                     map[string]string
 	retries, duplicates, conflicts, skipped, admitted, accepted uint64
+	derived                                                     contracts.DerivedDeclarations // nil: derived ingestion off
+	derivedAdmitted                                             uint64
 }
 
 func (a *Adapter) loadRecord(id string, cached Record) (Record, error) {
@@ -77,12 +80,18 @@ func (a *Adapter) loadRecord(id string, cached Record) (Record, error) {
 	return full, nil
 }
 
-func Open(cfg *sample.Config, dir string) (*Adapter, error) {
+func Open(cfg *sample.Config, dir string) (*Adapter, error) { return OpenWith(cfg, dir, nil) }
+
+// OpenWith opens the adapter and, when derived is non-nil, also accepts
+// soft-sensor values on derived/<measurement> that a verified model manifest
+// declares. Derived values are stored under their own metric name with model
+// provenance, never in a device measurement's series.
+func OpenWith(cfg *sample.Config, dir string, derived contracts.DerivedDeclarations) (*Adapter, error) {
 	store, err := storage.Open(dir, 100000, 256*1024*1024, 128*1024*1024)
 	if err != nil {
 		return nil, err
 	}
-	a := &Adapter{orderIndex: map[string]*pendingItem{}, batchRecords: 64, batchBytes: 1024 * 1024, cfg: cfg, store: store, records: map[string]Record{}, samples: map[string]string{}, pending: map[string]bool{}}
+	a := &Adapter{orderIndex: map[string]*pendingItem{}, batchRecords: 64, batchBytes: 1024 * 1024, cfg: cfg, store: store, records: map[string]Record{}, samples: map[string]string{}, pending: map[string]bool{}, derived: derived}
 	for key := range store.Records {
 		raw, ok, err := store.Read(key)
 		if err != nil || !ok {
@@ -98,13 +107,15 @@ func Open(cfg *sample.Config, dir string) (*Adapter, error) {
 			store.Close()
 			return nil, fmt.Errorf("invalid intake record")
 		}
-		p, err := a.validate(r.Topic, r.Payload)
+		// Recovery re-checks contract, topic and the stored mapping, but not the
+		// model declaration: a value validated at intake is still delivered after
+		// its model version is retired or metadata changes.
+		lines, keys, skips, id, err := a.parse(r.Topic, r.Payload, true)
 		if err != nil {
 			store.Close()
 			return nil, fmt.Errorf("intake context unavailable: %w", err)
 		}
-		lines, keys, skips, err := Map(cfg, p)
-		if err != nil || key != identity(p) || r.Digest != digest(r.Topic, r.Payload) || string(lines) != string(r.Lines) || skips != r.Skips || !equalKeys(keys, r.Keys) {
+		if key != id || r.Digest != digest(r.Topic, r.Payload) || string(lines) != string(r.Lines) || skips != r.Skips || !equalKeys(keys, r.Keys) {
 			store.Close()
 			return nil, fmt.Errorf("intake digest/mapping mismatch")
 		}
@@ -140,6 +151,52 @@ func digest(topic string, raw []byte) string {
 func identity(p map[string]any) string {
 	return p["asset_id"].(string) + "/" + p["message_id"].(string)
 }
+
+// parse validates one message for its topic and maps it to historian lines,
+// collision keys and its immutable identity. Device telemetry and derived
+// values are separate paths that never share a series.
+func (a *Adapter) parse(topic string, raw []byte, recovering bool) (lines []byte, keys []string, skips int, id string, err error) {
+	if assetCfg, kind, rerr := a.cfg.ResolveTopic(topic); rerr == nil && strings.HasPrefix(kind, "derived/") {
+		if a.derived == nil && !recovering {
+			return nil, nil, 0, "", fmt.Errorf("derived ingestion is not enabled")
+		}
+		var p map[string]any
+		if p, err = a.validateDerived(topic, raw, assetCfg, !recovering); err != nil {
+			return
+		}
+		lines, keys = MapDerived(p)
+		return lines, keys, 0, "derived:" + p["asset"].(string) + "/" + p["observation_id"].(string), nil
+	}
+	var p map[string]any
+	if p, err = a.validate(topic, raw); err != nil {
+		return
+	}
+	lines, keys, skips, err = Map(a.cfg, p)
+	return lines, keys, skips, identity(p), err
+}
+
+// validateDerived accepts a soft-sensor value only when it matches the
+// derived-value contract and its derived topic and, at intake, a verified
+// model declaration without reusing a device measurement name.
+func (a *Adapter) validateDerived(topic string, raw []byte, assetCfg *sample.Config, checkDeclaration bool) (map[string]any, error) {
+	p, err := a.cfg.Validator.Validate("derived-value", raw)
+	if err != nil {
+		return nil, err
+	}
+	asset, measurement := p["asset"].(string), p["measurement"].(string)
+	if err = a.cfg.Registry.ValidateDerivedTopic(topic, asset, measurement); err != nil {
+		return nil, err
+	}
+	if !checkDeclaration {
+		return p, nil
+	}
+	devices, _ := assetCfg.Metadata["measurements"].(map[string]any)
+	if err = contracts.ValidateDerivedDeclaration(p, a.derived, devices); err != nil {
+		return nil, err
+	}
+	return p, nil
+}
+
 func (a *Adapter) validate(topic string, raw []byte) (map[string]any, error) {
 	assetCfg, kind, err := a.cfg.ResolveTopic(topic)
 	if err != nil || kind != "telemetry" {
@@ -158,15 +215,11 @@ func (a *Adapter) validate(topic string, raw []byte) (map[string]any, error) {
 	return p, nil
 }
 func (a *Adapter) Intake(topic string, raw []byte) (string, error) {
-	p, err := a.validate(topic, raw)
+	lines, keys, skips, key, err := a.parse(topic, raw, false)
 	if err != nil {
 		a.mu.Lock()
 		a.validationFailures++
 		a.mu.Unlock()
-		return "", err
-	}
-	lines, keys, skips, err := Map(a.cfg, p)
-	if err != nil {
 		return "", err
 	}
 	a.mu.Lock()
@@ -174,7 +227,6 @@ func (a *Adapter) Intake(topic string, raw []byte) (string, error) {
 	if a.closed {
 		return "", &StorageError{context.Canceled}
 	}
-	key := identity(p)
 	hash := digest(topic, raw)
 	if old, exists := a.records[key]; exists {
 		if old.Digest != hash {
@@ -225,6 +277,9 @@ func (a *Adapter) Intake(topic string, raw []byte) (string, error) {
 	}
 	a.skipped += uint64(skips)
 	a.admitted++
+	if strings.HasPrefix(key, "derived:") {
+		a.derivedAdmitted++
+	}
 	return "accepted_synced", nil
 }
 
@@ -382,7 +437,7 @@ func (a *Adapter) Stats() map[string]any {
 			suspended++
 		}
 	}
-	return map[string]any{"batch_limit_records": a.batchRecords, "batch_limit_bytes": a.batchBytes, "retry_at": a.retryAt, "records": len(a.records), "bytes": a.store.Bytes, "pending": pending, "oldest_pending_ms": oldestMS, "suspended": suspended, "admitted": a.admitted, "api_accepted": a.accepted, "duplicates": a.duplicates, "conflicts": a.conflicts, "skipped_values": a.skipped, "retries": a.retries, "validation_failures": a.validationFailures, "storage_failures": a.storageFailures, "capacity_refusals": a.capacityRefusals, "write_count": a.writeCount, "write_latency": a.writeLatency.Snapshot(), "write_ms_sum": a.writeMS, "storage": a.store.Stats(), "transfer_state": "not_observed_by_this_service"}
+	return map[string]any{"batch_limit_records": a.batchRecords, "batch_limit_bytes": a.batchBytes, "retry_at": a.retryAt, "records": len(a.records), "bytes": a.store.Bytes, "pending": pending, "oldest_pending_ms": oldestMS, "suspended": suspended, "admitted": a.admitted, "derived_admitted": a.derivedAdmitted, "derived_ingestion": a.derived != nil, "api_accepted": a.accepted, "duplicates": a.duplicates, "conflicts": a.conflicts, "skipped_values": a.skipped, "retries": a.retries, "validation_failures": a.validationFailures, "storage_failures": a.storageFailures, "capacity_refusals": a.capacityRefusals, "write_count": a.writeCount, "write_latency": a.writeLatency.Snapshot(), "write_ms_sum": a.writeMS, "storage": a.store.Stats(), "transfer_state": "not_observed_by_this_service"}
 }
 func (a *Adapter) Close() error {
 	a.mu.Lock()

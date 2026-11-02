@@ -2,6 +2,7 @@ package infer
 
 import (
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
@@ -10,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/openump/Hades/internal/contracts"
 	"github.com/openump/Hades/internal/sample"
 )
 
@@ -162,7 +164,7 @@ func DerivedPublications(sensors []SoftSensorObservation, out *Output, topicPref
 		}
 		payload, err := json.Marshal(map[string]any{
 			"schema_version":  "1.0",
-			"observation_id":  uuidV7(out.WindowEnd),
+			"observation_id":  observationID(out, o),
 			"asset":           o.Asset,
 			"measurement":     o.Measurement,
 			"value":           o.Value,
@@ -182,6 +184,22 @@ func DerivedPublications(sensors []SoftSensorObservation, out *Output, topicPref
 	return pubs, nil
 }
 
+// observationID is a UUIDv7 stamped at the window end whose remaining bits
+// are a hash of model, version, asset, measurement and window, so a re-sent
+// window (after a restart or retry) carries the same identity and
+// deduplicates downstream instead of conflicting.
+func observationID(out *Output, o SoftSensorObservation) string {
+	sum := sha256.Sum256([]byte(fmt.Sprintf("%s@%s\x00%s\x00%s\x00%d\x00%d", out.ModelID, out.ModelVersion, o.Asset, o.Measurement, out.WindowStart.UnixMilli(), out.WindowEnd.UnixMilli())))
+	var b [16]byte
+	copy(b[6:], sum[:10])
+	ms := uint64(out.WindowEnd.UnixMilli())
+	binary.BigEndian.PutUint16(b[0:2], uint16(ms>>32))
+	binary.BigEndian.PutUint32(b[2:6], uint32(ms))
+	b[6] = b[6]&0x0F | 0x70
+	b[8] = b[8]&0x3F | 0x80
+	return fmt.Sprintf("%x-%x-%x-%x-%x", b[0:4], b[4:6], b[6:8], b[8:10], b[10:16])
+}
+
 // Checker validates outgoing publications against the contracts before they
 // reach the broker, so a misbehaving runner can never publish an invalid event
 // or a mis-bound topic.
@@ -193,6 +211,7 @@ type Checker struct {
 		ValidateInferenceEventTopic(topic string, event map[string]any) error
 		ValidateDerivedTopic(topic, asset, measurement string) error
 	}
+	declared map[string]contracts.DerivedDeclarations // per model@version, built once
 }
 
 func (c Checker) Event(pub Publication) error {
@@ -203,17 +222,53 @@ func (c Checker) Event(pub Publication) error {
 	return c.Registry.ValidateInferenceEventTopic(pub.Topic, event)
 }
 
-func (c Checker) Derived(pub Publication) error {
-	var value struct {
-		Asset       string  `json:"asset"`
-		Measurement string  `json:"measurement"`
-		Value       float64 `json:"value"`
+// Declarations returns the soft-sensor outputs the manifest declares.
+func (m Manifest) Declarations() contracts.DerivedDeclarations {
+	d := contracts.DerivedDeclarations{}
+	for _, o := range m.Outputs {
+		if o.Kind == "telemetry" {
+			d.Add(contracts.SoftSensor{ModelID: m.ModelID, ModelVersion: m.ModelVersion, Asset: o.Asset, Measurement: o.Measurement, Unit: o.Unit})
+		}
 	}
-	if err := json.Unmarshal(pub.Payload, &value); err != nil {
+	return d
+}
+
+// CheckSoftSensors refuses, when a bundle is loaded, a model whose soft
+// sensors could never be published: the site's schema bundle lacks the
+// derived-value contract, or an output reuses a device measurement name.
+func CheckSoftSensors(m Manifest, validator interface{ Supports(string) bool }, devices func(asset string) map[string]any) error {
+	declared := m.Declarations()
+	if len(declared) == 0 {
+		return nil
+	}
+	if !validator.Supports("derived-value") {
+		return fmt.Errorf("model declares soft sensors but the schema bundle has no derived-value contract")
+	}
+	return declared.CheckDeclarationsAgainstDevices(devices)
+}
+
+// Derived validates a soft-sensor value against the derived-value contract,
+// checks the producing manifest declares it and that it does not reuse a
+// device measurement name, and binds it to its derived topic, before it
+// reaches the broker. devices maps an asset to its metadata measurements.
+func (c *Checker) Derived(pub Publication, m Manifest, devices func(asset string) map[string]any) error {
+	value, err := c.Validator.Validate("derived-value", pub.Payload)
+	if err != nil {
 		return err
 	}
-	if math.IsNaN(value.Value) || math.IsInf(value.Value, 0) {
-		return fmt.Errorf("derived %s: non-finite value", value.Measurement)
+	key := m.ModelID + "@" + m.ModelVersion
+	declared, ok := c.declared[key]
+	if !ok {
+		if c.declared == nil {
+			c.declared = map[string]contracts.DerivedDeclarations{}
+		}
+		declared = m.Declarations()
+		c.declared[key] = declared
 	}
-	return c.Registry.ValidateDerivedTopic(pub.Topic, value.Asset, value.Measurement)
+	asset, _ := value["asset"].(string)
+	if err := contracts.ValidateDerivedDeclaration(value, declared, devices(asset)); err != nil {
+		return err
+	}
+	measurement, _ := value["measurement"].(string)
+	return c.Registry.ValidateDerivedTopic(pub.Topic, asset, measurement)
 }

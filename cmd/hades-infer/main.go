@@ -72,15 +72,24 @@ func run() error {
 		return err
 	}
 	trust := infer.Trust(public)
+	prefixes := map[string]string{}
+	devices := map[string]map[string]any{}
+	for _, asset := range cfg.Assets() {
+		if id, ok := asset.Metadata["asset_id"].(string); ok {
+			prefixes[id] = asset.Prefix
+			devices[id], _ = asset.Metadata["measurements"].(map[string]any)
+		}
+	}
+	deviceMeasurements := func(asset string) map[string]any { return devices[asset] }
 	status := statusReporter()
-	model, err := loadModel(*bundleDir, validator, trust, *runnerSocket)
+	model, err := loadModel(*bundleDir, validator, trust, *runnerSocket, deviceMeasurements)
 	if err != nil {
 		status(infer.StatusEvent{State: infer.StateDegraded, Reason: "bundle-rejected: " + err.Error(), Model: "standby", At: time.Now().UTC()})
 		return err
 	}
 	var fallback *infer.Model
 	if *rollbackDir != "" {
-		if fallback, err = loadModel(*rollbackDir, validator, trust, *runnerSocket); err != nil {
+		if fallback, err = loadModel(*rollbackDir, validator, trust, *runnerSocket, deviceMeasurements); err != nil {
 			return fmt.Errorf("rollback bundle: %w", err)
 		}
 	}
@@ -88,24 +97,21 @@ func run() error {
 	if err != nil {
 		return err
 	}
-	prefixes := map[string]string{}
-	for _, asset := range cfg.Assets() {
-		if id, ok := asset.Metadata["asset_id"].(string); ok {
-			prefixes[id] = asset.Prefix
-		}
-	}
 	topicPrefix := func(asset string) (string, error) {
 		if p, ok := prefixes[asset]; ok {
 			return p, nil
 		}
 		return "", fmt.Errorf("asset %s is not in the approved catalog", asset)
 	}
-	return serve(ctx, engine, validator, cfg, *broker, *interval, topicPrefix)
+	return serve(ctx, engine, validator, cfg, *broker, *interval, topicPrefix, deviceMeasurements)
 }
 
-func loadModel(dir string, validator *contracts.Validator, trust infer.Trust, socket string) (*infer.Model, error) {
+func loadModel(dir string, validator *contracts.Validator, trust infer.Trust, socket string, devices func(string) map[string]any) (*infer.Model, error) {
 	bundle, err := infer.LoadBundle(dir, validator, trust)
 	if err != nil {
+		return nil, err
+	}
+	if err := infer.CheckSoftSensors(bundle.Manifest, validator, devices); err != nil {
 		return nil, err
 	}
 	runner, err := infer.NewRunner(bundle, socket)
@@ -122,7 +128,7 @@ func statusReporter() func(infer.StatusEvent) {
 	}
 }
 
-func serve(ctx context.Context, engine *infer.Engine, validator *contracts.Validator, cfg *sample.Config, broker string, interval time.Duration, topicPrefix func(string) (string, error)) error {
+func serve(ctx context.Context, engine *infer.Engine, validator *contracts.Validator, cfg *sample.Config, broker string, interval time.Duration, topicPrefix func(string) (string, error), deviceMeasurements func(string) map[string]any) error {
 	u, err := transport.BrokerURL(broker, cfg.TLS)
 	if err != nil {
 		return err
@@ -216,7 +222,7 @@ func serve(ctx context.Context, engine *infer.Engine, validator *contracts.Valid
 			dropped.Add(1)
 		}
 	}
-	checker := infer.Checker{Validator: validator, Registry: cfg.Registry}
+	checker := &infer.Checker{Validator: validator, Registry: cfg.Registry}
 	tick := time.NewTicker(interval)
 	defer tick.Stop()
 	health := time.NewTicker(time.Second)
@@ -263,7 +269,7 @@ func serve(ctx context.Context, engine *infer.Engine, validator *contracts.Valid
 			}
 			for _, pub := range derivedPubs {
 				if err == nil {
-					err = checker.Derived(pub)
+					err = checker.Derived(pub, out.Manifest, deviceMeasurements)
 				}
 			}
 			if err != nil {

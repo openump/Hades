@@ -33,6 +33,9 @@ func (offlineLoader) Load(url string) (any, error) {
 // Validator compiles trusted local schemas once and can be reused concurrently.
 type Validator struct{ schemas map[string]*jsonschema.Schema }
 
+// Supports reports whether the bundle compiled the schema for kind.
+func (v *Validator) Supports(kind string) bool { _, ok := v.schemas[kind]; return ok }
+
 func New(files fs.FS) (*Validator, error) {
 	c := jsonschema.NewCompiler()
 	c.AssertFormat()
@@ -99,7 +102,7 @@ func New(files fs.FS) (*Validator, error) {
 func profileKinds(ids map[string]bool) ([]string, error) {
 	const prefix = "urn:openump:schema:1.0:"
 	profiles := [][]string{{"common", "telemetry", "metadata", "status"}, {"command", "command-receipt", "actuation-policy"}}
-	optional := []string{"model-manifest", "inference-event"}
+	optional := []string{"model-manifest", "inference-event", "derived-value"}
 	known := map[string]bool{}
 	var kinds []string
 	for i, profile := range profiles {
@@ -285,6 +288,11 @@ func (v *Validator) Validate(kind string, raw []byte) (map[string]any, error) {
 	}
 	if kind == "inference-event" {
 		if err := inferenceEventSemantics(object); err != nil {
+			return nil, err
+		}
+	}
+	if kind == "derived-value" {
+		if err := derivedValueSemantics(object); err != nil {
 			return nil, err
 		}
 	}

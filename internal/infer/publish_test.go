@@ -139,8 +139,109 @@ func TestCheckerRejectsInvalidOutgoingPublications(t *testing.T) {
 	if err := c.Event(Publication{Topic: "openump/v1/acme/berlin/assembly/line-01/press-04/event/x", Payload: []byte(`{"schema_version":"1.0"}`)}); err == nil {
 		t.Fatal("a schema-invalid event must be refused before publishing")
 	}
-	bad := Publication{Topic: "openump/v1/acme/berlin/assembly/line-01/press-04/derived/other", Payload: []byte(`{"asset":"urn:openump:acme:berlin:press-04","measurement":"estimated_bearing_wear","value":1}`)}
-	if err := c.Derived(bad); err == nil {
-		t.Fatal("a derived value on the wrong topic must be refused")
+}
+
+// TestCheckerValidatesDerivedAgainstTheContract builds a real derived
+// publication from a verified bundle and checks the producer refuses each
+// way it could go wrong before reaching the broker.
+func TestCheckerValidatesDerivedAgainstTheContract(t *testing.T) {
+	key := testKey(0)
+	bundle, err := LoadBundle(writeBundle(t, key, []byte("x"), nil), testValidator(t), trustFor(key))
+	if err != nil {
+		t.Fatal(err)
+	}
+	m := bundle.Manifest
+	var sensor SoftSensorObservation
+	for _, o := range m.Outputs {
+		if o.Kind == "telemetry" {
+			sensor = SoftSensorObservation{Asset: o.Asset, Measurement: o.Measurement, Value: 12.5, Unit: o.Unit}
+		}
+	}
+	if sensor.Measurement == "" {
+		t.Fatal("fixture bundle declares no soft sensor")
+	}
+	devices := func(string) map[string]any { return map[string]any{"motor_temperature": map[string]any{}} }
+	start := time.UnixMilli(1792152000000)
+	out := &Output{ModelID: m.ModelID, ModelVersion: m.ModelVersion, WindowStart: start, WindowEnd: start.Add(time.Minute), Result: Result{Confidence: 0.9}}
+	build := func(o SoftSensorObservation, out *Output) Publication {
+		pubs, err := DerivedPublications([]SoftSensorObservation{o}, out, pressPrefix)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return pubs[0]
+	}
+	c := &Checker{Validator: testValidator(t), Registry: registry(t)}
+	if err := c.Derived(build(sensor, out), m, devices); err != nil {
+		t.Fatal("a declared soft sensor must pass:", err)
+	}
+	wrongTopic := build(sensor, out)
+	wrongTopic.Topic = strings.Replace(wrongTopic.Topic, "/derived/"+sensor.Measurement, "/derived/other", 1)
+	undeclared := sensor
+	undeclared.Measurement = "undeclared_estimate"
+	wrongUnit := sensor
+	wrongUnit.Unit = "K"
+	device := sensor
+	device.Measurement = "motor_temperature"
+	otherModel := *out
+	otherModel.ModelVersion = "9.9.9"
+	emptyWindow := *out
+	emptyWindow.WindowStart = emptyWindow.WindowEnd
+	for name, pub := range map[string]Publication{
+		"wrong topic":                    wrongTopic,
+		"undeclared measurement":         build(undeclared, out),
+		"unit differs from the manifest": build(wrongUnit, out),
+		"device measurement name":        build(device, out),
+		"another model version":          build(sensor, &otherModel),
+		"empty window":                   build(sensor, &emptyWindow),
+		"not the contract shape":         {Topic: wrongTopic.Topic, Payload: []byte(`{"asset":"urn:openump:acme:berlin:press-04","measurement":"x","value":1}`)},
+	} {
+		if err := c.Derived(pub, m, devices); err == nil {
+			t.Errorf("%s: must be refused before publishing", name)
+		}
+	}
+}
+
+func TestObservationIDIsStablePerWindow(t *testing.T) {
+	start := time.UnixMilli(1792152000000)
+	out := &Output{ModelID: "press-04-thermal", ModelVersion: "1.0.0", WindowStart: start, WindowEnd: start.Add(time.Minute)}
+	o := SoftSensorObservation{Asset: "urn:openump:acme:berlin:press-04", Measurement: "estimated_bearing_wear", Value: 1, Unit: "%"}
+	a, b := observationID(out, o), observationID(out, o)
+	if a != b {
+		t.Fatal("a re-sent window must keep its identity")
+	}
+	next := *out
+	next.WindowEnd = next.WindowEnd.Add(time.Second)
+	other := o
+	other.Measurement = "other_estimate"
+	if observationID(&next, o) == a || observationID(out, other) == a {
+		t.Fatal("another window or series must get another identity")
+	}
+	v := testValidator(t)
+	pubs, _ := DerivedPublications([]SoftSensorObservation{o}, out, pressPrefix)
+	if _, err := v.Validate("derived-value", pubs[0].Payload); err != nil {
+		t.Fatal("the deterministic identity must still be a valid UUIDv7:", err)
+	}
+}
+
+type supports bool
+
+func (s supports) Supports(string) bool { return bool(s) }
+
+func TestBundlesWithUnpublishableSoftSensorsAreRefusedAtLoad(t *testing.T) {
+	key := testKey(0)
+	bundle, err := LoadBundle(writeBundle(t, key, []byte("x"), nil), testValidator(t), trustFor(key))
+	if err != nil {
+		t.Fatal(err)
+	}
+	none := func(string) map[string]any { return nil }
+	if err := CheckSoftSensors(bundle.Manifest, supports(true), none); err != nil {
+		t.Fatal(err)
+	}
+	if err := CheckSoftSensors(bundle.Manifest, supports(false), none); err == nil {
+		t.Fatal("soft sensors without the derived-value schema must be refused at load")
+	}
+	clash := func(string) map[string]any { return map[string]any{"estimated_bearing_wear": map[string]any{}} }
+	if err := CheckSoftSensors(bundle.Manifest, supports(true), clash); err == nil {
+		t.Fatal("a soft sensor named like a device measurement must be refused at load")
 	}
 }
