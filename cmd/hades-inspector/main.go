@@ -291,8 +291,15 @@ func serviceHealth(ctx context.Context, paths string) map[string]any {
 				entry["error"] = err.Error()
 			} else if status, err := supervisor.Probe(ctx, cfg); err != nil {
 				entry["revision"], entry["ready"], entry["error"] = cfg.Revision, false, err.Error()
+				// Only a mismatch answer is evidence against the digest; a
+				// supervisor that cannot be reached leaves it unknown.
+				if strings.Contains(err.Error(), "mismatch") {
+					entry["digest_verified"] = false
+				}
 			} else {
+				// Probe succeeds only when the live definition and binary digest match.
 				entry["revision"], entry["ready"], entry["last_output_at"] = cfg.Revision, status.Ready, status.LastOutput
+				entry["child_pid"], entry["started_at"], entry["digest_verified"] = status.ChildPID, status.Started, true
 			}
 			mu.Lock()
 			out[path] = entry

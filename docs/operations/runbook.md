@@ -54,6 +54,12 @@ and [integration evidence](../pilot/integration-evidence.md).
 
 Physical PLC access and controller/firmware qualification remain outside this software pilot.
 
+## Terminal dashboard over SSH (`Hades-039`)
+
+`hades-ctl top` is a read-only `htop`-style view of one node over SSH. It polls
+`hades-inspector`'s loopback snapshot. `hades-ctl top -once` prints every pane
+for support bundles. See [the inspector guide](inspector.md#terminal-dashboard-hades-ctl-top-hades-039).
+
 ## Security-control evidence pack (`Hades-037`)
 
 `hades-check -cra-report` evaluates a reviewed secure release and writes an

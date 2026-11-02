@@ -111,3 +111,10 @@ RFC8785/JCS uses the upstream Cyberphone JSON canonicalization implementation,
 Ed25519 and SHA-256 use Go's standard crypto packages. Upstream source and
 API: [jsoncanonicalizer](https://github.com/cyberphone/json-canonicalization/tree/32a48195b9b2/go/src/webpki.org/jsoncanonicalizer).
 This dependency supplies canonical bytes, not command authorization or PLC safety.
+
+## Terminal dashboard (Hades-039)
+
+`hades-ctl top` imports `golang.org/x/sys` v0.49.0 (BSD-3-Clause) directly for
+terminal raw mode and window size (`unix.IoctlGetTermios`/`IoctlSetTermios`,
+`IoctlGetWinsize`). The same version was already linked transitively and pinned
+in go.sum; no new module was added. The dashboard needs no TUI framework.
