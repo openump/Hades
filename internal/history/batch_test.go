@@ -162,7 +162,10 @@ func TestAcceptedBatchSurvivesPartialLocalRetirement(t *testing.T) {
 		t.Fatal(err)
 	}
 	retired.State = "api_accepted"
-	retired.Retired = time.Now().UTC()
+	// Drain stamps its own time.Now(). RFC3339Nano drops trailing fraction
+	// zeros, so size the frame for the longest encoding (nine fraction
+	// digits) or the first retirement may not fit either.
+	retired.Retired = time.Date(2026, 1, 1, 0, 0, 0, 123456789, time.UTC)
 	encoded, _ := json.Marshal(retired)
 	storeMaxBytes := reflect.ValueOf(a.store).Elem().FieldByName("maxBytes")
 	frameBytes := len(ids[0]) + len(encoded) + 28 + storage.Overhead
