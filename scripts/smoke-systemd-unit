@@ -26,10 +26,23 @@ for _ in $(seq 1 20); do [ "$(run_in systemctl show -p ActiveState --value hades
 [ "$(run_in stat -c '%U %G' /var/log/hades/hades-pki)" = "hades hades" ]
 [ "$(run_in stat -c '%U %a' /var/lib/hades/hades-pki/pki/ca.key)" = "hades 600" ]
 # Writes outside the state directory are confined by ProtectSystem=strict.
-run_in sh -c 'echo "HADES_ARGS=-out /usr/local/pki" > /etc/hades/hades-pki.env'
+# The target is a directory the hades user owns, so plain file permissions
+# would allow the write: only the sandbox can stop it. The verdict is whether
+# the file appears, not the unit's Result, which a fast run may already have
+# reset. Count journal "Started" lines to know this run has finished.
+run_in install -d -o hades -g hades -m 0750 /opt/hades-outside
+run_in sh -c 'echo "HADES_ARGS=-out /opt/hades-outside/pki" > /etc/hades/hades-pki.env'
 run_in systemctl reset-failed hades-service@hades-pki 2>/dev/null || true
+starts() { run_in journalctl -u hades-service@hades-pki --no-pager -o cat | grep -c '^Started ' || true; }
+before=$(starts)
 run_in systemctl start hades-service@hades-pki || true
-for _ in $(seq 1 20); do [ "$(run_in systemctl show -p ActiveState --value hades-service@hades-pki)" != activating ] && break; sleep 1; done
-[ "$(run_in systemctl show -p Result --value hades-service@hades-pki)" != success ] && ! run_in test -e /usr/local/pki/ca.key \
-  || { echo "a write outside the state directory was not confined"; exit 1; }
+for _ in $(seq 1 30); do
+  state=$(run_in systemctl show -p ActiveState --value hades-service@hades-pki)
+  [ "$(starts)" -gt "$before" ] && [ "$state" != activating ] && [ "$state" != active ] && break
+  sleep 1
+done
+[ "$(starts)" -gt "$before" ] || { echo "the confined run never started"; exit 1; }
+if run_in test -e /opt/hades-outside/pki/ca.key; then
+  echo "a write outside the state directory was not confined"; exit 1
+fi
 echo "systemd: packaged unit ran as hades in its systemd-created state directory; writes elsewhere confined"
