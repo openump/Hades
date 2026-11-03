@@ -2,9 +2,17 @@
 // Renders the read-only snapshot. Values come from the plant, so every value is
 // written with textContent, never as HTML markup: telemetry cannot inject tags.
 
+// clean replaces control characters (including ESC and newlines) and Unicode
+// bidirectional formatting characters with U+FFFD, the same as hades top: a
+// plant value can neither inject markup (textContent) nor reorder text to
+// disguise what it says.
+function clean(text) {
+  return String(text).replace(/[\u0000-\u001f\u007f-\u009f\u061c\u200e\u200f\u202a-\u202e\u2066-\u2069]/g, "\ufffd");
+}
+
 function el(tag, text, cls) {
   const node = document.createElement(tag);
-  if (text !== undefined && text !== null) node.textContent = String(text);
+  if (text !== undefined && text !== null) node.textContent = clean(text);
   if (cls) node.className = cls;
   return node;
 }
@@ -20,7 +28,13 @@ function table(headers, rows) {
     cells.forEach(c => {
       const td = el("td");
       if (c instanceof Node) td.appendChild(c);
-      else td.textContent = c === null || c === undefined ? "" : (typeof c === "object" ? JSON.stringify(c) : String(c));
+      else {
+        const text = c === null || c === undefined ? "" : clean(typeof c === "object" ? JSON.stringify(c) : String(c));
+        td.textContent = text;
+        // Short tokens (names, timestamps, IDs) keep their width; only long
+        // free text may wrap anywhere, so hostile text cannot squeeze columns.
+        td.className = text.length > 40 ? "long" : "short";
+      }
       tr.appendChild(td);
     });
     t.appendChild(tr);
@@ -63,15 +77,37 @@ function render(s) {
   });
   replace("receipts", receipts.length ? table(["Command", "Asset", "Parameter", "State", "Gates", "Recorded"], receipts) : el("p", "No receipts received yet.", "note"));
 
-  const q = el("dl");
-  Object.keys(s.quarantine || {}).sort().forEach(k => { q.appendChild(el("dt", k)); q.appendChild(el("dd", s.quarantine[k])); });
-  if (!q.childElementCount) q.appendChild(el("dd", "Normalizer health not configured."));
-  replace("quarantine", q);
+  const q = document.getElementById("quarantine");
+  const items = [];
+  Object.keys(s.quarantine || {}).sort().forEach(k => { items.push(el("dt", k), el("dd", s.quarantine[k])); });
+  if (!items.length) items.push(el("dd", "Normalizer health not configured."));
+  q.replaceChildren(...items);
 
   const certs = (s.certificates || []).map(c => [c.subject, c.path, c.not_after, el("span", c.days_left + " days", "badge " + (c.days_left < 0 ? "bad" : c.days_left < 30 ? "uncertain" : "good"))]);
   replace("certificates", certs.length ? table(["Certificate", "File", "Expires", "Remaining"], certs) : el("p", "No certificates configured.", "note"));
-  const svc = Object.keys(s.services || {}).sort().map(name => [name, JSON.stringify(s.services[name])]);
-  replace("services", svc.length ? table(["Service", "Status"], svc) : el("p", "No supervised services configured.", "note"));
+  const svc = Object.keys(s.services || {}).sort().map(path => service(path, s.services[path] || {}));
+  replace("services", svc.length ? table(["Service", "Ready", "Digest", "PID", "Revision", "Started", "Last output / error"], svc) : el("p", "No supervised services configured.", "note"));
+}
+
+// service renders one supervised service as readable fields (the same as the
+// supervisor pane of hades top). Times come from the snapshot, never the
+// browser clock, so the view is reproducible.
+function service(path, e) {
+  const name = el("span");
+  const short = path.split("/").pop().replace(/\.json$/, "");
+  name.appendChild(el("strong", short, short.length > 40 ? "long" : "nowrap"));
+  name.appendChild(el("div", path, "note"));
+  const ready = el("span", e.ready ? "ready" : "not ready", "badge " + (e.ready ? "good" : "bad"));
+  const digest = e.digest_verified === true ? el("span", "verified", "badge good")
+    : e.digest_verified === false ? el("span", "MISMATCH", "badge bad")
+    : el("span", "unknown", "badge uncertain"); // supervisor unreachable: not a mismatch
+  const detail = e.error ? el("span", e.error, "error") : when(e.last_output_at);
+  return [name, ready, digest, e.child_pid || "", e.revision || "", when(e.started_at), detail];
+}
+
+// when hides Go's zero time ("no output yet") instead of showing year 1.
+function when(t) {
+  return !t || String(t).startsWith("0001-01-01") ? "" : t;
 }
 
 function connected(ok) {

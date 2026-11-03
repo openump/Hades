@@ -156,15 +156,23 @@ func NewClient(timeout time.Duration) *http.Client {
 }
 
 // clean makes an untrusted string safe to print: control characters
-// (including ESC, C1 controls and newlines) become U+FFFD, so plant data or
-// error text can never drive the operator's terminal or break a row.
+// (including ESC, C1 controls and newlines) and Unicode bidirectional
+// formatting characters become U+FFFD, so plant data or error text can never
+// drive the operator's terminal, break a row, or reorder text to disguise
+// what it says (an RLO override would show "payload" as "daolyap").
 func clean(s string) string {
 	return strings.Map(func(r rune) rune {
-		if r < 0x20 || r == 0x7f || (r >= 0x80 && r <= 0x9f) {
+		if r < 0x20 || r == 0x7f || (r >= 0x80 && r <= 0x9f) || bidiControl(r) {
 			return '\uFFFD'
 		}
 		return r
 	}, s)
+}
+
+// bidiControl reports the Unicode bidirectional formatting characters: marks,
+// embeddings, overrides and isolates.
+func bidiControl(r rune) bool {
+	return r == 0x061c || r == 0x200e || r == 0x200f || (r >= 0x202a && r <= 0x202e) || (r >= 0x2066 && r <= 0x2069)
 }
 
 // SnapshotURL turns an inspector base address into its snapshot endpoint.

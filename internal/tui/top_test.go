@@ -296,7 +296,7 @@ func TestKeyDecoding(t *testing.T) {
 }
 
 func TestUntrustedTextCannotDriveTheTerminal(t *testing.T) {
-	evil := "\x1b]52;c;cHduZWQ=\x07\x1b[2J\u009b31m\nrow"
+	evil := "\x1b]52;c;cHduZWQ=\x07\x1b[2J\u009b31m\nrow\u202edaolyap\u202c\u2066x\u2069\u200f"
 	snap := &inspect.Snapshot{
 		Assets:       []inspect.Asset{{Topic: "openump/v1/" + evil, Signals: map[string]inspect.Signal{evil: {Value: evil, Unit: evil, Quality: evil, ObservedAt: t0}}}},
 		Receipts:     []inspect.Receipt{{CommandID: evil, Asset: evil, Parameter: evil, State: evil, RecordedAt: t0}},
@@ -308,7 +308,7 @@ func TestUntrustedTextCannotDriveTheTerminal(t *testing.T) {
 	s.Apply(Sample{Snapshot: snap, At: t0})
 	s.Err = errors.New(evil)
 	out := Once(s, t0, false)
-	for _, bad := range []string{"\x1b", "\x07", "\u009b"} {
+	for _, bad := range []string{"\x1b", "\x07", "\u009b", "\u202e", "\u2066", "\u200f"} {
 		if strings.Contains(out, bad) {
 			t.Fatalf("control character %q reached the terminal:\n%q", bad, out)
 		}

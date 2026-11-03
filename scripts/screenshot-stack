@@ -1,0 +1,69 @@
+#!/bin/sh
+# Visual verification (Hades-044): capture the console and hades top from
+# deterministic fixtures and compare them with the reviewed baselines in
+# tests/visual/baselines, then capture the vmui history chart from a real
+# `hades up` demo stack with content checks. Screenshots and diffs go to
+# artifacts/visual.
+#
+#   scripts/screenshot-stack                 # Linux: pinned container browser, compared
+#   scripts/screenshot-stack --preview       # any OS: local Chrome, not compared
+#   scripts/screenshot-stack --refresh       # accept the captures as new baselines (review first)
+set -eu
+cd "$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)"
+out=artifacts/visual
+mode=compare
+case "${1:-}" in
+  --preview) mode=preview ;;
+  --refresh) mode=refresh ;;
+  "") ;;
+  *) echo "usage: scripts/screenshot-stack [--preview|--refresh]" >&2; exit 2 ;;
+esac
+browser=container
+if [ "$mode" = preview ] || [ "$(uname -s)" != Linux ]; then
+  browser=host
+  # Baselines come only from the pinned browser: never write them from another.
+  [ "$mode" = refresh ] && { echo "--refresh needs the pinned browser on Linux (CI); refusing to write baselines from local Chrome" >&2; exit 2; }
+  [ "$mode" = compare ] && { echo "baselines are compared only with the pinned browser on Linux; running a preview" >&2; mode=preview; }
+fi
+rm -rf "$out" && mkdir -p "$out"
+work=$(mktemp -d)
+up=''
+cleanup() {
+  if [ -n "$up" ]; then kill -TERM "$up" 2>/dev/null || true; wait "$up" 2>/dev/null || true; fi
+  rm -rf "$work"
+}
+trap cleanup EXIT
+trap 'cleanup; exit 130' INT TERM
+# The real demo stack for the history chart.
+go build -o "$work/hades" ./cmd/hades
+vm=${HADES_VISUAL_VM_PORT:-18988}
+"$work/hades" init -profile demo -out-dir "$work/site" -mqtt-port "${HADES_VISUAL_MQTT_PORT:-18981}" -historian-port "$vm" >/dev/null
+"$work/hades" up -site-dir "$work/site" -interval 1s > "$work/up.jsonl" 2>&1 &
+up=$!
+for _ in $(seq 1 240); do
+  grep -q '"site_up"' "$work/up.jsonl" && break
+  kill -0 "$up" 2>/dev/null || { cat "$work/up.jsonl" >&2; exit 1; }
+  sleep 1
+done
+grep -q '"site_up"' "$work/up.jsonl" || { echo "demo stack did not come up" >&2; exit 1; }
+# Wait until the series is queryable: VictoriaMetrics hides samples newer
+# than its 30 s query latency offset, so data appears in queries after ~30 s.
+python3 -I - "$vm" <<'PY'
+import json, sys, time, urllib.parse, urllib.request
+url = 'http://127.0.0.1:%s/api/v1/query?%s' % (sys.argv[1], urllib.parse.urlencode({'query': 'count_over_time(hades_observation_value[10m])'}))
+for _ in range(120):
+    try:
+        result = json.load(urllib.request.urlopen(url, timeout=3))['data']['result']
+        if result and float(result[0]['value'][1]) >= 5:
+            sys.exit(0)
+    except OSError:
+        pass
+    time.sleep(1)
+sys.exit('history series never became queryable')
+PY
+set -- -browser "$browser" -out "$out" -vmui "http://127.0.0.1:$vm"
+case "$mode" in
+  preview) set -- "$@" -compare=false ;;
+  refresh) set -- "$@" -refresh ;;
+esac
+go run ./tests/visual "$@"
