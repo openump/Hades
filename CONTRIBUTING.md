@@ -4,7 +4,7 @@ Use short-lived `codex/` branches for agent work. Keep each commit focused on on
 
 Before committing, review the staged diff, run `git diff --check`, verify the checks relevant to the change, and inspect staged files for credentials or generated state. Record commands, versions, results, and known limits in the PR. Do not claim runtime behavior from documentation alone.
 
-Run the setup commands in README.md on a clean checkout. Use `./scripts/check-contracts`, `go test -race ./...`, `go vet ./...`, and `go build ./cmd/hades-check` for Go conformance work. Component probe commands are documented with their examples. Deployed application services remain later tickets.
+Run the setup commands in README.md on a clean checkout. Use `./scripts/check-contracts`, `go test -race ./...`, `go vet ./...`, and `go build ./cmd/hades-check` for Go conformance work. Component probe commands are documented with their examples. A change to the inspector console or `hades top` must keep `scripts/screenshot-stack` green; see [visual testing](docs/operations/visual-testing.md) for reviewing and refreshing baselines.
 
 ## Architecture decisions
 
@@ -21,3 +21,36 @@ Development, runtime, and optional external integrations have distinct inventori
 ## Runtime implementation
 
 Follow [ADR-0003](docs/decisions/0003-runtime-language.md): write custom deployed services and operational CLI tools in Go; prefer existing components and configuration before adding code. Python may remain in development tooling. Use shared schemas and fixtures to verify Go/Python contract agreement during transition. Pin the Go toolchain and dependencies when introduced, and measure resource limits on the target hardware.
+
+## Releases
+
+A release is built by `scripts/package-release`: reproducible `.deb`, `.rpm` and
+tarballs of the `hades` multicall, generated third-party notices and SBOMs, a
+`checksums.txt` signed with the Ed25519 release key, and an `install.sh` with that
+key's public half pinned. `scripts/build-airgap-bundle` adds the offline bundle. See
+[packaging](docs/operations/packaging.md) for every artifact and check.
+
+```sh
+HADES_VERSION=1.2.0 HADES_RELEASE_KEY=/secure/release.key scripts/package-release
+HADES_VERSION=1.2.0 HADES_RELEASE_KEY=/secure/release.key HADES_RELEASE_PUB=release.pub \
+  HADES_ARCH=amd64 scripts/build-airgap-bundle dist/
+```
+
+- **Release key custody.** The release key is generated once with
+  `hades release keygen` by the release owner, kept offline and readable only by them;
+  the build refuses a key file readable by group or others. Never commit it or put it in
+  CI: the `packaging` job uses a throwaway key that it generates per run. Publish the
+  public key through a channel operators already trust, because the offline installer
+  verifies against a key the operator supplies, never the copy inside a bundle.
+- **Reproducibility.** The same commit, version and `SOURCE_DATE_EPOCH` (the commit
+  time by default) give byte-identical artifacts; CI builds twice and compares. Before
+  publishing, rebuild and compare `checksums.txt` with the one you sign.
+- **Before publishing.** The `packaging` CI job must pass on the release commit: clean
+  `.deb` and `.rpm` installs, the unit under real systemd, `install.sh` tamper refusal
+  and the air-gapped install. Verify the signature yourself with
+  `openssl pkeyutl -verify -pubin -inkey release.pub -rawin -in checksums.txt -sigfile checksums.txt.sig`.
+- **A new linked dependency** needs a license text in its module (or the notices
+  build fails) and a reviewed license identifier in `internal/compliance` (or
+  `TestEveryLinkedModuleOfHadesHasAReviewedLicense` fails); record it in
+  `docs/dependencies.md` as the dependency policy requires.
+- **Fleet rollout** of a release across sites is out of scope here (Zeus-003).
