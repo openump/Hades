@@ -101,3 +101,8 @@ Update rates are not shown: the snapshot holds only the latest value.
   one frame like `-once` and says so on stderr.
 - **Footprint:** nothing runs in any Hades daemon while `top` is closed. Each
   poll reads at most 4 MiB.
+
+## Visual verification
+
+The console and `hades top` are pixel-tested against reviewed baselines, and the `vmui`
+history chart is content-checked; see [visual testing](visual-testing.md).
