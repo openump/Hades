@@ -112,6 +112,30 @@ identities and the secured stack, follow [identity and networking](docs/operatio
 For normalization, history and independent consumers together, use the
 [full local slice tutorial](docs/tutorials/local-slice.md).
 
+## Install on an edge host
+
+Hades ships as one `hades` binary in standard packages for Linux `amd64` and `arm64`
+(Ubuntu/Debian `.deb`, RHEL/Rocky `.rpm`), a verified installer, and an offline bundle
+for air-gapped sites. **No release has been published yet**; until one is, build the
+packages yourself (see [Releases](CONTRIBUTING.md#releases)).
+
+| Host | Install |
+|---|---|
+| Ubuntu / Debian | `sudo apt-get install ./hades_<version>_linux_<arch>.deb` |
+| RHEL / Rocky | `sudo dnf install ./hades_<version>_linux_<arch>.rpm` |
+| Any Linux or macOS | `sh install.sh --from-archive hades_<version>_<os>_<arch>.tar.gz` |
+| Air-gapped site | `sudo sh install-offline.sh --pubkey <release key you trust>` |
+
+Every artifact is listed in a `checksums.txt` signed with the Hades Ed25519 release
+key. `install.sh` verifies that signature with OpenSSL 3, and then the archive's
+SHA-256, **before extracting anything**; it refuses on any mismatch, and on a host
+without OpenSSL. The offline installer verifies every file against a key you supply,
+loads the runtime images and makes no network request. Packages create the `hades`
+service user and `0750` `/etc/hades` and `/var/lib/hades`, and install the systemd
+unit without starting anything. Removing a package keeps site data.
+
+See [packaging and verified installation](docs/operations/packaging.md).
+
 ## Current support
 
 | Area | Available today | Qualification boundary |
@@ -134,8 +158,9 @@ verified durable receiver receipt are different boundaries. See
 | **Evaluate Hades** | [White paper](WHITEPAPER.md) · [Architecture](docs/architecture-design-specification.md) · [MVP evaluation](docs/releases/mvp-evaluation.md) |
 | **Run a local stack** | [MQTT development](docs/tutorials/mqtt-development.md) · [Synthetic telemetry](docs/tutorials/simulated-telemetry.md) · [Full local slice](docs/tutorials/local-slice.md) |
 | **Understand the contracts** | [Namespace and identity](docs/protocol/namespace.md) · [Telemetry](docs/protocol/telemetry.md) · [Metadata/status](docs/protocol/metadata-status.md) · [Write control](docs/contracts/write-control-plane.md) |
-| **Operate and secure** | [Runbook](docs/operations/runbook.md) · [Identity/networking](docs/operations/identity-networking.md) · [Actuator](docs/operations/actuator.md) · [Backup/restore](docs/operations/backup-restore.md) |
-| **Measure and verify** | [Capacity report](docs/operations/capacity-report.md) · [Retention sizing](docs/operations/retention-sizing.md) · [Recovery evidence](docs/operations/recovery-evidence.md) · [Conformance](docs/protocol/conformance.md) |
+| **Install and release** | [Packaging and verified install](docs/operations/packaging.md) · [`hades` multicall and `hades up`](docs/operations/multicall.md) · [Releases](CONTRIBUTING.md#releases) |
+| **Operate and secure** | [Runbook](docs/operations/runbook.md) · [Identity/networking](docs/operations/identity-networking.md) · [Actuator](docs/operations/actuator.md) · [Backup/restore](docs/operations/backup-restore.md) · [Inspector and `hades top`](docs/operations/inspector.md) |
+| **Measure and verify** | [Capacity report](docs/operations/capacity-report.md) · [Retention sizing](docs/operations/retention-sizing.md) · [Recovery evidence](docs/operations/recovery-evidence.md) · [Conformance](docs/protocol/conformance.md) · [Visual testing](docs/operations/visual-testing.md) |
 | **Inspect implementation choices** | [Dependency inventory](docs/dependencies.md) · [Go runtime decision](docs/decisions/0003-runtime-language.md) · [Durability decision](docs/decisions/0004-delivery-durability.md) |
 
 ## Development and contributions
@@ -150,7 +175,7 @@ go test -race ./...
 go vet ./...
 ```
 
-The conformance check covers nine versioned contracts and 132 shared fixtures.
+The conformance check covers ten versioned contracts and 157 shared fixtures.
 For the optional Python development reference (Python 3.11+):
 
 ```sh
