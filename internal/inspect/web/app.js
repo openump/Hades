@@ -31,9 +31,10 @@ function table(headers, rows) {
       else {
         const text = c === null || c === undefined ? "" : clean(typeof c === "object" ? JSON.stringify(c) : String(c));
         td.textContent = text;
-        // Short tokens (names, timestamps, IDs) keep their width; only long
-        // free text may wrap anywhere, so hostile text cannot squeeze columns.
-        td.className = text.length > 40 ? "long" : "short";
+        // Short tokens (names, timestamps) keep their width; medium ones (IDs,
+        // URNs, states) wrap at natural breaks; only long free text may wrap
+        // anywhere, so hostile text cannot squeeze columns.
+        td.className = text.length > 40 ? "long" : text.length > 24 ? "" : "short";
       }
       tr.appendChild(td);
     });
