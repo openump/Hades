@@ -161,7 +161,7 @@ verified durable receiver receipt are different boundaries. See
 | **Install and release** | [Packaging and verified install](docs/operations/packaging.md) · [`hades` multicall and `hades up`](docs/operations/multicall.md) · [Releases](CONTRIBUTING.md#releases) |
 | **Operate and secure** | [Runbook](docs/operations/runbook.md) · [Identity/networking](docs/operations/identity-networking.md) · [Actuator](docs/operations/actuator.md) · [Backup/restore](docs/operations/backup-restore.md) · [Inspector and `hades top`](docs/operations/inspector.md) |
 | **Measure and verify** | [Capacity report](docs/operations/capacity-report.md) · [Retention sizing](docs/operations/retention-sizing.md) · [Recovery evidence](docs/operations/recovery-evidence.md) · [Conformance](docs/protocol/conformance.md) · [Visual testing](docs/operations/visual-testing.md) |
-| **Inspect implementation choices** | [Dependency inventory](docs/dependencies.md) · [Go runtime decision](docs/decisions/0003-runtime-language.md) · [Durability decision](docs/decisions/0004-delivery-durability.md) |
+| **Inspect implementation choices** | [Dependency inventory](docs/dependencies.md) · [Go runtime decision](docs/decisions/0003-runtime-language.md) · [Durability decision](docs/decisions/0004-delivery-durability.md) · [Standards interoperability decision](docs/decisions/0005-data-contract-and-standards-interoperability.md) |
 
 ## Development and contributions
 
