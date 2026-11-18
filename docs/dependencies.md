@@ -28,7 +28,7 @@ Python 3.11+ supports repository checks; Python 3.14.6 was used for the probes. 
 
 ## Go conformance implementation (Hades-006)
 
-Go 1.27.3 is pinned in go.mod. The runtime validator uses `github.com/santhosh-tekuri/jsonschema/v6` 6.0.3 (Apache-2.0) and `golang.org/x/text` 0.43.0 (BSD-3-Clause). The development-only vulnerability scanner is `golang.org/x/vuln` 1.9.0 (BSD-3-Clause). See [conformance documentation](protocol/conformance.md) for official API sources, checks, and architecture builds. Source dependencies are verified with go.sum and `go mod verify`; redistribution still requires notices.
+Go 1.27.4 is pinned in go.mod (1.27.4 fixes GO-2026-6859 / CVE-2026-97054, an HTTP/1 server crash in `net/http` that the Hades HTTP servers reach). The runtime validator uses `github.com/santhosh-tekuri/jsonschema/v6` 6.0.3 (Apache-2.0) and `golang.org/x/text` 0.43.0 (BSD-3-Clause). The development-only vulnerability scanner is `golang.org/x/vuln` 1.9.0 (BSD-3-Clause). See [conformance documentation](protocol/conformance.md) for official API sources, checks, and architecture builds. Source dependencies are verified with go.sum and `go mod verify`; redistribution still requires notices.
 
 ## Development broker and examples (Hades-008/009)
 

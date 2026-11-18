@@ -77,7 +77,7 @@ go build -o hades ./cmd/hades
 ### Step by step
 
 Try synthetic telemetry and a validating consumer on your own machine.
-**Prerequisites:** Git, Go 1.27.3 and Docker with Compose. A Go installation with
+**Prerequisites:** Git, Go 1.27.4 and Docker with Compose. A Go installation with
 toolchain management can obtain the version pinned in [go.mod](go.mod).
 
 ```sh
