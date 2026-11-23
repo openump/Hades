@@ -1,0 +1,5 @@
+enterprise,site,area,line,asset,measurement,type,unit,expected_interval_ms,min,max,source_tag
+acme,berlin,assembly,line-01,press-04,hydraulic_pressure,REAL,psi,1000,0,5000,DB102.DBD16
+acme,berlin,assembly,line-01,press-04,door_closed,BOOL,,500,0,1,DB102.DBX20.0
+acme,Berlin,assembly,line-01,press-04,motor_temperature,REAL,°C,1000,-40,150,DB102.DBD12
+acme,berlin,assembly,line-01,press-04,motor_temperature,REAL,°C,0,,,DB102.DBD12

@@ -1,0 +1,20 @@
+# Eclipse BaSyx AAS environment and web UI: a TEST FIXTURE for Hades-046 (an
+# independent AAS implementation that must read hades aas export output).
+# Not a supported deployment. Images pinned by digest; in-memory, loopback only.
+name: hades-basyx-fixture
+services:
+  aas-env:
+    image: eclipsebasyx/aas-environment:2.0.0-milestone-16@sha256:8b4dcb8a5d1652185fb230a052a5cacd4eea58e4c79ab145e21352afe89f00b3
+    environment:
+      BASYX_BACKEND: InMemory
+      BASYX_CORS_ALLOWED_ORIGINS: "*"
+      BASYX_CORS_ALLOWED_METHODS: GET,POST,PATCH,DELETE,PUT,OPTIONS,HEAD
+      SERVER_PORT: "8081"
+    ports: ["127.0.0.1:${HADES_BASYX_API_PORT:-18471}:8081"]
+  aas-gui:
+    image: eclipsebasyx/aas-gui:v2-261013@sha256:84b46bf73b6b6b8f7b9af6abe63b8d3b1509bc918ad29ccf31f014234fd307d7
+    environment:
+      AAS_REPO_PATH: http://127.0.0.1:${HADES_BASYX_API_PORT:-18471}/shells
+      SUBMODEL_REPO_PATH: http://127.0.0.1:${HADES_BASYX_API_PORT:-18471}/submodels
+      CD_REPO_PATH: http://127.0.0.1:${HADES_BASYX_API_PORT:-18471}/concept-descriptions
+    ports: ["127.0.0.1:${HADES_BASYX_UI_PORT:-18472}:3000"]

@@ -17,6 +17,16 @@ var terminalColors = map[string]string{"31": "#ff6b6b", "32": "#4ade80", "33": "
 // Only the SGR codes hades top emits are interpreted; every other byte is
 // HTML-escaped text, so the page shows exactly what a terminal would print.
 func TerminalHTML(title, ansi string) string {
+	return `<!doctype html><meta charset="utf-8"><title>` + html.EscapeString(title) + `</title><style>
+html,body{margin:0;background:#0b0f14}
+.term{display:inline-block;margin:16px;border-radius:8px;background:#11161d;overflow:hidden}
+.bar{background:#1c232c;padding:7px 12px;color:#9aa4b2;font:12px/1.2 "DejaVu Sans",sans-serif}
+pre{margin:0;padding:12px 16px;color:#d6dde6;font:13px/1.4 "DejaVu Sans Mono",monospace;white-space:pre}
+</style><div class="term" id="terminal"><div class="bar">` + html.EscapeString(title) + `</div><pre>` + ansiHTML(ansi) + `</pre></div>`
+}
+
+// ansiHTML renders text with the SGR colours hades top emits as escaped HTML.
+func ansiHTML(ansi string) string {
 	var b strings.Builder
 	var fg string
 	var bold, dim, inverse bool
@@ -69,10 +79,5 @@ func TerminalHTML(title, ansi string) string {
 		}
 	}
 	flush(ansi[pos:])
-	return `<!doctype html><meta charset="utf-8"><title>` + html.EscapeString(title) + `</title><style>
-html,body{margin:0;background:#0b0f14}
-.term{display:inline-block;margin:16px;border-radius:8px;background:#11161d;overflow:hidden}
-.bar{background:#1c232c;padding:7px 12px;color:#9aa4b2;font:12px/1.2 "DejaVu Sans",sans-serif}
-pre{margin:0;padding:12px 16px;color:#d6dde6;font:13px/1.4 "DejaVu Sans Mono",monospace;white-space:pre}
-</style><div class="term" id="terminal"><div class="bar">` + html.EscapeString(title) + `</div><pre>` + b.String() + `</pre></div>`
+	return b.String()
 }

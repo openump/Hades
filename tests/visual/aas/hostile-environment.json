@@ -1,0 +1,99 @@
+{
+  "assetAdministrationShells": [
+    {
+      "modelType": "AssetAdministrationShell",
+      "id": "https://vendor.example.com/ids/aas/HOSTILE-1",
+      "idShort": "HostilePress",
+      "displayName": [
+        {
+          "language": "en",
+          "text": "Press ‮40-sserp‬ with\na line break"
+        }
+      ],
+      "assetInformation": {
+        "assetKind": "Instance",
+        "globalAssetId": "https://vendor.example.com/ids/asset/HOSTILE-1"
+      },
+      "submodels": [
+        {
+          "type": "ModelReference",
+          "keys": [
+            {
+              "type": "Submodel",
+              "value": "https://vendor.example.com/ids/sm/HOSTILE-1/condition"
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "submodels": [
+    {
+      "modelType": "Submodel",
+      "id": "https://vendor.example.com/ids/sm/HOSTILE-1/condition",
+      "idShort": "Condition",
+      "submodelElements": [
+        {
+          "modelType": "Property",
+          "idShort": "SpindleLoad",
+          "valueType": "xs:double",
+          "displayName": [
+            {
+              "language": "en",
+              "text": "Extremely long operator display name that keeps going to test wrapping in every view of the tool"
+            }
+          ],
+          "semanticId": {
+            "type": "ExternalReference",
+            "keys": [
+              {
+                "type": "GlobalReference",
+                "value": "0173-1#02-AAB991#008"
+              }
+            ]
+          }
+        },
+        {
+          "modelType": "Property",
+          "idShort": "DoorState",
+          "valueType": "xs:string",
+          "displayName": [
+            {
+              "language": "en",
+              "text": "Door ‮nepo‬"
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "conceptDescriptions": [
+    {
+      "modelType": "ConceptDescription",
+      "id": "0173-1#02-AAB991#008",
+      "embeddedDataSpecifications": [
+        {
+          "dataSpecification": {
+            "type": "ExternalReference",
+            "keys": [
+              {
+                "type": "GlobalReference",
+                "value": "https://admin-shell.io/DataSpecificationTemplates/DataSpecificationIec61360/3/0"
+              }
+            ]
+          },
+          "dataSpecificationContent": {
+            "modelType": "DataSpecificationIec61360",
+            "preferredName": [
+              {
+                "language": "en",
+                "text": "Spindle load"
+              }
+            ],
+            "unit": "percent"
+          }
+        }
+      ]
+    }
+  ]
+}

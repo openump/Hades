@@ -1,5 +1,11 @@
 # Standards boundary: `hades import` and `hades aas export` (Hades-045)
 
+![From a PLC tag table to a Digital Twin: highlights](../assets/aas-demo.gif)
+
+Watch the [captioned demo video](../assets/aas-demo.mp4) (about 2½ minutes, Hades-046):
+a broken tag table, the compiled catalog, reconciliation, a vendor AAS, the export in
+Eclipse BaSyx and a live value from `hades up --demo`.
+
 OpenUMP v1.0 stays the edge wire contract ([ADR-0005](../decisions/0005-data-contract-and-standards-interoperability.md)).
 Two boundary compilers connect it to the standards that plants and their customers use:
 
@@ -150,6 +156,15 @@ export unchanged: Eclipse BaSyx reads it back identically.
 A measurement with a dictionary `semantic_id` uses it as the element `semanticId` and
 links its own concept description as a supplemental semantic id; two measurements can
 share one dictionary concept without sharing a unit.
+
+Text that must not reach an AAS is refused, with the field named:
+- control characters other than tab, line feed and carriage return, which AAS strings
+  exclude;
+- Unicode bidirectional formatting characters. AAS allows them, but a viewer that
+  interprets them displays reordered text: Eclipse BaSyx showed `Press ‹RLO›40-sserp‹PDF›`
+  as "Press press-04".
+
+OpenUMP metadata may hold such characters; fix the catalog before exporting it.
 
 Snapshots must belong to the exported catalog: telemetry and status for another asset or
 metadata revision, or telemetry from another gateway, are refused.

@@ -35,6 +35,9 @@ func Export(c Catalog, snap Snapshots, v *contracts.Validator) (Environment, err
 	if err := pinned(m, metadata, snap); err != nil {
 		return Environment{}, err
 	}
+	if err := aasTexts(m, snap); err != nil {
+		return Environment{}, err
+	}
 	h := m.Hierarchy
 	ids := defaultIDs(h)
 	if s.AAS != nil {
@@ -178,6 +181,52 @@ func operationalElements(m Metadata, snap Snapshots, names []string, semantics f
 	}
 	return out
 }
+
+// aasTexts refuses text that OpenUMP allows but that must not leave the edge
+// in an AAS:
+//   - control characters other than tab, line feed and carriage return, which
+//     AAS strings exclude (the XML character range);
+//   - Unicode bidirectional formatting characters. AAS allows them, but a
+//     viewer that interprets them displays reordered text: Eclipse BaSyx
+//     showed "Press <RLO>40-sserp<PDF>" as "Press press-04" (Hades-046). Hades'
+//     own views neutralize them (Hades-044); an export cannot, so it refuses.
+//
+// Refusing, not stripping, keeps the export a faithful copy of the catalog.
+func aasTexts(m Metadata, snap Snapshots) error {
+	check := func(field, s string) error {
+		for _, r := range s {
+			if (r < 0x20 && r != '\t' && r != '\n' && r != '\r') || r == 0xfffe || r == 0xffff {
+				return fmt.Errorf("%s contains %U, which AAS text does not allow", field, r)
+			}
+			if bidiFormatting[r] {
+				return fmt.Errorf("%s contains the bidirectional formatting character %U, which would let a viewer display reordered text", field, r)
+			}
+		}
+		return nil
+	}
+	if err := check("metadata display_name", m.DisplayName); err != nil {
+		return err
+	}
+	for name, d := range m.Measurements {
+		if err := check(name+": display_name", d.DisplayName); err != nil {
+			return err
+		}
+	}
+	if t := snap.Telemetry; t != nil {
+		for name, r := range t["measurements"].(map[string]any) {
+			if v, ok := r.(map[string]any)["value"].(string); ok {
+				if err := check("telemetry "+name+" value", v); err != nil {
+					return err
+				}
+			}
+		}
+	}
+	return nil
+}
+
+// bidiFormatting are the Unicode bidirectional formatting characters.
+var bidiFormatting = map[rune]bool{0x061c: true, 0x200e: true, 0x200f: true, 0x202a: true, 0x202b: true, 0x202c: true,
+	0x202d: true, 0x202e: true, 0x2066: true, 0x2067: true, 0x2068: true, 0x2069: true}
 
 // pinned refuses snapshots of another asset or metadata revision: an export
 // shows live values only under the exact catalog that defines them.
