@@ -27,6 +27,9 @@ import (
 	"github.com/openump/Hades/internal/tui"
 )
 
+// ffmpegImage assembles the demo video (Hades-046).
+const ffmpegImage = "linuxserver/ffmpeg:9.0.2-cli-ls88@sha256:f4191c1abe18d75c49a23f7224d1403d55334f80013a47cb096f5056cf19617b"
+
 // chromium is the pinned headless browser image used for baselines.
 const chromium = "chromedp/headless-shell@sha256:7bee201478b2f6266aae01243740ee85c16281e32f42d3aed9fdf04f4eace7a1"
 
@@ -53,7 +56,26 @@ func main() {
 	threshold := flag.Float64("threshold", 0.0005, "maximum fraction of differing pixels")
 	vmui := flag.String("vmui", "", "optional VictoriaMetrics base URL (demo stack) to capture the history chart")
 	chrome := flag.String("chrome", "", "host Chrome binary (-browser host; default: Chrome on macOS, google-chrome or chromium on Linux)")
+	suite := flag.String("suite", "operator", "operator (Hades-044 views) or aas (Hades-046 standards boundary)")
+	var a aasConfig
+	flag.StringVar(&a.storyboard, "storyboard", "tests/visual/aas/storyboard.json", "aas: committed storyboard")
+	flag.StringVar(&a.work, "work", "", "aas: empty work directory the storyboard runs in")
+	flag.StringVar(&a.bin, "bin", "", "aas: directory holding the hades and uns-snapshot binaries")
+	flag.StringVar(&a.basyxAPI, "basyx-api", "", "aas: Eclipse BaSyx AAS environment base URL")
+	flag.StringVar(&a.basyxUI, "basyx-ui", "", "aas: Eclipse BaSyx AAS web UI base URL")
+	flag.StringVar(&a.liveSite, "live-site", "", "aas: running hades up demo site directory")
+	flag.BoolVar(&a.video, "video", false, "aas: build the demo video")
+	flag.StringVar(&a.ffmpeg, "ffmpeg", ffmpegImage, "aas: pinned ffmpeg image")
+	flag.StringVar(&a.videoDir, "video-dir", "docs/assets", "aas: committed video directory (written only with -refresh)")
 	flag.Parse()
+	if *suite == "aas" {
+		a.out, a.baselines, a.compare, a.refresh, a.threshold = *out, *baselines, *compare, *refresh, *threshold
+		if err := runSuiteAAS(*browser, *chrome, a); err != nil {
+			fmt.Fprintln(os.Stderr, "visual:", err)
+			os.Exit(1)
+		}
+		return
+	}
 	if err := run(*browser, *out, *baselines, *compare, *refresh, *threshold, *vmui, *chrome); err != nil {
 		fmt.Fprintln(os.Stderr, "visual:", err)
 		os.Exit(1)
@@ -254,7 +276,7 @@ func startBrowser(kind, chrome string) (string, func(), error) {
 		if err != nil {
 			return "", nil, err
 		}
-		cmd = exec.Command(chrome, "--headless=new", "--disable-gpu", "--hide-scrollbars", "--no-first-run", "--disable-extensions",
+		cmd = exec.Command(chrome, "--headless=new", "--disable-gpu", "--hide-scrollbars", "--no-first-run", "--disable-extensions", "--lang=en-US",
 			"--user-data-dir="+dir, fmt.Sprintf("--remote-debugging-port=%d", port), "about:blank")
 		stop = func() { cmd.Process.Kill(); cmd.Wait(); os.RemoveAll(dir) }
 	default:
@@ -310,4 +332,19 @@ func captureVMUI(debug, base, out string) error {
 	}
 	fmt.Printf("%-18s rendered series hades_observation_value for press-04, range %s (content checked)\n", "vmui-history", strings.Trim(string(stats), `"`))
 	return nil
+}
+
+func runSuiteAAS(browser, chrome string, a aasConfig) error {
+	if a.work == "" || a.bin == "" {
+		return fmt.Errorf("-suite aas needs -work and -bin")
+	}
+	if err := os.MkdirAll(a.out, 0o755); err != nil {
+		return err
+	}
+	debug, stop, err := startBrowser(browser, chrome)
+	if err != nil {
+		return err
+	}
+	defer stop()
+	return runAAS(debug, a)
 }

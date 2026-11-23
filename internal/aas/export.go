@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"maps"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -33,6 +35,9 @@ func Export(c Catalog, snap Snapshots, v *contracts.Validator) (Environment, err
 	}
 	m, s := c.Metadata, c.Mapping
 	if err := pinned(m, metadata, snap); err != nil {
+		return Environment{}, err
+	}
+	if err := aasTexts(m, s, snap); err != nil {
 		return Environment{}, err
 	}
 	h := m.Hierarchy
@@ -77,16 +82,16 @@ func Export(c Catalog, snap Snapshots, v *contracts.Validator) (Environment, err
 			e.Min, e.Max = &lo, &hi
 		}
 		semantics(&e, name)
-		e.Qualifiers = append(e.Qualifiers, Qualifier{Type: QualifierInterval, ValueType: "xs:long", Value: strconv.FormatInt(d.ExpectedIntervalMS, 10)})
+		e.Qualifiers = append(e.Qualifiers, Qualifier{Kind: conceptQualifier, Type: QualifierInterval, ValueType: "xs:long", Value: strconv.FormatInt(d.ExpectedIntervalMS, 10)})
 		if mapped.SourceTag != "" {
-			e.Qualifiers = append(e.Qualifiers, Qualifier{Type: QualifierSourceTag, ValueType: "xs:string", Value: mapped.SourceTag})
+			e.Qualifiers = append(e.Qualifiers, Qualifier{Kind: conceptQualifier, Type: QualifierSourceTag, ValueType: "xs:string", Value: mapped.SourceTag})
 		}
 		if mapped.SourceUnit != "" {
-			e.Qualifiers = append(e.Qualifiers, Qualifier{Type: QualifierSourceUnit, ValueType: "xs:string", Value: mapped.SourceUnit})
+			e.Qualifiers = append(e.Qualifiers, Qualifier{Kind: conceptQualifier, Type: QualifierSourceUnit, ValueType: "xs:string", Value: mapped.SourceUnit})
 		}
 		if mapped.SemanticID != "" && mapped.Dictionary != contracts.InferDictionary(mapped.SemanticID) {
 			// opcua_companion, or iec_cdd for a URI: not recoverable from the form.
-			e.Qualifiers = append(e.Qualifiers, Qualifier{Type: QualifierDictionary, ValueType: "xs:string", Value: mapped.Dictionary})
+			e.Qualifiers = append(e.Qualifiers, Qualifier{Kind: conceptQualifier, Type: QualifierDictionary, ValueType: "xs:string", Value: mapped.Dictionary})
 		}
 		technical = append(technical, e)
 
@@ -170,13 +175,64 @@ func operationalElements(m Metadata, snap Snapshots, names []string, semantics f
 			}
 			semantics(&e, name)
 			e.Qualifiers = []Qualifier{
-				{Type: QualifierQuality, ValueType: "xs:string", Value: r["quality"].(string)},
-				{Type: QualifierObserved, ValueType: "xs:dateTime", Value: t["observed_at"].(string)},
+				{Kind: valueQualifier, Type: QualifierQuality, ValueType: "xs:string", Value: r["quality"].(string)},
+				{Kind: valueQualifier, Type: QualifierObserved, ValueType: "xs:dateTime", Value: t["observed_at"].(string)},
 			}
 			out = append(out, e)
 		}
 	}
 	return out
+}
+
+// aasTexts refuses text that OpenUMP allows but that must not leave the edge
+// in an AAS:
+//   - control characters other than tab, line feed and carriage return, which
+//     AAS strings exclude (the XML character range);
+//   - Unicode bidirectional formatting characters. AAS allows them, but a
+//     viewer that interprets them displays reordered text: Eclipse BaSyx
+//     showed "Press <RLO>40-sserp<PDF>" as "Press press-04" (Hades-046). Hades'
+//     own views neutralize them (Hades-044); an export cannot, so it refuses.
+//
+// Refusing, not stripping, keeps the export a faithful copy of the catalog.
+func aasTexts(m Metadata, s Mapping, snap Snapshots) error {
+	check := func(field, s string) error {
+		for _, r := range s {
+			if (r < 0x20 && r != '\t' && r != '\n' && r != '\r') || r == 0xfffe || r == 0xffff {
+				return fmt.Errorf("%s contains %U, which AAS text does not allow", field, r)
+			}
+			if contracts.IsBidiControl(r) {
+				return fmt.Errorf("%s contains the bidirectional formatting character %U, which would let a viewer display reordered text", field, r)
+			}
+		}
+		return nil
+	}
+	if err := check("metadata display_name", m.DisplayName); err != nil {
+		return err
+	}
+	// Sorted, so a refusal names the same field on every run.
+	for _, name := range slices.Sorted(maps.Keys(m.Measurements)) {
+		if err := check(name+": display_name", m.Measurements[name].DisplayName); err != nil {
+			return err
+		}
+		mapped := s.Measurements[name]
+		if err := check(name+": source_tag", mapped.SourceTag); err != nil {
+			return err
+		}
+		if err := check(name+": source_unit", mapped.SourceUnit); err != nil {
+			return err
+		}
+	}
+	if t := snap.Telemetry; t != nil {
+		readings := t["measurements"].(map[string]any)
+		for _, name := range slices.Sorted(maps.Keys(readings)) {
+			if v, ok := readings[name].(map[string]any)["value"].(string); ok {
+				if err := check("telemetry "+name+" value", v); err != nil {
+					return err
+				}
+			}
+		}
+	}
+	return nil
 }
 
 // pinned refuses snapshots of another asset or metadata revision: an export
@@ -194,6 +250,14 @@ func pinned(m Metadata, metadata map[string]any, snap Snapshots) error {
 	}
 	return nil
 }
+
+// Qualifier kinds (AAS V3.0): facts about an element's definition are
+// concept qualifiers; quality and observation time qualify the current value.
+// They are explicit so a repository does not substitute its default.
+const (
+	conceptQualifier = "ConceptQualifier"
+	valueQualifier   = "ValueQualifier"
+)
 
 const (
 	conceptPrefix   = "urn:openump:concept:"

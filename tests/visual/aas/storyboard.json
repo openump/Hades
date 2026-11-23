@@ -1,0 +1,910 @@
+{
+  "inputs": [
+    "examples/aas/tags.csv",
+    "examples/aas/vendor-environment.json",
+    "examples/site/metadata.json",
+    "examples/contracts/semantic-mapping/semantic-mapping.json",
+    "examples/aas/status.json",
+    "examples/aas/telemetry.json",
+    "examples/aas/press-04.aas.json",
+    "tests/visual/aas/broken.csv",
+    "tests/visual/aas/hostile-names.csv",
+    "tests/visual/aas/hostile-display.csv",
+    "tests/visual/aas/hostile-environment.json",
+    "tests/visual/aas/long-names-environment.json"
+  ],
+  "steps": [
+    {
+      "name": "title",
+      "kind": "card",
+      "title": "From a PLC tag table to a Digital Twin",
+      "subtitle": "Hades standards boundary (Hades-045)\nhades import  ·  hades check  ·  hades aas export\nOpenUMP v1.0 stays the edge contract",
+      "video": true
+    },
+    {
+      "name": "csv-broken",
+      "kind": "terminal",
+      "caption": "A brownfield tag table with mistakes: every problem is reported with its line, and nothing is written",
+      "run": [
+        "hades",
+        "import",
+        "-from-csv",
+        "broken.csv",
+        "-out-dir",
+        "catalog",
+        "-revision",
+        "3",
+        "-published-at",
+        "2026-11-23T10:00:00Z",
+        "-gateway-id",
+        "plc-01",
+        "-protocol",
+        "s7"
+      ],
+      "exit": 1,
+      "expect": [
+        "line 2: hydraulic_pressure: unit \"psi\" has no OpenUMP v1.0 equivalent",
+        "line 3: door_closed: only a number measurement has a valid range",
+        "line 4: site \"Berlin\" is not a lowercase segment",
+        "line 5: motor_temperature: expected_interval_ms \"0\""
+      ],
+      "video": true,
+      "highlight": true
+    },
+    {
+      "name": "csv-import",
+      "kind": "terminal",
+      "caption": "The corrected table compiles: one metadata + semantic-mapping pair per asset, validated before writing",
+      "run": [
+        "hades",
+        "import",
+        "-from-csv",
+        "tags.csv",
+        "-out-dir",
+        "catalog",
+        "-revision",
+        "3",
+        "-published-at",
+        "2026-11-23T10:00:00Z",
+        "-gateway-id",
+        "plc-01",
+        "-protocol",
+        "s7"
+      ],
+      "exit": 0,
+      "expect": [
+        "catalog/acme\\.berlin\\.press-04\\.metadata\\.json",
+        "2 asset\\(s\\) compiled"
+      ],
+      "video": true
+    },
+    {
+      "name": "csv-files",
+      "kind": "files",
+      "caption": "°C became the OpenUMP unit Cel; the original spelling, the PLC address and the ECLASS IRDI are kept in the crosswalk",
+      "panels": [
+        {
+          "title": "tag table",
+          "path": "tags.csv",
+          "kind": "csv",
+          "rows": [
+            1
+          ],
+          "wide": true,
+          "fields": [
+            "asset",
+            "measurement",
+            "display_name",
+            "source_tag",
+            "type",
+            "unit",
+            "expected_interval_ms",
+            "min",
+            "max",
+            "semantic_id"
+          ]
+        },
+        {
+          "title": "metadata",
+          "path": "catalog/acme.berlin.press-04.metadata.json",
+          "kind": "json",
+          "columns": 2
+        },
+        {
+          "title": "semantic mapping",
+          "path": "catalog/acme.berlin.press-04.semantic-mapping.json",
+          "kind": "json"
+        }
+      ],
+      "video": true,
+      "highlight": true
+    },
+    {
+      "name": "check-pass",
+      "kind": "terminal",
+      "caption": "hades check reconciles the mapping with its exact metadata snapshot",
+      "run": [
+        "hades",
+        "check",
+        "-kind",
+        "semantic-mapping",
+        "-file",
+        "catalog/acme.berlin.press-04.semantic-mapping.json",
+        "-metadata",
+        "catalog/acme.berlin.press-04.metadata.json"
+      ],
+      "exit": 0,
+      "expect": [
+        "payload valid; reconciles with"
+      ],
+      "video": true
+    },
+    {
+      "name": "rev4",
+      "kind": "setup",
+      "shell": "sed 's/\"metadata_revision\": 3/\"metadata_revision\": 4/' catalog/acme.berlin.press-04.semantic-mapping.json > press-04.rev4.semantic-mapping.json"
+    },
+    {
+      "name": "check-refused",
+      "kind": "terminal",
+      "caption": "Refused: a mapping written for metadata revision 4 does not apply to revision 3",
+      "run": [
+        "hades",
+        "check",
+        "-kind",
+        "semantic-mapping",
+        "-file",
+        "press-04.rev4.semantic-mapping.json",
+        "-metadata",
+        "catalog/acme.berlin.press-04.metadata.json"
+      ],
+      "exit": 1,
+      "expect": [
+        "context: semantic mapping is pinned to another metadata_revision"
+      ],
+      "video": true,
+      "highlight": true
+    },
+    {
+      "name": "aas-import",
+      "kind": "terminal",
+      "caption": "A vendor AAS imports: CamelCase idShorts, irdi: prefixes, IEC CDD ids and °C are normalized; a File element is reported",
+      "run": [
+        "hades",
+        "import",
+        "-from-aas",
+        "vendor-environment.json",
+        "-out-dir",
+        "vendor",
+        "-asset",
+        "pump-02",
+        "-enterprise",
+        "acme",
+        "-site",
+        "berlin",
+        "-area",
+        "utilities",
+        "-line",
+        "coolant",
+        "-expected-interval-ms",
+        "1000",
+        "-revision",
+        "1",
+        "-published-at",
+        "2026-11-23T10:00:00Z",
+        "-gateway-id",
+        "gw-01",
+        "-protocol",
+        "opcua"
+      ],
+      "exit": 0,
+      "expect": [
+        "warning: .*skipped 1 element",
+        "1 asset\\(s\\) compiled"
+      ],
+      "video": true
+    },
+    {
+      "name": "aas-files",
+      "kind": "files",
+      "caption": "The vendor AAS as an OpenUMP catalog: units from IEC 61360 concept descriptions, vendor identifiers recorded under aas",
+      "panels": [
+        {
+          "title": "metadata",
+          "path": "vendor/acme.berlin.pump-02.metadata.json",
+          "kind": "json",
+          "columns": 2
+        },
+        {
+          "title": "semantic mapping",
+          "path": "vendor/acme.berlin.pump-02.semantic-mapping.json",
+          "kind": "json"
+        }
+      ],
+      "video": true
+    },
+    {
+      "name": "export",
+      "kind": "terminal",
+      "caption": "hades aas export projects the catalog and live snapshots into an AAS V3.0 environment",
+      "run": [
+        "hades",
+        "aas",
+        "export",
+        "-metadata",
+        "metadata.json",
+        "-mapping",
+        "semantic-mapping.json",
+        "-status",
+        "status.json",
+        "-telemetry",
+        "telemetry.json",
+        "-out",
+        "press-04.export.aas.json"
+      ],
+      "exit": 0,
+      "video": true
+    },
+    {
+      "name": "export-deterministic",
+      "kind": "terminal",
+      "caption": "Deterministic: the export is byte-identical to the committed golden file, which passes the official AAS V3.0.6 schema",
+      "run": [
+        "shasum",
+        "-a",
+        "256",
+        "press-04.aas.json",
+        "press-04.export.aas.json"
+      ],
+      "exit": 0,
+      "expect": [
+        "^[0-9a-f]{64}  press-04\\.aas\\.json\\n[0-9a-f]{64}  press-04\\.export\\.aas\\.json\\n$"
+      ],
+      "video": true,
+      "same_first_field": true
+    },
+    {
+      "name": "upload",
+      "kind": "terminal",
+      "caption": "Upload to Eclipse BaSyx, an independent AAS implementation",
+      "run": [
+        "curl",
+        "-s",
+        "-o",
+        "/dev/null",
+        "-w",
+        "%{http_code}\\n",
+        "-F",
+        "file=@press-04.export.aas.json;type=application/json",
+        "http://127.0.0.1:18471/upload"
+      ],
+      "exit": 0,
+      "expect": [
+        "^200\\n$"
+      ],
+      "video": true
+    },
+    {
+      "name": "viewer-shell",
+      "kind": "viewer",
+      "caption": "BaSyx shows the shell, its asset id and the three submodels",
+      "view": {
+        "aas": "urn:openump:aas:acme:berlin:press-04"
+      },
+      "expect": [
+        "Hydraulic Press",
+        "urn:openump:acme:berlin:press-04",
+        "Nameplate",
+        "TechnicalData",
+        "OperationalData"
+      ],
+      "video": true
+    },
+    {
+      "name": "viewer-technical",
+      "kind": "viewer",
+      "caption": "TechnicalData: motor_temperature is a Range -40..150 Cel with its ECLASS semantic id and concept description",
+      "view": {
+        "aas": "urn:openump:aas:acme:berlin:press-04",
+        "submodel": "urn:openump:aas:acme:berlin:press-04:technical-data",
+        "element": "TechnicalProperties.motor_temperature"
+      },
+      "expect": [
+        "Motor temperature",
+        "0173-1#02-AAB991#008",
+        "-40 Cel",
+        "150 Cel",
+        "urn:openump:concept:acme:berlin:press-04:motor_temperature",
+        "TechnicalData"
+      ],
+      "video": true,
+      "highlight": true
+    },
+    {
+      "name": "viewer-class",
+      "kind": "viewer",
+      "caption": "TechnicalData: the asset class (ECLASS) under ProductClassifications",
+      "view": {
+        "aas": "urn:openump:aas:acme:berlin:press-04",
+        "submodel": "urn:openump:aas:acme:berlin:press-04:technical-data",
+        "element": "ProductClassifications.ProductClassification01.ProductClassId"
+      },
+      "expect": [
+        "ProductClassId",
+        "0173-1#01-AKJ975#017",
+        "TechnicalData"
+      ]
+    },
+    {
+      "name": "viewer-operational",
+      "kind": "viewer",
+      "caption": "OperationalData: the latest value with its unit",
+      "view": {
+        "aas": "urn:openump:aas:acme:berlin:press-04",
+        "submodel": "urn:openump:aas:acme:berlin:press-04:operational-data",
+        "element": "motor_temperature"
+      },
+      "expect": [
+        "Motor temperature",
+        "67.2",
+        "Cel",
+        "xs:double",
+        "TechnicalData"
+      ],
+      "video": true
+    },
+    {
+      "name": "viewer-state",
+      "kind": "viewer",
+      "caption": "OperationalData: producer state from the status snapshot",
+      "view": {
+        "aas": "urn:openump:aas:acme:berlin:press-04",
+        "submodel": "urn:openump:aas:acme:berlin:press-04:operational-data",
+        "element": "ProducerState"
+      },
+      "expect": [
+        "ProducerState",
+        "online",
+        "TechnicalData"
+      ]
+    },
+    {
+      "name": "viewer-nameplate",
+      "kind": "viewer",
+      "caption": "Nameplate: the IDTA 02006 template, with the elements Hades knows",
+      "view": {
+        "aas": "urn:openump:aas:acme:berlin:press-04",
+        "submodel": "urn:openump:aas:acme:berlin:press-04:nameplate",
+        "element": "ManufacturerProductDesignation"
+      },
+      "expect": [
+        "ManufacturerProductDesignation",
+        "Hydraulic Press",
+        "TechnicalData"
+      ],
+      "video": true
+    },
+    {
+      "name": "telemetry-rev2",
+      "kind": "setup",
+      "shell": "sed 's/\"metadata_revision\": 1,/\"metadata_revision\": 2,/' telemetry.json > telemetry.rev2.json"
+    },
+    {
+      "name": "refuse-snapshot",
+      "kind": "terminal",
+      "caption": "Refused: live values are exported only under the exact catalog revision that defines them",
+      "run": [
+        "hades",
+        "aas",
+        "export",
+        "-metadata",
+        "metadata.json",
+        "-mapping",
+        "semantic-mapping.json",
+        "-telemetry",
+        "telemetry.rev2.json"
+      ],
+      "exit": 1,
+      "expect": [
+        "telemetry: context: exact metadata revision unavailable"
+      ],
+      "video": true
+    },
+    {
+      "name": "refuse-overwrite",
+      "kind": "terminal",
+      "caption": "Refused: a reviewed catalog is never replaced without -force",
+      "run": [
+        "hades",
+        "import",
+        "-from-csv",
+        "tags.csv",
+        "-out-dir",
+        "catalog",
+        "-revision",
+        "3",
+        "-published-at",
+        "2026-11-23T10:00:00Z",
+        "-gateway-id",
+        "plc-01",
+        "-protocol",
+        "s7"
+      ],
+      "exit": 1,
+      "expect": [
+        "exists; pass -force to replace it"
+      ],
+      "video": true
+    },
+    {
+      "name": "roundtrip-export",
+      "kind": "terminal",
+      "caption": "Round trip, step 1: export the compiled catalog",
+      "run": [
+        "hades",
+        "aas",
+        "export",
+        "-metadata",
+        "catalog/acme.berlin.press-04.metadata.json",
+        "-mapping",
+        "catalog/acme.berlin.press-04.semantic-mapping.json",
+        "-out",
+        "roundtrip.aas.json"
+      ],
+      "exit": 0
+    },
+    {
+      "name": "roundtrip-import",
+      "kind": "terminal",
+      "caption": "Round trip, step 2: import that AAS again",
+      "run": [
+        "hades",
+        "import",
+        "-from-aas",
+        "roundtrip.aas.json",
+        "-out-dir",
+        "roundtrip",
+        "-enterprise",
+        "acme",
+        "-site",
+        "berlin",
+        "-area",
+        "assembly",
+        "-line",
+        "line-01",
+        "-revision",
+        "3",
+        "-published-at",
+        "2026-11-23T10:00:00Z",
+        "-gateway-id",
+        "plc-01",
+        "-protocol",
+        "s7"
+      ],
+      "exit": 0,
+      "expect": [
+        "1 asset\\(s\\) compiled"
+      ]
+    },
+    {
+      "name": "roundtrip-diff",
+      "kind": "terminal",
+      "caption": "Round trip: tag table -> AAS -> catalog gives identical metadata",
+      "run": [
+        "diff",
+        "-s",
+        "catalog/acme.berlin.press-04.metadata.json",
+        "roundtrip/acme.berlin.press-04.metadata.json"
+      ],
+      "exit": 0,
+      "expect": [
+        "are identical"
+      ],
+      "video": true,
+      "highlight": true
+    },
+    {
+      "name": "live-card",
+      "kind": "card",
+      "title": "Live: hades up --demo",
+      "subtitle": "The same catalog drives a running edge stack.\nThe latest status and telemetry are read from the broker\nand projected into the Digital Twin.",
+      "video": true
+    },
+    {
+      "name": "live-snapshot",
+      "kind": "terminal",
+      "caption": "Read the retained status and one telemetry message from the running broker (validated against the catalog)",
+      "run": [
+        "uns-snapshot",
+        "-broker",
+        "mqtt://127.0.0.1:18981",
+        "-catalog",
+        "site/catalog/metadata.json",
+        "-out",
+        "live"
+      ],
+      "exit": 0,
+      "expect": [
+        "status +openump/v1/acme/berlin/assembly/line-01/press-04/status",
+        "telemetry +openump/v1/acme/berlin/assembly/line-01/press-04/telemetry"
+      ],
+      "live": true,
+      "video": true
+    },
+    {
+      "name": "live-values",
+      "kind": "setup",
+      "shell": "test -s live/telemetry.json",
+      "live_values": true
+    },
+    {
+      "name": "live-export",
+      "kind": "terminal",
+      "caption": "Export the running catalog with the live snapshots",
+      "run": [
+        "hades",
+        "aas",
+        "export",
+        "-metadata",
+        "site/catalog/metadata.json",
+        "-mapping",
+        "semantic-mapping.json",
+        "-status",
+        "live/status.json",
+        "-telemetry",
+        "live/telemetry.json",
+        "-out",
+        "live/press-04.aas.json"
+      ],
+      "exit": 0,
+      "live": true,
+      "video": true
+    },
+    {
+      "name": "reset-live",
+      "kind": "reset"
+    },
+    {
+      "name": "live-upload",
+      "kind": "terminal",
+      "caption": "Replace the twin in BaSyx with the live export",
+      "run": [
+        "curl",
+        "-s",
+        "-o",
+        "/dev/null",
+        "-w",
+        "%{http_code}\\n",
+        "-F",
+        "file=@live/press-04.aas.json;type=application/json",
+        "http://127.0.0.1:18471/upload"
+      ],
+      "exit": 0,
+      "expect": [
+        "^200\\n$"
+      ],
+      "live": true,
+      "video": true
+    },
+    {
+      "name": "viewer-live",
+      "kind": "viewer",
+      "caption": "The Digital Twin now shows the live value read from the edge broker",
+      "view": {
+        "aas": "urn:openump:aas:acme:berlin:press-04",
+        "submodel": "urn:openump:aas:acme:berlin:press-04:operational-data",
+        "element": "motor_temperature"
+      },
+      "expect": [
+        "Motor temperature",
+        "{{telemetry.motor_temperature}}",
+        "Cel",
+        "TechnicalData"
+      ],
+      "live": true,
+      "video": true,
+      "highlight": true
+    },
+    {
+      "name": "live-rev2",
+      "kind": "setup",
+      "shell": "sed 's/\"metadata_revision\":1,/\"metadata_revision\":2,/; s/\"metadata_revision\": 1,/\"metadata_revision\": 2,/' live/telemetry.json > live/telemetry.rev2.json && ! cmp -s live/telemetry.json live/telemetry.rev2.json"
+    },
+    {
+      "name": "live-refuse",
+      "kind": "terminal",
+      "caption": "Refused: a live message claiming metadata revision 2 does not match the running catalog",
+      "run": [
+        "hades",
+        "aas",
+        "export",
+        "-metadata",
+        "site/catalog/metadata.json",
+        "-mapping",
+        "semantic-mapping.json",
+        "-telemetry",
+        "live/telemetry.rev2.json"
+      ],
+      "exit": 1,
+      "expect": [
+        "exact metadata revision unavailable"
+      ],
+      "live": true,
+      "video": true
+    },
+    {
+      "name": "end",
+      "kind": "card",
+      "title": "OpenUMP on the edge, AAS at the boundary",
+      "subtitle": "Brownfield tags and vendor AAS in, verified catalogs out.\nTwins that an independent AAS tool reads exactly.\n\ndocs/operations/aas.md",
+      "video": true
+    },
+    {
+      "name": "hostile-names",
+      "kind": "terminal",
+      "caption": "Hostile input: escape sequences and bidi overrides in a tag table are printed escaped, on one line",
+      "run": [
+        "hades",
+        "import",
+        "-from-csv",
+        "hostile-names.csv",
+        "-out-dir",
+        "hostile",
+        "-revision",
+        "3",
+        "-published-at",
+        "2026-11-23T10:00:00Z",
+        "-gateway-id",
+        "plc-01",
+        "-protocol",
+        "s7"
+      ],
+      "exit": 1,
+      "expect": [
+        "\\\\x1b\\[31m",
+        "\\\\u202e"
+      ]
+    },
+    {
+      "name": "hostile-display",
+      "kind": "terminal",
+      "caption": "Hostile input: display names may hold escapes and bidi characters (OpenUMP allows them) ...",
+      "run": [
+        "hades",
+        "import",
+        "-from-csv",
+        "hostile-display.csv",
+        "-out-dir",
+        "hostile",
+        "-revision",
+        "3",
+        "-published-at",
+        "2026-11-23T10:00:00Z",
+        "-gateway-id",
+        "plc-01",
+        "-protocol",
+        "s7"
+      ],
+      "exit": 0,
+      "expect": [
+        "1 asset\\(s\\) compiled"
+      ]
+    },
+    {
+      "name": "hostile-display-files",
+      "kind": "files",
+      "caption": "... and every view shows them as visible escapes, never interpreted",
+      "panels": [
+        {
+          "title": "tag table",
+          "path": "hostile-display.csv",
+          "kind": "csv",
+          "rows": [
+            1,
+            2
+          ],
+          "wide": true,
+          "fields": [
+            "asset",
+            "asset_display_name",
+            "measurement",
+            "display_name",
+            "type",
+            "unit",
+            "source_tag"
+          ]
+        },
+        {
+          "title": "metadata",
+          "path": "hostile/acme.berlin.press-04.metadata.json",
+          "kind": "json"
+        },
+        {
+          "title": "semantic mapping",
+          "path": "hostile/acme.berlin.press-04.semantic-mapping.json",
+          "kind": "json"
+        }
+      ]
+    },
+    {
+      "name": "hostile-export",
+      "kind": "terminal",
+      "caption": "Refused: exported text must not carry control or bidi formatting characters; the export names the field",
+      "run": [
+        "hades",
+        "aas",
+        "export",
+        "-metadata",
+        "hostile/acme.berlin.press-04.metadata.json",
+        "-mapping",
+        "hostile/acme.berlin.press-04.semantic-mapping.json"
+      ],
+      "exit": 1,
+      "expect": [
+        "hades aas export: .* contains (U\\+001B|the bidirectional formatting character U\\+202E)"
+      ]
+    },
+    {
+      "name": "hostile-aas",
+      "kind": "terminal",
+      "caption": "Hostile AAS: bidi overrides, a line break and a long name import into the catalog (OpenUMP allows them)",
+      "run": [
+        "hades",
+        "import",
+        "-from-aas",
+        "hostile-environment.json",
+        "-out-dir",
+        "hostile-aas",
+        "-enterprise",
+        "acme",
+        "-site",
+        "berlin",
+        "-area",
+        "assembly",
+        "-line",
+        "line-01",
+        "-expected-interval-ms",
+        "1000",
+        "-revision",
+        "3",
+        "-published-at",
+        "2026-11-23T10:00:00Z",
+        "-gateway-id",
+        "plc-01",
+        "-protocol",
+        "s7"
+      ],
+      "exit": 0,
+      "expect": [
+        "1 asset\\(s\\) compiled"
+      ]
+    },
+    {
+      "name": "hostile-aas-files",
+      "kind": "files",
+      "caption": "The hostile AAS as a catalog: bidi characters and the line break are shown escaped",
+      "panels": [
+        {
+          "title": "metadata",
+          "path": "hostile-aas/acme.berlin.hostilepress.metadata.json",
+          "kind": "json"
+        },
+        {
+          "title": "semantic mapping",
+          "path": "hostile-aas/acme.berlin.hostilepress.semantic-mapping.json",
+          "kind": "json"
+        }
+      ]
+    },
+    {
+      "name": "hostile-aas-export",
+      "kind": "terminal",
+      "caption": "Refused: an export never carries bidi overrides to a viewer that would display reordered text",
+      "run": [
+        "hades",
+        "aas",
+        "export",
+        "-metadata",
+        "hostile-aas/acme.berlin.hostilepress.metadata.json",
+        "-mapping",
+        "hostile-aas/acme.berlin.hostilepress.semantic-mapping.json"
+      ],
+      "exit": 1,
+      "expect": [
+        "bidirectional formatting character U\\+202E"
+      ]
+    },
+    {
+      "name": "long-aas",
+      "kind": "terminal",
+      "caption": "Long names and a line break (valid AAS text) import ...",
+      "run": [
+        "hades",
+        "import",
+        "-from-aas",
+        "long-names-environment.json",
+        "-out-dir",
+        "long",
+        "-enterprise",
+        "acme",
+        "-site",
+        "berlin",
+        "-area",
+        "assembly",
+        "-line",
+        "line-01",
+        "-expected-interval-ms",
+        "1000",
+        "-revision",
+        "3",
+        "-published-at",
+        "2026-11-23T10:00:00Z",
+        "-gateway-id",
+        "plc-01",
+        "-protocol",
+        "s7"
+      ],
+      "exit": 0,
+      "expect": [
+        "1 asset\\(s\\) compiled"
+      ]
+    },
+    {
+      "name": "long-aas-export",
+      "kind": "terminal",
+      "caption": "... and export",
+      "run": [
+        "hades",
+        "aas",
+        "export",
+        "-metadata",
+        "long/acme.berlin.longnamepress.metadata.json",
+        "-mapping",
+        "long/acme.berlin.longnamepress.semantic-mapping.json",
+        "-out",
+        "long.aas.json"
+      ],
+      "exit": 0
+    },
+    {
+      "name": "reset-long",
+      "kind": "reset"
+    },
+    {
+      "name": "long-upload",
+      "kind": "terminal",
+      "caption": "Upload the long-names export to BaSyx",
+      "run": [
+        "curl",
+        "-s",
+        "-o",
+        "/dev/null",
+        "-w",
+        "%{http_code}\\n",
+        "-F",
+        "file=@long.aas.json;type=application/json",
+        "http://127.0.0.1:18471/upload"
+      ],
+      "exit": 0,
+      "expect": [
+        "^200\\n$"
+      ]
+    },
+    {
+      "name": "viewer-long",
+      "kind": "viewer",
+      "caption": "BaSyx with long names and a line break: the layout holds",
+      "view": {
+        "aas": "https://vendor.example.com/ids/aas/LONG-1",
+        "submodel": "urn:openump:aas:acme:berlin:longnamepress:technical-data",
+        "element": "TechnicalProperties.spindle_load"
+      },
+      "expect": [
+        "Extremely long operator display name",
+        "spindle_load",
+        "Hydraulic press with an exceptionally long display name",
+        "TechnicalData"
+      ]
+    }
+  ]
+}

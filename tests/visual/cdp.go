@@ -107,6 +107,12 @@ func (p *page) evaluate(expr string) (json.RawMessage, error) {
 // on rendered content, not on virtual time, matters: the console holds an SSE
 // stream open, so a "network idle" or virtual-time wait never settles.
 func (p *page) capture(url string, width, height int, ready string) ([]byte, error) {
+	return p.captureAt(url, width, height, ready, true)
+}
+
+// captureAt is capture with a choice: grow to the full page, or keep the
+// viewport (pages that re-render on resize, such as the AAS viewer's tree).
+func (p *page) captureAt(url string, width, height int, ready string, grow bool) ([]byte, error) {
 	metrics := func(h int) error {
 		return p.call("Emulation.setDeviceMetricsOverride", map[string]any{"width": width, "height": h, "deviceScaleFactor": 1, "mobile": width < 600}, nil)
 	}
@@ -144,11 +150,28 @@ func (p *page) capture(url string, width, height int, ready string) ([]byte, err
 	if err := json.Unmarshal(h, &full); err != nil {
 		return nil, fmt.Errorf("page height: %w", err)
 	}
-	if full > height {
+	if grow && full > height {
 		if err := metrics(full); err != nil {
 			return nil, err
 		}
 	}
+	var shot struct {
+		Data string `json:"data"`
+	}
+	if err := p.call("Page.captureScreenshot", map[string]any{"format": "png", "fromSurface": true}, &shot); err != nil {
+		return nil, err
+	}
+	return base64.StdEncoding.DecodeString(shot.Data)
+}
+
+// viewport fixes the page size without navigating (video frames).
+func (p *page) viewport(width, height int) error {
+	return p.call("Emulation.setDeviceMetricsOverride", map[string]any{"width": width, "height": height, "deviceScaleFactor": 1, "mobile": false}, nil)
+}
+
+// shot captures the current viewport as it is, without navigating: the
+// video's typing frames change the page with evaluate and shoot each state.
+func (p *page) shot() ([]byte, error) {
 	var shot struct {
 		Data string `json:"data"`
 	}

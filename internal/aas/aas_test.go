@@ -378,6 +378,38 @@ func TestExportRefusesForeignSnapshots(t *testing.T) {
 			}
 		})
 	}
+	// Text that OpenUMP allows but AAS forbids is refused, not stripped.
+	hostile := c
+	hostile.Metadata.DisplayName = "Press\x1b[31m"
+	if _, err := Export(hostile, Snapshots{}, v); err == nil || !strings.Contains(err.Error(), "U+001B") {
+		t.Fatalf("control character in display_name: %v", err)
+	}
+	hostile = c
+	hostile.Metadata.Measurements = map[string]Measurement{"motor_temperature": func() Measurement {
+		d := c.Metadata.Measurements["motor_temperature"]
+		d.DisplayName = "tab\tand\nline breaks are valid AAS text"
+		return d
+	}()}
+	if _, err := Export(hostile, Snapshots{}, v); err != nil {
+		t.Fatalf("allowed characters refused: %v", err)
+	}
+	// A telemetry string with a control character is refused too.
+	if err := aasTexts(c.Metadata, c.Mapping, Snapshots{Telemetry: map[string]any{"measurements": map[string]any{
+		"door": map[string]any{"value": "open\x07"}}}}); err == nil || !strings.Contains(err.Error(), "telemetry door value contains U+0007") {
+		t.Fatalf("control character in a telemetry string: %v", err)
+	}
+	// A bidi override in a source tag is refused too (it becomes a qualifier).
+	hostile = c
+	hostile.Mapping.Measurements = map[string]MappedMeasurement{"motor_temperature": {SourceTag: "DB102" + string(rune(0x202e)) + ".DBD12"}}
+	if _, err := Export(hostile, Snapshots{}, v); err == nil || !strings.Contains(err.Error(), "motor_temperature: source_tag contains the bidirectional formatting character U+202E") {
+		t.Fatalf("bidi override in source_tag: %v", err)
+	}
+	// Bidi overrides are refused: a viewer would display reordered text.
+	hostile = c
+	hostile.Metadata.DisplayName = "Press \u202e40-sserp\u202c"
+	if _, err := Export(hostile, Snapshots{}, v); err == nil || !strings.Contains(err.Error(), "U+202E") {
+		t.Fatalf("bidi override in display_name: %v", err)
+	}
 	// An unreconciled pair is refused before anything is projected.
 	other := c
 	other.Mapping.MetadataRevision = 2

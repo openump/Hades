@@ -121,3 +121,10 @@ func InferDictionary(id string) string {
 // MatchesDictionary reports whether id has the identifier form dictionary
 // uses, the rule semantic-mapping validation applies.
 func MatchesDictionary(dictionary, id string) bool { return semanticIDMatches(dictionary, id) }
+
+// IsBidiControl reports the Unicode bidirectional formatting characters:
+// marks, embeddings, overrides and isolates. Text carrying them can display
+// reordered, so Hades views neutralize them and AAS export refuses them.
+func IsBidiControl(r rune) bool {
+	return r == 0x061c || r == 0x200e || r == 0x200f || (r >= 0x202a && r <= 0x202e) || (r >= 0x2066 && r <= 0x2069)
+}

@@ -1,0 +1,3 @@
+enterprise,site,area,line,asset,asset_display_name,measurement,display_name,type,unit,expected_interval_ms,source_tag
+acme,berlin,assembly,line-01,press-04,"Press ‮40-sserp‬ line",motor_temperature,"Motor[31m temperature",REAL,Cel,1000,"DB102‮.DBD12"
+acme,berlin,assembly,line-01,press-04,,spindle_load,"Extremely long operator display name that keeps going to test wrapping in every view of the tool",REAL,%,1000,DB102.DBD20

@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/openump/Hades/internal/contracts"
 	"github.com/openump/Hades/internal/inspect"
 )
 
@@ -171,9 +172,7 @@ func clean(s string) string {
 
 // bidiControl reports the Unicode bidirectional formatting characters: marks,
 // embeddings, overrides and isolates.
-func bidiControl(r rune) bool {
-	return r == 0x061c || r == 0x200e || r == 0x200f || (r >= 0x202a && r <= 0x202e) || (r >= 0x2066 && r <= 0x2069)
-}
+func bidiControl(r rune) bool { return contracts.IsBidiControl(r) }
 
 // SnapshotURL turns an inspector base address into its snapshot endpoint.
 func SnapshotURL(base string) string {

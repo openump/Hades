@@ -57,3 +57,68 @@ console and `hades top`; both now replace Unicode bidirectional formatting chara
 as they already did control characters. It also showed long unbroken text overflowing
 panels and squeezing columns, and the console's service status was a raw JSON blob; all
 are fixed and covered by baselines.
+
+## The standards boundary (Hades-046)
+
+`scripts/demo-aas` verifies what an engineer sees when using `hades import`,
+`hades check` and `hades aas export` ([standards boundary guide](aas.md)), and what an
+independent AAS tool makes of the export. It also produces the demo video.
+
+```sh
+scripts/demo-aas              # Linux (CI): pinned browser, compared with baselines, video built
+scripts/demo-aas --preview    # any OS: local Chrome, not compared
+scripts/demo-aas --refresh    # CI only: accept captures as baselines and refresh docs/assets/aas-demo.*
+```
+
+The script:
+- builds `hades` and the `uns-snapshot` test helper;
+- starts Eclipse BaSyx (the digest-pinned test fixture in `deploy/basyx`) and a
+  `hades up` demo stack;
+- runs the committed storyboard, `tests/visual/aas/storyboard.json`.
+
+Each storyboard step is one of the following:
+
+| Step | What happens | How it is checked |
+|---|---|---|
+| `terminal` | a command is typed and run in a work directory with fixed inputs and relative paths | exit code and output patterns; the rendered page is compared with a baseline (`aas-<step>.png`) |
+| `files` | generated files are rendered side by side: the CSV row next to the metadata and mapping it became, with JSON highlighted | compared with a baseline |
+| `viewer` | a page of the BaSyx web UI, opened on one shell or submodel element | **content-checked**: every expected text (for example `0173-1#02-AAB991#008`, `-40 Cel`, the live value) must be rendered. It is not pixel-compared, because the UI is not ours (the same rule as `vmui`) |
+| `live` | steps against the running demo stack: the snapshot from the broker, the live export and the live value in the viewer | content-checked, because the values change from run to run |
+
+Output contains no temporary paths or wall-clock times, so terminal and file pages
+reproduce exactly. Control and bidi characters are shown as marked escapes, never
+interpreted.
+
+**Hostile input.** Further steps check hostile input:
+- tag tables and AAS input carrying escape sequences, bidi overrides, a line break and
+  long names;
+- the diagnostics (escaped, on one line);
+- the file pages (escaped);
+- the export refusals;
+- BaSyx with long names and a line break.
+
+The captures found that BaSyx displays bidi overrides as reordered text: an asset name
+stored as `Press ‹RLO›40-sserp‹PDF›` appeared as "Press press-04". `hades aas export`
+therefore refuses bidi formatting characters, as well as the control characters AAS
+forbids.
+
+**Demo video.** [`docs/assets/aas-demo.mp4`](../assets/aas-demo.mp4) (about 2½ minutes)
+tells the story with captions:
+1. a broken tag table and its diagnostics;
+2. the corrected table and the files it produced;
+3. reconciliation passes, and a mismatched revision is refused;
+4. a vendor AAS imports;
+5. a deterministic export opens in BaSyx;
+6. snapshots from another revision, and overwriting a catalog, are refused;
+7. a round trip gives identical files;
+8. the live value from `hades up --demo` appears in the twin.
+
+[`docs/assets/aas-demo.gif`](../assets/aas-demo.gif) is a short highlight reel.
+
+The video is built from the same pinned-browser frames: the typing is rendered character
+by character. A digest-pinned ffmpeg image assembles it with deterministic encoder
+settings. It contains live values, so CI rebuilds it as an artifact on every run, and the
+committed copy changes only through `--refresh`.
+
+On macOS, previews show numbers in the system's format (for example `67,6`), because
+Chrome on macOS ignores `--lang`. The CI captures use en-US.

@@ -75,6 +75,11 @@ class AASExportTests(unittest.TestCase):
         self.assertTrue(operational.startswith('urn:openump:'))
         self.assertEqual({s['id'] for s in env['submodels']}, set(mapping['aas']['submodel_ids'].values()))
 
+        for element in submodels['OperationalData']['submodelElements']:
+            for q in element.get('qualifiers', []):
+                with self.subTest(qualifier=q['type']):
+                    self.assertEqual(q['kind'], 'ValueQualifier')  # quality, observed_at qualify the value
+
         concepts = {c['id']: c for c in env['conceptDescriptions']}
         technical = next(e for e in submodels['TechnicalData']['submodelElements'] if e['idShort'] == 'TechnicalProperties')
         elements = {e['idShort']: e for e in technical['value']}
@@ -90,6 +95,8 @@ class AASExportTests(unittest.TestCase):
                 iec = concepts[concept_id]['embeddedDataSpecifications'][0]['dataSpecificationContent']
                 self.assertEqual(iec['unit'], declared['unit'])
                 qualifiers = {q['type']: q['value'] for q in element['qualifiers']}
+                # Definition facts are concept qualifiers (set explicitly, not left to a default).
+                self.assertEqual({q['kind'] for q in element['qualifiers']}, {'ConceptQualifier'})
                 self.assertEqual(int(qualifiers['openump:expected_interval_ms']), declared['expected_interval_ms'])
                 if 'source_tag' in mapped:
                     self.assertEqual(qualifiers['openump:source_tag'], mapped['source_tag'])

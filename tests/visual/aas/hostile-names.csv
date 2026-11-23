@@ -1,0 +1,3 @@
+enterprise,site,area,line,asset,measurement,type,unit,expected_interval_ms,source_tag
+acme,berlin,assembly,line-01,press-04,"temp[31mred‮gnp.exe",REAL,Cel,1000,DB1.DBD0
+acme,berlin,assembly,line-01,press-04,pressure,REAL,"bar[2J",1000,DB1.DBD4
