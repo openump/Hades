@@ -534,7 +534,8 @@
     {
       "name": "live-values",
       "kind": "setup",
-      "shell": "test -s live/telemetry.json"
+      "shell": "test -s live/telemetry.json",
+      "live_values": true
     },
     {
       "name": "live-export",

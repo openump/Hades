@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"maps"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -35,7 +37,7 @@ func Export(c Catalog, snap Snapshots, v *contracts.Validator) (Environment, err
 	if err := pinned(m, metadata, snap); err != nil {
 		return Environment{}, err
 	}
-	if err := aasTexts(m, snap); err != nil {
+	if err := aasTexts(m, s, snap); err != nil {
 		return Environment{}, err
 	}
 	h := m.Hierarchy
@@ -192,13 +194,13 @@ func operationalElements(m Metadata, snap Snapshots, names []string, semantics f
 //     own views neutralize them (Hades-044); an export cannot, so it refuses.
 //
 // Refusing, not stripping, keeps the export a faithful copy of the catalog.
-func aasTexts(m Metadata, snap Snapshots) error {
+func aasTexts(m Metadata, s Mapping, snap Snapshots) error {
 	check := func(field, s string) error {
 		for _, r := range s {
 			if (r < 0x20 && r != '\t' && r != '\n' && r != '\r') || r == 0xfffe || r == 0xffff {
 				return fmt.Errorf("%s contains %U, which AAS text does not allow", field, r)
 			}
-			if bidiFormatting[r] {
+			if contracts.IsBidiControl(r) {
 				return fmt.Errorf("%s contains the bidirectional formatting character %U, which would let a viewer display reordered text", field, r)
 			}
 		}
@@ -207,14 +209,23 @@ func aasTexts(m Metadata, snap Snapshots) error {
 	if err := check("metadata display_name", m.DisplayName); err != nil {
 		return err
 	}
-	for name, d := range m.Measurements {
-		if err := check(name+": display_name", d.DisplayName); err != nil {
+	// Sorted, so a refusal names the same field on every run.
+	for _, name := range slices.Sorted(maps.Keys(m.Measurements)) {
+		if err := check(name+": display_name", m.Measurements[name].DisplayName); err != nil {
+			return err
+		}
+		mapped := s.Measurements[name]
+		if err := check(name+": source_tag", mapped.SourceTag); err != nil {
+			return err
+		}
+		if err := check(name+": source_unit", mapped.SourceUnit); err != nil {
 			return err
 		}
 	}
 	if t := snap.Telemetry; t != nil {
-		for name, r := range t["measurements"].(map[string]any) {
-			if v, ok := r.(map[string]any)["value"].(string); ok {
+		readings := t["measurements"].(map[string]any)
+		for _, name := range slices.Sorted(maps.Keys(readings)) {
+			if v, ok := readings[name].(map[string]any)["value"].(string); ok {
 				if err := check("telemetry "+name+" value", v); err != nil {
 					return err
 				}
@@ -223,10 +234,6 @@ func aasTexts(m Metadata, snap Snapshots) error {
 	}
 	return nil
 }
-
-// bidiFormatting are the Unicode bidirectional formatting characters.
-var bidiFormatting = map[rune]bool{0x061c: true, 0x200e: true, 0x200f: true, 0x202a: true, 0x202b: true, 0x202c: true,
-	0x202d: true, 0x202e: true, 0x2066: true, 0x2067: true, 0x2068: true, 0x2069: true}
 
 // pinned refuses snapshots of another asset or metadata revision: an export
 // shows live values only under the exact catalog that defines them.

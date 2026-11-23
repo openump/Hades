@@ -19,6 +19,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/openump/Hades/internal/contracts"
 	"github.com/openump/Hades/internal/sample"
 )
 
@@ -100,7 +101,7 @@ func describe(s map[string]any) (string, error) {
 			return "", fmt.Errorf("summary lacks %s", k)
 		}
 		text := fmt.Sprint(v)
-		if q := strconv.Quote(text); q[1:len(q)-1] != text || strings.ContainsFunc(text, isBidi) {
+		if q := strconv.Quote(text); q[1:len(q)-1] != text || strings.ContainsFunc(text, contracts.IsBidiControl) {
 			return strconv.QuoteToASCII(text), nil
 		}
 		return text, nil
@@ -140,8 +141,4 @@ func describe(s map[string]any) (string, error) {
 		return strings.Join(parts, " "), nil
 	}
 	return "", fmt.Errorf("unexpected message type %v", s["type"])
-}
-
-func isBidi(r rune) bool {
-	return r == 0x061c || r == 0x200e || r == 0x200f || (r >= 0x202a && r <= 0x202e) || (r >= 0x2066 && r <= 0x2069)
 }

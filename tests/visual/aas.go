@@ -22,6 +22,8 @@ import (
 	"regexp"
 	"strings"
 	"time"
+
+	"github.com/openump/Hades/internal/contracts"
 )
 
 // Video geometry: every frame is 1280x720.
@@ -63,6 +65,9 @@ type step struct {
 	// SameFirstField: every output line starts with the same field (for
 	// example one digest printed for two files).
 	SameFirstField bool `json:"same_first_field"`
+	// LiveValues: after this setup step, load live/telemetry.json for
+	// {{telemetry.<name>}} expectations.
+	LiveValues bool `json:"live_values"`
 }
 
 type panel struct {
@@ -140,7 +145,7 @@ func runAAS(debug string, cfg aasConfig) error {
 			if out, err := cmd.CombinedOutput(); err != nil {
 				return fmt.Errorf("%s: setup failed: %v: %s", st.Name, err, out)
 			}
-			if strings.HasPrefix(st.Name, "live-values") {
+			if st.LiveValues {
 				if err := readLiveValues(cfg.work, live); err != nil {
 					return err
 				}
@@ -174,7 +179,11 @@ func runAAS(debug string, cfg aasConfig) error {
 						first = append(first, f[0])
 					}
 				}
-				if len(first) < 2 || strings.Count(strings.Join(first, " "), first[0]) != len(first) {
+				same := len(first) >= 2
+				for _, f := range first {
+					same = same && f == first[0]
+				}
+				if !same {
 					fail("%s: lines do not share their first field:\n%s", st.Name, out)
 				}
 			}
@@ -299,9 +308,7 @@ func prepareWork(cfg aasConfig, inputs []string) error {
 }
 
 func workEnv(cfg aasConfig) []string {
-	env := []string{"PATH=" + cfg.bin + string(os.PathListSeparator) + os.Getenv("PATH"), "TZ=UTC", "LC_ALL=C", "HOME=" + cfg.work,
-		"BASYX=" + cfg.basyxAPI}
-	return env
+	return []string{"PATH=" + cfg.bin + string(os.PathListSeparator) + os.Getenv("PATH"), "TZ=UTC", "LC_ALL=C", "HOME=" + cfg.work}
 }
 
 // runStep runs one command with stdout and stderr interleaved, as a
@@ -379,7 +386,13 @@ func readLiveValues(work string, live map[string]string) error {
 		return err
 	}
 	for name, m := range t.Measurements {
-		live["telemetry."+name] = strings.Trim(string(m.Value), `"`)
+		var v any
+		d := json.NewDecoder(strings.NewReader(string(m.Value)))
+		d.UseNumber() // keep the literal: 68.10 stays 68.10
+		if err := d.Decode(&v); err != nil {
+			return fmt.Errorf("live value %s: %w", name, err)
+		}
+		live["telemetry."+name] = fmt.Sprint(v)
 	}
 	return nil
 }
@@ -558,7 +571,7 @@ func (s *pageServer) render(sc *scene, full bool) (string, error) {
 		cmd, _ := json.Marshal(sc.command)
 		b.WriteString(`<div class="term"><div class="bar">shell</div><div class="scroll"><pre><span class="ps">$ </span><span class="cmd" id="cmd">` +
 			html.EscapeString(sc.command) + `</span><span class="cur" id="cur"> </span>` + "\n" + `<span id="out">` + ansiHTML(visibleRaw(sc.output)) + `</span></pre></div></div>`)
-		b.WriteString(`<script>const full=` + string(cmd) + `;function setChars(n){document.getElementById('cmd').textContent=full.slice(0,n);` +
+		b.WriteString(`<script>const full=Array.from(` + string(cmd) + `);function setChars(n){document.getElementById('cmd').textContent=full.slice(0,n).join('');` +
 			`document.getElementById('out').style.display=n>=full.length+1?'':'none';document.getElementById('cur').style.display=n>=full.length+1?'none':'';` +
 			`const s=document.querySelector('.scroll');s.scrollTop=s.scrollHeight}` +
 			`document.getElementById('cur').style.display='none';document.querySelector('.scroll').scrollTop=1e9</script>`)
@@ -604,10 +617,9 @@ func (s *pageServer) render(sc *scene, full bool) (string, error) {
 	return b.String(), nil
 }
 
-// bidi formatting characters reorder displayed text; they are shown as
+// Bidi formatting characters reorder displayed text; they are shown as
 // escapes, never interpreted (as in hades top and the console, Hades-044).
-var bidi = map[rune]bool{0x061c: true, 0x200e: true, 0x200f: true, 0x202a: true, 0x202b: true, 0x202c: true, 0x202d: true, 0x202e: true,
-	0x2066: true, 0x2067: true, 0x2068: true, 0x2069: true}
+var bidi = contracts.IsBidiControl
 
 // visible HTML-escapes text and shows control and bidi characters as
 // marked escapes.
@@ -617,7 +629,7 @@ func visible(s string) string {
 		switch {
 		case r == '\n' || r == '\t':
 			b.WriteRune(r)
-		case r < 0x20 || (r >= 0x7f && r < 0xa0) || bidi[r]:
+		case r < 0x20 || (r >= 0x7f && r < 0xa0) || bidi(r):
 			fmt.Fprintf(&b, `<span class="esc">\u%04X</span>`, r)
 		default:
 			b.WriteString(html.EscapeString(string(r)))
@@ -635,7 +647,7 @@ func visibleRaw(s string) string {
 		switch {
 		case r == '\n' || r == '\t':
 			b.WriteRune(r)
-		case r < 0x20 || (r >= 0x7f && r < 0xa0) || bidi[r]:
+		case r < 0x20 || (r >= 0x7f && r < 0xa0) || bidi(r):
 			fmt.Fprintf(&b, `\u%04X`, r)
 		default:
 			b.WriteRune(r)
@@ -670,8 +682,8 @@ func highlightJSON(src string) string {
 
 // csvTable renders a CSV file as a table with the chosen data rows marked.
 func csvTable(src string, rows []int, fields []string) string {
-	r := newCSV(src)
-	if len(fields) > 0 && len(r) > 0 {
+	r, parsed := newCSV(src)
+	if parsed && len(fields) > 0 && len(r) > 0 {
 		var keep []int
 		for _, f := range fields {
 			for i, h := range r[0] {
@@ -831,6 +843,9 @@ func buildVideo(debug, server string, order []*scene, cfg aasConfig) error {
 		}
 		return nil
 	}
+	if total < 120 || total > 240 {
+		return fmt.Errorf("video would run %.0f s; the ticket asks for 2 to 4 minutes", total)
+	}
 	// Deterministic encode: one thread, bit-exact flags, no metadata.
 	if err := ff("-f", "concat", "-safe", "0", "-i", "frames.txt", "-vf", "fps=25,format=yuv420p",
 		"-c:v", "libx264", "-preset", "veryslow", "-tune", "stillimage", "-crf", "30", "-threads", "1",
@@ -843,9 +858,6 @@ func buildVideo(debug, server string, order []*scene, cfg aasConfig) error {
 		return err
 	}
 	fmt.Printf("%-28s %.0f s, %d frames -> %s\n", "aas-demo video", total, n, filepath.Join(dir, "aas-demo.mp4"))
-	if total < 120 || total > 240 {
-		return fmt.Errorf("video runs %.0f s; the ticket asks for 2 to 4 minutes", total)
-	}
 	if cfg.refresh && cfg.videoDir != "" {
 		for _, f := range []string{"aas-demo.mp4", "aas-demo.gif"} {
 			raw, err := os.ReadFile(filepath.Join(dir, f))
@@ -861,8 +873,9 @@ func buildVideo(debug, server string, order []*scene, cfg aasConfig) error {
 	return nil
 }
 
-// newCSV parses a CSV file for display; a malformed file is shown line by line.
-func newCSV(src string) [][]string {
+// newCSV parses a CSV file for display; a malformed file is shown line by
+// line (parsed is false, and no column selection applies).
+func newCSV(src string) ([][]string, bool) {
 	r := csv.NewReader(strings.NewReader(strings.TrimPrefix(src, "\ufeff")))
 	r.FieldsPerRecord = -1
 	records, err := r.ReadAll()
@@ -871,6 +884,7 @@ func newCSV(src string) [][]string {
 		for _, line := range strings.Split(strings.TrimRight(src, "\n"), "\n") {
 			records = append(records, []string{line})
 		}
+		return records, false
 	}
-	return records
+	return records, true
 }
