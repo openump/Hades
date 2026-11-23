@@ -530,7 +530,7 @@ pre{margin:0;padding:12px 16px;font:16px/1.45 "DejaVu Sans Mono",monospace;white
 .panel.grow{flex:1.7}
 .k{color:#67e8f9}.s{color:#a5d6a7}.n{color:#facc15}.b{color:#f0abfc}
 table{border-collapse:collapse;font:12px/1.35 "DejaVu Sans",sans-serif;margin:10px}
-td,th{border:1px solid #2a323c;padding:3px 6px;text-align:left;vertical-align:top;white-space:nowrap}
+td,th{border:1px solid #2a323c;padding:3px 6px;text-align:left;vertical-align:top}
 th{color:#9aa4b2}tr.hl td{background:#16361f}
 .card{height:720px;display:flex;flex-direction:column;justify-content:center;padding:0 90px;box-sizing:border-box}
 .card h1{font:700 44px/1.2 "DejaVu Sans",sans-serif;margin:0 0 18px;color:#fff}

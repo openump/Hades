@@ -704,9 +704,11 @@
           ],
           "wide": true,
           "fields": [
+            "asset",
             "asset_display_name",
             "measurement",
             "display_name",
+            "type",
             "unit",
             "source_tag"
           ]

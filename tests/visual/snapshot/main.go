@@ -10,9 +10,12 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"maps"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -65,8 +68,12 @@ func run(broker, root, catalog, out string, timeout time.Duration) error {
 			if (kind != "status" && kind != "telemetry") || got[kind] != nil || (kind == "status" && !m.Retained) {
 				continue
 			}
+			text, err := describe(summary)
+			if err != nil {
+				return fmt.Errorf("%s: %w", m.Topic, err)
+			}
 			got[kind] = m.Payload
-			lines = append(lines, fmt.Sprintf("%-9s %s  %s", kind, m.Topic, describe(summary)))
+			lines = append(lines, fmt.Sprintf("%-9s %s  %s", kind, m.Topic, text))
 		}
 	}
 	if err := os.MkdirAll(out, 0o755); err != nil {
@@ -84,25 +91,57 @@ func run(broker, root, catalog, out string, timeout time.Duration) error {
 }
 
 // describe prints what an operator recognizes: the producer and acquisition
-// state of a status, the readings of a telemetry message.
-func describe(s map[string]any) string {
+// state of a status; the value, unit, quality and freshness of each reading.
+// Broker text is escaped (strconv.Quote), never written raw to the terminal.
+func describe(s map[string]any) (string, error) {
+	field := func(m map[string]any, k string) (string, error) {
+		v, ok := m[k]
+		if !ok || v == nil {
+			return "", fmt.Errorf("summary lacks %s", k)
+		}
+		text := fmt.Sprint(v)
+		if q := strconv.Quote(text); q[1:len(q)-1] != text || strings.ContainsFunc(text, isBidi) {
+			return strconv.QuoteToASCII(text), nil
+		}
+		return text, nil
+	}
 	switch s["type"] {
 	case "status":
-		return fmt.Sprintf("producer=%v acquisition=%v", s["producer_state"], s["acquisition_state"])
-	case "telemetry":
-		var parts []string
-		if readings, ok := s["measurements"].(map[string]any); ok {
-			names := make([]string, 0, len(readings))
-			for n := range readings {
-				names = append(names, n)
-			}
-			sort.Strings(names)
-			for _, n := range names {
-				r, _ := readings[n].(map[string]any)
-				parts = append(parts, fmt.Sprintf("%s=%v %v (%v)", n, r["value"], r["unit"], r["quality"]))
-			}
+		p, err := field(s, "producer_state")
+		if err != nil {
+			return "", err
 		}
-		return strings.Join(parts, " ")
+		a, err := field(s, "acquisition_state")
+		if err != nil {
+			return "", err
+		}
+		return "producer=" + p + " acquisition=" + a, nil
+	case "telemetry":
+		readings, ok := s["measurements"].(map[string]any)
+		if !ok || len(readings) == 0 {
+			return "", fmt.Errorf("summary lacks measurements")
+		}
+		var parts []string
+		for _, n := range slices.Sorted(maps.Keys(readings)) {
+			r, ok := readings[n].(map[string]any)
+			if !ok {
+				return "", fmt.Errorf("reading %s is malformed", n)
+			}
+			var vals []string
+			for _, k := range []string{"value", "unit", "quality", "freshness"} {
+				v, err := field(r, k)
+				if err != nil {
+					return "", fmt.Errorf("%s: %w", n, err)
+				}
+				vals = append(vals, v)
+			}
+			parts = append(parts, fmt.Sprintf("%s=%s %s (%s, %s)", n, vals[0], vals[1], vals[2], vals[3]))
+		}
+		return strings.Join(parts, " "), nil
 	}
-	return ""
+	return "", fmt.Errorf("unexpected message type %v", s["type"])
+}
+
+func isBidi(r rune) bool {
+	return r == 0x061c || r == 0x200e || r == 0x200f || (r >= 0x202a && r <= 0x202e) || (r >= 0x2066 && r <= 0x2069)
 }
