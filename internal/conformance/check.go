@@ -87,6 +87,7 @@ type fixture struct {
 	AssetID           string `json:"asset_id"`
 	Valid             bool
 	Payload           json.RawMessage
+	Metadata          json.RawMessage // paired snapshot for cross-artifact cases
 	Raw               string
 	Error             string
 }
@@ -156,7 +157,7 @@ func Run(root string, output io.Writer) error {
 		}
 		count++
 	}
-	for _, group := range []string{"telemetry", "context", "control", "inference", "derived"} {
+	for _, group := range []string{"telemetry", "context", "control", "inference", "derived", "semantic-mapping"} {
 		cases, err := fixtures(root, "examples/contracts/"+group+"/cases.json")
 		if err != nil {
 			return err
@@ -173,6 +174,25 @@ func Run(root string, output io.Writer) error {
 			count++
 		}
 	}
+	// Cross-artifact: a semantic mapping reconciles only with its exact
+	// (asset_id, metadata_revision) metadata snapshot.
+	pairs, err := fixtures(root, "examples/contracts/semantic-mapping/reconcile-cases.json")
+	if err != nil {
+		return err
+	}
+	for _, c := range pairs {
+		mapping, err := v.Validate("semantic-mapping", c.Payload)
+		if err == nil {
+			var metadata map[string]any
+			if metadata, err = v.Validate("metadata", c.Metadata); err == nil {
+				err = contracts.ReconcileSemanticMapping(mapping, metadata)
+			}
+		}
+		if err := expectation(c, err); err != nil {
+			return err
+		}
+		count++
+	}
 	wire, err := fixtures(root, "examples/contracts/wire-cases.json")
 	if err != nil {
 		return err
@@ -184,6 +204,6 @@ func Run(root string, output io.Writer) error {
 		}
 		count++
 	}
-	fmt.Fprintf(output, "conformance passed: ten schemas, validated asset registry, %d fixtures; baseline unchanged\n", count)
+	fmt.Fprintf(output, "conformance passed: eleven schemas, validated asset registry, %d fixtures; baseline unchanged\n", count)
 	return nil
 }

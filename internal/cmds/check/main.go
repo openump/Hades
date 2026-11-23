@@ -5,7 +5,6 @@ package check
 import (
 	"flag"
 	"fmt"
-	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -21,6 +20,7 @@ func run(fs *flag.FlagSet, args []string) error {
 	refresh := fs.Bool("refresh-baseline", false, "explicitly record reviewed contract/fixture hashes")
 	kind := fs.String("kind", "telemetry", "payload kind for -file")
 	file := fs.String("file", "", "validate this JSON payload instead of the fixture suite")
+	metadata := fs.String("metadata", "", "with -kind semantic-mapping: reconcile -file with this metadata snapshot")
 	craReport := fs.Bool("cra-report", false, "write the CRA / IEC 62443-4-2 evidence pack for a secure site")
 	siteConfig := fs.String("site-config", "", "reviewed openump-site/1 manifest (relative to -root) for -cra-report")
 	outDir := fs.String("out-dir", "", "output directory for -cra-report")
@@ -42,6 +42,9 @@ func run(fs *flag.FlagSet, args []string) error {
 		}
 		return conformance.WriteBaseline(*root)
 	}
+	if *metadata != "" && (*file == "" || *kind != "semantic-mapping") {
+		return fmt.Errorf("-metadata reconciles a -kind semantic-mapping -file")
+	}
 	if *file == "" {
 		return conformance.Run(*root, os.Stdout)
 	}
@@ -49,17 +52,28 @@ func run(fs *flag.FlagSet, args []string) error {
 	if err != nil {
 		return err
 	}
-	input, err := os.Open(*file)
+	raw, err := contracts.ReadFile(*file)
 	if err != nil {
 		return err
 	}
-	defer input.Close()
-	raw, err := io.ReadAll(io.LimitReader(input, contracts.MaxPayloadBytes+1))
+	object, err := v.Validate(*kind, raw)
 	if err != nil {
 		return err
 	}
-	if _, err := v.Validate(*kind, raw); err != nil {
-		return err
+	if *metadata != "" {
+		meta, err := contracts.ReadFile(*metadata)
+		if err != nil {
+			return err
+		}
+		snapshot, err := v.Validate("metadata", meta)
+		if err != nil {
+			return fmt.Errorf("%s: %w", *metadata, err)
+		}
+		if err := contracts.ReconcileSemanticMapping(object, snapshot); err != nil {
+			return err
+		}
+		fmt.Println("payload valid; reconciles with", *metadata)
+		return nil
 	}
 	fmt.Println("payload valid")
 	return nil

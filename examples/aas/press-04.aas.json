@@ -1,0 +1,314 @@
+{
+  "assetAdministrationShells": [
+    {
+      "modelType": "AssetAdministrationShell",
+      "id": "urn:openump:aas:acme:berlin:press-04",
+      "idShort": "press_04",
+      "displayName": [
+        {
+          "language": "en",
+          "text": "Hydraulic Press"
+        }
+      ],
+      "extensions": [
+        {
+          "name": "openump:asset_id",
+          "valueType": "xs:string",
+          "value": "urn:openump:acme:berlin:press-04"
+        },
+        {
+          "name": "openump:metadata_revision",
+          "valueType": "xs:long",
+          "value": "1"
+        }
+      ],
+      "assetInformation": {
+        "assetKind": "Instance",
+        "globalAssetId": "urn:openump:acme:berlin:press-04",
+        "assetType": "urn:openump:asset-type:hydraulic-press"
+      },
+      "submodels": [
+        {
+          "type": "ModelReference",
+          "keys": [
+            {
+              "type": "Submodel",
+              "value": "urn:openump:aas:acme:berlin:press-04:nameplate"
+            }
+          ]
+        },
+        {
+          "type": "ModelReference",
+          "keys": [
+            {
+              "type": "Submodel",
+              "value": "urn:openump:aas:acme:berlin:press-04:technical-data"
+            }
+          ]
+        },
+        {
+          "type": "ModelReference",
+          "keys": [
+            {
+              "type": "Submodel",
+              "value": "urn:openump:aas:acme:berlin:press-04:operational-data"
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "submodels": [
+    {
+      "modelType": "Submodel",
+      "id": "urn:openump:aas:acme:berlin:press-04:nameplate",
+      "idShort": "Nameplate",
+      "kind": "Instance",
+      "semanticId": {
+        "type": "ExternalReference",
+        "keys": [
+          {
+            "type": "GlobalReference",
+            "value": "https://admin-shell.io/zvei/nameplate/2/0/Nameplate"
+          }
+        ]
+      },
+      "submodelElements": [
+        {
+          "modelType": "MultiLanguageProperty",
+          "idShort": "ManufacturerProductDesignation",
+          "value": [
+            {
+              "language": "en",
+              "text": "Hydraulic Press"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "modelType": "Submodel",
+      "id": "urn:openump:aas:acme:berlin:press-04:technical-data",
+      "idShort": "TechnicalData",
+      "kind": "Instance",
+      "semanticId": {
+        "type": "ExternalReference",
+        "keys": [
+          {
+            "type": "GlobalReference",
+            "value": "https://admin-shell.io/ZVEI/TechnicalData/Submodel/1/2"
+          }
+        ]
+      },
+      "submodelElements": [
+        {
+          "modelType": "SubmodelElementCollection",
+          "idShort": "ProductClassifications",
+          "value": [
+            {
+              "modelType": "SubmodelElementCollection",
+              "idShort": "ProductClassification01",
+              "value": [
+                {
+                  "modelType": "Property",
+                  "idShort": "ProductClassificationSystem",
+                  "valueType": "xs:string",
+                  "value": "ECLASS"
+                },
+                {
+                  "modelType": "Property",
+                  "idShort": "ProductClassId",
+                  "valueType": "xs:string",
+                  "value": "0173-1#01-AKJ975#017"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "modelType": "SubmodelElementCollection",
+          "idShort": "TechnicalProperties",
+          "value": [
+            {
+              "modelType": "Range",
+              "idShort": "motor_temperature",
+              "displayName": [
+                {
+                  "language": "en",
+                  "text": "Motor temperature"
+                }
+              ],
+              "semanticId": {
+                "type": "ExternalReference",
+                "keys": [
+                  {
+                    "type": "GlobalReference",
+                    "value": "0173-1#02-AAB991#008"
+                  }
+                ]
+              },
+              "supplementalSemanticIds": [
+                {
+                  "type": "ModelReference",
+                  "keys": [
+                    {
+                      "type": "ConceptDescription",
+                      "value": "urn:openump:concept:acme:berlin:press-04:motor_temperature"
+                    }
+                  ]
+                }
+              ],
+              "qualifiers": [
+                {
+                  "type": "openump:expected_interval_ms",
+                  "valueType": "xs:long",
+                  "value": "1000"
+                },
+                {
+                  "type": "openump:source_tag",
+                  "valueType": "xs:string",
+                  "value": "DB102.DBD12"
+                },
+                {
+                  "type": "openump:source_unit",
+                  "valueType": "xs:string",
+                  "value": "degC"
+                }
+              ],
+              "valueType": "xs:double",
+              "min": "-40",
+              "max": "150"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "modelType": "Submodel",
+      "id": "urn:openump:aas:acme:berlin:press-04:operational-data",
+      "idShort": "OperationalData",
+      "kind": "Instance",
+      "semanticId": {
+        "type": "ExternalReference",
+        "keys": [
+          {
+            "type": "GlobalReference",
+            "value": "urn:openump:aas:submodel:operational-data:1.0"
+          }
+        ]
+      },
+      "description": [
+        {
+          "language": "en",
+          "text": "Latest OpenUMP values with quality; not an IDTA 02008 Time Series instance."
+        }
+      ],
+      "submodelElements": [
+        {
+          "modelType": "Property",
+          "idShort": "ProducerState",
+          "valueType": "xs:string",
+          "value": "online"
+        },
+        {
+          "modelType": "Property",
+          "idShort": "AcquisitionState",
+          "valueType": "xs:string",
+          "value": "healthy"
+        },
+        {
+          "modelType": "Property",
+          "idShort": "StatusReportedAt",
+          "valueType": "xs:dateTime",
+          "value": "2026-10-13T14:00:01.000Z"
+        },
+        {
+          "modelType": "Property",
+          "idShort": "motor_temperature",
+          "displayName": [
+            {
+              "language": "en",
+              "text": "Motor temperature"
+            }
+          ],
+          "semanticId": {
+            "type": "ExternalReference",
+            "keys": [
+              {
+                "type": "GlobalReference",
+                "value": "0173-1#02-AAB991#008"
+              }
+            ]
+          },
+          "supplementalSemanticIds": [
+            {
+              "type": "ModelReference",
+              "keys": [
+                {
+                  "type": "ConceptDescription",
+                  "value": "urn:openump:concept:acme:berlin:press-04:motor_temperature"
+                }
+              ]
+            }
+          ],
+          "qualifiers": [
+            {
+              "type": "openump:quality",
+              "valueType": "xs:string",
+              "value": "good"
+            },
+            {
+              "type": "openump:observed_at",
+              "valueType": "xs:dateTime",
+              "value": "2026-10-13T14:00:00.000Z"
+            }
+          ],
+          "valueType": "xs:double",
+          "value": "67.2"
+        }
+      ]
+    }
+  ],
+  "conceptDescriptions": [
+    {
+      "modelType": "ConceptDescription",
+      "id": "urn:openump:concept:acme:berlin:press-04:motor_temperature",
+      "idShort": "motor_temperature",
+      "isCaseOf": [
+        {
+          "type": "ExternalReference",
+          "keys": [
+            {
+              "type": "GlobalReference",
+              "value": "0173-1#02-AAB991#008"
+            }
+          ]
+        }
+      ],
+      "embeddedDataSpecifications": [
+        {
+          "dataSpecification": {
+            "type": "ExternalReference",
+            "keys": [
+              {
+                "type": "GlobalReference",
+                "value": "https://admin-shell.io/DataSpecificationTemplates/DataSpecificationIec61360/3/0"
+              }
+            ]
+          },
+          "dataSpecificationContent": {
+            "modelType": "DataSpecificationIec61360",
+            "preferredName": [
+              {
+                "language": "en",
+                "text": "Motor temperature"
+              }
+            ],
+            "unit": "Cel",
+            "dataType": "REAL_MEASURE"
+          }
+        }
+      ]
+    }
+  ]
+}

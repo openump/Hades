@@ -1,0 +1,670 @@
+[
+  {
+    "name": "valid-semantic-mapping",
+    "kind": "semantic-mapping",
+    "valid": true,
+    "error": "",
+    "payload": {
+      "schema_version": "1.0",
+      "asset_id": "urn:openump:acme:berlin:press-04",
+      "metadata_revision": 1,
+      "semantic_id": "0173-1#01-AKJ975#017",
+      "dictionary": "eclass",
+      "aas": {
+        "aas_id": "urn:openump:aas:acme:berlin:press-04",
+        "global_asset_id": "urn:openump:acme:berlin:press-04",
+        "submodel_ids": {
+          "nameplate": "urn:openump:aas:acme:berlin:press-04:nameplate",
+          "technical_data": "urn:openump:aas:acme:berlin:press-04:technical-data",
+          "operational_data": "urn:openump:aas:acme:berlin:press-04:operational-data"
+        }
+      },
+      "measurements": {
+        "motor_temperature": {
+          "semantic_id": "0173-1#02-AAB991#008",
+          "dictionary": "eclass",
+          "source_tag": "DB102.DBD12",
+          "source_unit": "degC"
+        }
+      }
+    }
+  },
+  {
+    "name": "lineage-only-measurement",
+    "kind": "semantic-mapping",
+    "valid": true,
+    "error": "",
+    "payload": {
+      "schema_version": "1.0",
+      "asset_id": "urn:openump:acme:berlin:press-04",
+      "metadata_revision": 1,
+      "semantic_id": "0173-1#01-AKJ975#017",
+      "dictionary": "eclass",
+      "aas": {
+        "aas_id": "urn:openump:aas:acme:berlin:press-04",
+        "global_asset_id": "urn:openump:acme:berlin:press-04",
+        "submodel_ids": {
+          "nameplate": "urn:openump:aas:acme:berlin:press-04:nameplate",
+          "technical_data": "urn:openump:aas:acme:berlin:press-04:technical-data",
+          "operational_data": "urn:openump:aas:acme:berlin:press-04:operational-data"
+        }
+      },
+      "measurements": {
+        "motor_temperature": {
+          "source_tag": "DB102.DBD12",
+          "source_unit": "degC"
+        }
+      }
+    }
+  },
+  {
+    "name": "irdi-prefixed-eclass",
+    "kind": "semantic-mapping",
+    "valid": true,
+    "error": "",
+    "payload": {
+      "schema_version": "1.0",
+      "asset_id": "urn:openump:acme:berlin:press-04",
+      "metadata_revision": 1,
+      "semantic_id": "0173-1#01-AKJ975#017",
+      "dictionary": "eclass",
+      "aas": {
+        "aas_id": "urn:openump:aas:acme:berlin:press-04",
+        "global_asset_id": "urn:openump:acme:berlin:press-04",
+        "submodel_ids": {
+          "nameplate": "urn:openump:aas:acme:berlin:press-04:nameplate",
+          "technical_data": "urn:openump:aas:acme:berlin:press-04:technical-data",
+          "operational_data": "urn:openump:aas:acme:berlin:press-04:operational-data"
+        }
+      },
+      "measurements": {
+        "motor_temperature": {
+          "semantic_id": "irdi:0173-1#02-AAB991#008",
+          "dictionary": "eclass",
+          "source_tag": "DB102.DBD12",
+          "source_unit": "degC"
+        }
+      }
+    }
+  },
+  {
+    "name": "iec-cdd-irdi",
+    "kind": "semantic-mapping",
+    "valid": true,
+    "error": "",
+    "payload": {
+      "schema_version": "1.0",
+      "asset_id": "urn:openump:acme:berlin:press-04",
+      "metadata_revision": 1,
+      "semantic_id": "0173-1#01-AKJ975#017",
+      "dictionary": "eclass",
+      "aas": {
+        "aas_id": "urn:openump:aas:acme:berlin:press-04",
+        "global_asset_id": "urn:openump:acme:berlin:press-04",
+        "submodel_ids": {
+          "nameplate": "urn:openump:aas:acme:berlin:press-04:nameplate",
+          "technical_data": "urn:openump:aas:acme:berlin:press-04:technical-data",
+          "operational_data": "urn:openump:aas:acme:berlin:press-04:operational-data"
+        }
+      },
+      "measurements": {
+        "motor_temperature": {
+          "semantic_id": "0112/2///61360_4#AAA001#001",
+          "dictionary": "iec_cdd",
+          "source_tag": "DB102.DBD12",
+          "source_unit": "degC"
+        }
+      }
+    }
+  },
+  {
+    "name": "opcua-companion-uri",
+    "kind": "semantic-mapping",
+    "valid": true,
+    "error": "",
+    "payload": {
+      "schema_version": "1.0",
+      "asset_id": "urn:openump:acme:berlin:press-04",
+      "metadata_revision": 1,
+      "semantic_id": "0173-1#01-AKJ975#017",
+      "dictionary": "eclass",
+      "aas": {
+        "aas_id": "urn:openump:aas:acme:berlin:press-04",
+        "global_asset_id": "urn:openump:acme:berlin:press-04",
+        "submodel_ids": {
+          "nameplate": "urn:openump:aas:acme:berlin:press-04:nameplate",
+          "technical_data": "urn:openump:aas:acme:berlin:press-04:technical-data",
+          "operational_data": "urn:openump:aas:acme:berlin:press-04:operational-data"
+        }
+      },
+      "measurements": {
+        "motor_temperature": {
+          "semantic_id": "http://opcfoundation.org/UA/PackML/;i=6033",
+          "dictionary": "opcua_companion",
+          "source_tag": "DB102.DBD12",
+          "source_unit": "degC"
+        }
+      }
+    }
+  },
+  {
+    "name": "no-aas-binding",
+    "kind": "semantic-mapping",
+    "valid": true,
+    "error": "",
+    "payload": {
+      "schema_version": "1.0",
+      "asset_id": "urn:openump:acme:berlin:press-04",
+      "metadata_revision": 1,
+      "semantic_id": "0173-1#01-AKJ975#017",
+      "dictionary": "eclass",
+      "measurements": {
+        "motor_temperature": {
+          "semantic_id": "0173-1#02-AAB991#008",
+          "dictionary": "eclass",
+          "source_tag": "DB102.DBD12",
+          "source_unit": "degC"
+        }
+      }
+    }
+  },
+  {
+    "name": "opc-ua-source-tag",
+    "kind": "semantic-mapping",
+    "valid": true,
+    "error": "",
+    "payload": {
+      "schema_version": "1.0",
+      "asset_id": "urn:openump:acme:berlin:press-04",
+      "metadata_revision": 1,
+      "semantic_id": "0173-1#01-AKJ975#017",
+      "dictionary": "eclass",
+      "aas": {
+        "aas_id": "urn:openump:aas:acme:berlin:press-04",
+        "global_asset_id": "urn:openump:acme:berlin:press-04",
+        "submodel_ids": {
+          "nameplate": "urn:openump:aas:acme:berlin:press-04:nameplate",
+          "technical_data": "urn:openump:aas:acme:berlin:press-04:technical-data",
+          "operational_data": "urn:openump:aas:acme:berlin:press-04:operational-data"
+        }
+      },
+      "measurements": {
+        "motor_temperature": {
+          "semantic_id": "0173-1#02-AAB991#008",
+          "dictionary": "eclass",
+          "source_tag": "ns=2;s=Line1.Filler.Temp",
+          "source_unit": "degC"
+        }
+      }
+    }
+  },
+  {
+    "name": "malformed-eclass-irdi",
+    "kind": "semantic-mapping",
+    "valid": false,
+    "error": "schema",
+    "payload": {
+      "schema_version": "1.0",
+      "asset_id": "urn:openump:acme:berlin:press-04",
+      "metadata_revision": 1,
+      "semantic_id": "0173-1#01-AKJ975#017",
+      "dictionary": "eclass",
+      "aas": {
+        "aas_id": "urn:openump:aas:acme:berlin:press-04",
+        "global_asset_id": "urn:openump:acme:berlin:press-04",
+        "submodel_ids": {
+          "nameplate": "urn:openump:aas:acme:berlin:press-04:nameplate",
+          "technical_data": "urn:openump:aas:acme:berlin:press-04:technical-data",
+          "operational_data": "urn:openump:aas:acme:berlin:press-04:operational-data"
+        }
+      },
+      "measurements": {
+        "motor_temperature": {
+          "semantic_id": "0173-1#02-AAB99#008",
+          "dictionary": "eclass",
+          "source_tag": "DB102.DBD12",
+          "source_unit": "degC"
+        }
+      }
+    }
+  },
+  {
+    "name": "lowercase-eclass-irdi",
+    "kind": "semantic-mapping",
+    "valid": false,
+    "error": "schema",
+    "payload": {
+      "schema_version": "1.0",
+      "asset_id": "urn:openump:acme:berlin:press-04",
+      "metadata_revision": 1,
+      "semantic_id": "0173-1#01-AKJ975#017",
+      "dictionary": "eclass",
+      "aas": {
+        "aas_id": "urn:openump:aas:acme:berlin:press-04",
+        "global_asset_id": "urn:openump:acme:berlin:press-04",
+        "submodel_ids": {
+          "nameplate": "urn:openump:aas:acme:berlin:press-04:nameplate",
+          "technical_data": "urn:openump:aas:acme:berlin:press-04:technical-data",
+          "operational_data": "urn:openump:aas:acme:berlin:press-04:operational-data"
+        }
+      },
+      "measurements": {
+        "motor_temperature": {
+          "semantic_id": "0173-1#02-aab991#008",
+          "dictionary": "eclass",
+          "source_tag": "DB102.DBD12",
+          "source_unit": "degC"
+        }
+      }
+    }
+  },
+  {
+    "name": "unicode-digits-in-irdi",
+    "kind": "semantic-mapping",
+    "valid": false,
+    "error": "schema",
+    "payload": {
+      "schema_version": "1.0",
+      "asset_id": "urn:openump:acme:berlin:press-04",
+      "metadata_revision": 1,
+      "semantic_id": "0173-1#01-AKJ975#017",
+      "dictionary": "eclass",
+      "aas": {
+        "aas_id": "urn:openump:aas:acme:berlin:press-04",
+        "global_asset_id": "urn:openump:acme:berlin:press-04",
+        "submodel_ids": {
+          "nameplate": "urn:openump:aas:acme:berlin:press-04:nameplate",
+          "technical_data": "urn:openump:aas:acme:berlin:press-04:technical-data",
+          "operational_data": "urn:openump:aas:acme:berlin:press-04:operational-data"
+        }
+      },
+      "measurements": {
+        "motor_temperature": {
+          "semantic_id": "0173-1#02-AAB991#٠٠٨",
+          "dictionary": "eclass",
+          "source_tag": "DB102.DBD12",
+          "source_unit": "degC"
+        }
+      }
+    }
+  },
+  {
+    "name": "unknown-dictionary",
+    "kind": "semantic-mapping",
+    "valid": false,
+    "error": "schema",
+    "payload": {
+      "schema_version": "1.0",
+      "asset_id": "urn:openump:acme:berlin:press-04",
+      "metadata_revision": 1,
+      "semantic_id": "0173-1#01-AKJ975#017",
+      "dictionary": "eclass",
+      "aas": {
+        "aas_id": "urn:openump:aas:acme:berlin:press-04",
+        "global_asset_id": "urn:openump:acme:berlin:press-04",
+        "submodel_ids": {
+          "nameplate": "urn:openump:aas:acme:berlin:press-04:nameplate",
+          "technical_data": "urn:openump:aas:acme:berlin:press-04:technical-data",
+          "operational_data": "urn:openump:aas:acme:berlin:press-04:operational-data"
+        }
+      },
+      "measurements": {
+        "motor_temperature": {
+          "semantic_id": "0173-1#02-AAB991#008",
+          "dictionary": "isa95",
+          "source_tag": "DB102.DBD12",
+          "source_unit": "degC"
+        }
+      }
+    }
+  },
+  {
+    "name": "semantic-id-without-dictionary",
+    "kind": "semantic-mapping",
+    "valid": false,
+    "error": "schema",
+    "payload": {
+      "schema_version": "1.0",
+      "asset_id": "urn:openump:acme:berlin:press-04",
+      "metadata_revision": 1,
+      "semantic_id": "0173-1#01-AKJ975#017",
+      "dictionary": "eclass",
+      "aas": {
+        "aas_id": "urn:openump:aas:acme:berlin:press-04",
+        "global_asset_id": "urn:openump:acme:berlin:press-04",
+        "submodel_ids": {
+          "nameplate": "urn:openump:aas:acme:berlin:press-04:nameplate",
+          "technical_data": "urn:openump:aas:acme:berlin:press-04:technical-data",
+          "operational_data": "urn:openump:aas:acme:berlin:press-04:operational-data"
+        }
+      },
+      "measurements": {
+        "motor_temperature": {
+          "semantic_id": "0173-1#02-AAB991#008",
+          "source_tag": "DB102.DBD12",
+          "source_unit": "degC"
+        }
+      }
+    }
+  },
+  {
+    "name": "dictionary-without-semantic-id",
+    "kind": "semantic-mapping",
+    "valid": false,
+    "error": "schema",
+    "payload": {
+      "schema_version": "1.0",
+      "asset_id": "urn:openump:acme:berlin:press-04",
+      "metadata_revision": 1,
+      "semantic_id": "0173-1#01-AKJ975#017",
+      "dictionary": "eclass",
+      "aas": {
+        "aas_id": "urn:openump:aas:acme:berlin:press-04",
+        "global_asset_id": "urn:openump:acme:berlin:press-04",
+        "submodel_ids": {
+          "nameplate": "urn:openump:aas:acme:berlin:press-04:nameplate",
+          "technical_data": "urn:openump:aas:acme:berlin:press-04:technical-data",
+          "operational_data": "urn:openump:aas:acme:berlin:press-04:operational-data"
+        }
+      },
+      "measurements": {
+        "motor_temperature": {
+          "dictionary": "eclass",
+          "source_tag": "DB102.DBD12",
+          "source_unit": "degC"
+        }
+      }
+    }
+  },
+  {
+    "name": "empty-measurement",
+    "kind": "semantic-mapping",
+    "valid": false,
+    "error": "schema",
+    "payload": {
+      "schema_version": "1.0",
+      "asset_id": "urn:openump:acme:berlin:press-04",
+      "metadata_revision": 1,
+      "semantic_id": "0173-1#01-AKJ975#017",
+      "dictionary": "eclass",
+      "aas": {
+        "aas_id": "urn:openump:aas:acme:berlin:press-04",
+        "global_asset_id": "urn:openump:acme:berlin:press-04",
+        "submodel_ids": {
+          "nameplate": "urn:openump:aas:acme:berlin:press-04:nameplate",
+          "technical_data": "urn:openump:aas:acme:berlin:press-04:technical-data",
+          "operational_data": "urn:openump:aas:acme:berlin:press-04:operational-data"
+        }
+      },
+      "measurements": {
+        "motor_temperature": {}
+      }
+    }
+  },
+  {
+    "name": "no-measurements",
+    "kind": "semantic-mapping",
+    "valid": false,
+    "error": "schema",
+    "payload": {
+      "schema_version": "1.0",
+      "asset_id": "urn:openump:acme:berlin:press-04",
+      "metadata_revision": 1,
+      "semantic_id": "0173-1#01-AKJ975#017",
+      "dictionary": "eclass",
+      "aas": {
+        "aas_id": "urn:openump:aas:acme:berlin:press-04",
+        "global_asset_id": "urn:openump:acme:berlin:press-04",
+        "submodel_ids": {
+          "nameplate": "urn:openump:aas:acme:berlin:press-04:nameplate",
+          "technical_data": "urn:openump:aas:acme:berlin:press-04:technical-data",
+          "operational_data": "urn:openump:aas:acme:berlin:press-04:operational-data"
+        }
+      },
+      "measurements": {}
+    }
+  },
+  {
+    "name": "invalid-measurement-name",
+    "kind": "semantic-mapping",
+    "valid": false,
+    "error": "schema",
+    "payload": {
+      "schema_version": "1.0",
+      "asset_id": "urn:openump:acme:berlin:press-04",
+      "metadata_revision": 1,
+      "semantic_id": "0173-1#01-AKJ975#017",
+      "dictionary": "eclass",
+      "aas": {
+        "aas_id": "urn:openump:aas:acme:berlin:press-04",
+        "global_asset_id": "urn:openump:acme:berlin:press-04",
+        "submodel_ids": {
+          "nameplate": "urn:openump:aas:acme:berlin:press-04:nameplate",
+          "technical_data": "urn:openump:aas:acme:berlin:press-04:technical-data",
+          "operational_data": "urn:openump:aas:acme:berlin:press-04:operational-data"
+        }
+      },
+      "measurements": {
+        "motor_temperature": {
+          "semantic_id": "0173-1#02-AAB991#008",
+          "dictionary": "eclass",
+          "source_tag": "DB102.DBD12",
+          "source_unit": "degC"
+        },
+        "Motor-Temp": {
+          "source_tag": "x"
+        }
+      }
+    }
+  },
+  {
+    "name": "control-character-in-source-tag",
+    "kind": "semantic-mapping",
+    "valid": false,
+    "error": "schema",
+    "payload": {
+      "schema_version": "1.0",
+      "asset_id": "urn:openump:acme:berlin:press-04",
+      "metadata_revision": 1,
+      "semantic_id": "0173-1#01-AKJ975#017",
+      "dictionary": "eclass",
+      "aas": {
+        "aas_id": "urn:openump:aas:acme:berlin:press-04",
+        "global_asset_id": "urn:openump:acme:berlin:press-04",
+        "submodel_ids": {
+          "nameplate": "urn:openump:aas:acme:berlin:press-04:nameplate",
+          "technical_data": "urn:openump:aas:acme:berlin:press-04:technical-data",
+          "operational_data": "urn:openump:aas:acme:berlin:press-04:operational-data"
+        }
+      },
+      "measurements": {
+        "motor_temperature": {
+          "semantic_id": "0173-1#02-AAB991#008",
+          "dictionary": "eclass",
+          "source_tag": "DB1\nDBD2",
+          "source_unit": "degC"
+        }
+      }
+    }
+  },
+  {
+    "name": "non-uri-aas-id",
+    "kind": "semantic-mapping",
+    "valid": false,
+    "error": "schema",
+    "payload": {
+      "schema_version": "1.0",
+      "asset_id": "urn:openump:acme:berlin:press-04",
+      "metadata_revision": 1,
+      "semantic_id": "0173-1#01-AKJ975#017",
+      "dictionary": "eclass",
+      "aas": {
+        "aas_id": "press 04",
+        "global_asset_id": "urn:openump:acme:berlin:press-04",
+        "submodel_ids": {
+          "nameplate": "urn:openump:aas:acme:berlin:press-04:nameplate",
+          "technical_data": "urn:openump:aas:acme:berlin:press-04:technical-data",
+          "operational_data": "urn:openump:aas:acme:berlin:press-04:operational-data"
+        }
+      },
+      "measurements": {
+        "motor_temperature": {
+          "semantic_id": "0173-1#02-AAB991#008",
+          "dictionary": "eclass",
+          "source_tag": "DB102.DBD12",
+          "source_unit": "degC"
+        }
+      }
+    }
+  },
+  {
+    "name": "unknown-field",
+    "kind": "semantic-mapping",
+    "valid": false,
+    "error": "schema",
+    "payload": {
+      "schema_version": "1.0",
+      "asset_id": "urn:openump:acme:berlin:press-04",
+      "metadata_revision": 1,
+      "semantic_id": "0173-1#01-AKJ975#017",
+      "dictionary": "eclass",
+      "aas": {
+        "aas_id": "urn:openump:aas:acme:berlin:press-04",
+        "global_asset_id": "urn:openump:acme:berlin:press-04",
+        "submodel_ids": {
+          "nameplate": "urn:openump:aas:acme:berlin:press-04:nameplate",
+          "technical_data": "urn:openump:aas:acme:berlin:press-04:technical-data",
+          "operational_data": "urn:openump:aas:acme:berlin:press-04:operational-data"
+        }
+      },
+      "measurements": {
+        "motor_temperature": {
+          "semantic_id": "0173-1#02-AAB991#008",
+          "dictionary": "eclass",
+          "source_tag": "DB102.DBD12",
+          "source_unit": "degC"
+        }
+      },
+      "quality": "good"
+    }
+  },
+  {
+    "name": "missing-metadata-revision",
+    "kind": "semantic-mapping",
+    "valid": false,
+    "error": "schema",
+    "payload": {
+      "schema_version": "1.0",
+      "asset_id": "urn:openump:acme:berlin:press-04",
+      "semantic_id": "0173-1#01-AKJ975#017",
+      "dictionary": "eclass",
+      "aas": {
+        "aas_id": "urn:openump:aas:acme:berlin:press-04",
+        "global_asset_id": "urn:openump:acme:berlin:press-04",
+        "submodel_ids": {
+          "nameplate": "urn:openump:aas:acme:berlin:press-04:nameplate",
+          "technical_data": "urn:openump:aas:acme:berlin:press-04:technical-data",
+          "operational_data": "urn:openump:aas:acme:berlin:press-04:operational-data"
+        }
+      },
+      "measurements": {
+        "motor_temperature": {
+          "semantic_id": "0173-1#02-AAB991#008",
+          "dictionary": "eclass",
+          "source_tag": "DB102.DBD12",
+          "source_unit": "degC"
+        }
+      }
+    }
+  },
+  {
+    "name": "eclass-dictionary-with-uri",
+    "kind": "semantic-mapping",
+    "valid": false,
+    "error": "context",
+    "payload": {
+      "schema_version": "1.0",
+      "asset_id": "urn:openump:acme:berlin:press-04",
+      "metadata_revision": 1,
+      "semantic_id": "0173-1#01-AKJ975#017",
+      "dictionary": "eclass",
+      "aas": {
+        "aas_id": "urn:openump:aas:acme:berlin:press-04",
+        "global_asset_id": "urn:openump:acme:berlin:press-04",
+        "submodel_ids": {
+          "nameplate": "urn:openump:aas:acme:berlin:press-04:nameplate",
+          "technical_data": "urn:openump:aas:acme:berlin:press-04:technical-data",
+          "operational_data": "urn:openump:aas:acme:berlin:press-04:operational-data"
+        }
+      },
+      "measurements": {
+        "motor_temperature": {
+          "semantic_id": "https://example.com/temp",
+          "dictionary": "eclass",
+          "source_tag": "DB102.DBD12",
+          "source_unit": "degC"
+        }
+      }
+    }
+  },
+  {
+    "name": "custom-uri-dictionary-with-irdi",
+    "kind": "semantic-mapping",
+    "valid": false,
+    "error": "context",
+    "payload": {
+      "schema_version": "1.0",
+      "asset_id": "urn:openump:acme:berlin:press-04",
+      "metadata_revision": 1,
+      "semantic_id": "0173-1#01-AKJ975#017",
+      "dictionary": "eclass",
+      "aas": {
+        "aas_id": "urn:openump:aas:acme:berlin:press-04",
+        "global_asset_id": "urn:openump:acme:berlin:press-04",
+        "submodel_ids": {
+          "nameplate": "urn:openump:aas:acme:berlin:press-04:nameplate",
+          "technical_data": "urn:openump:aas:acme:berlin:press-04:technical-data",
+          "operational_data": "urn:openump:aas:acme:berlin:press-04:operational-data"
+        }
+      },
+      "measurements": {
+        "motor_temperature": {
+          "semantic_id": "0173-1#02-AAB991#008",
+          "dictionary": "custom_uri",
+          "source_tag": "DB102.DBD12",
+          "source_unit": "degC"
+        }
+      }
+    }
+  },
+  {
+    "name": "asset-eclass-dictionary-with-urn",
+    "kind": "semantic-mapping",
+    "valid": false,
+    "error": "context",
+    "payload": {
+      "schema_version": "1.0",
+      "asset_id": "urn:openump:acme:berlin:press-04",
+      "metadata_revision": 1,
+      "semantic_id": "urn:example:press",
+      "dictionary": "eclass",
+      "aas": {
+        "aas_id": "urn:openump:aas:acme:berlin:press-04",
+        "global_asset_id": "urn:openump:acme:berlin:press-04",
+        "submodel_ids": {
+          "nameplate": "urn:openump:aas:acme:berlin:press-04:nameplate",
+          "technical_data": "urn:openump:aas:acme:berlin:press-04:technical-data",
+          "operational_data": "urn:openump:aas:acme:berlin:press-04:operational-data"
+        }
+      },
+      "measurements": {
+        "motor_temperature": {
+          "semantic_id": "0173-1#02-AAB991#008",
+          "dictionary": "eclass",
+          "source_tag": "DB102.DBD12",
+          "source_unit": "degC"
+        }
+      }
+    }
+  }
+]

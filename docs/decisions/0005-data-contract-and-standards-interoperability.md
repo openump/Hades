@@ -1,6 +1,6 @@
 # ADR-0005: Canonical edge wire contract and standards interoperability (AAS, ECLASS, Sparkplug B)
 
-**Status:** Proposed Hades design (`Hades-045`)
+**Status:** Accepted; implemented in `Hades-045` (see [implementation notes](#implementation-notes))
 
 **Date:** 17 November 2026
 
@@ -45,6 +45,18 @@ Furthermore, OpenUMP v1.0 enforces cryptographic baseline hash pinning across al
 ## Verification and implementation gates
 
 `Hades-045` implements and verifies the additive `semantic-mapping.schema.json` contract, independent Python/Go contract oracle fixtures, brownfield CSV and AAS V3 import into OpenUMP `metadata.json` + `semantic-mapping.json`, and deterministic AAS V3 projection without altering any existing baseline contract hash.
+
+## Implementation notes
+
+`Hades-045` implemented this decision as follows ([operations guide](../operations/aas.md)):
+
+- `schemas/v1/semantic-mapping.schema.json` records `semantic_id` + `dictionary` (`eclass`, `iec_cdd`, `opcua_companion`, `custom_uri`), `source_tag` and `source_unit` per measurement, and an `aas` block with shell, global asset and submodel identifiers. Item 2's `source_lineage` is the pair `source_tag` / `source_unit`; element paths are not recorded, because the export derives them from the measurement name.
+- The 24 prior baseline entries are unchanged. Schema sets without `semantic-mapping` still compile, so signed site bundles from before `Hades-045` stay valid.
+- Go (`internal/contracts`) and the Python oracle (`tools/semantic_contracts.py`) agree on all shared fixtures, including the cross-artifact reconciliation cases.
+- `hades import -from-csv` reads a generic tag table: one row per measurement, with the columns documented in the guide. A TIA Portal or Kepware export is mapped onto those columns; vendor-specific dialects are not parsed directly.
+- `hades import -from-aas` reads the AAS V3.0 **JSON environment**. `.aasx` packages are deferred, a deviation from item 3.
+- `hades aas export` writes a metamodel-valid environment that references the IDTA 02006 Nameplate and 02003 Technical Data templates. It emits only the elements Hades knows, so the submodels are not complete template instances. Latest values go in a Hades `OperationalData` submodel, not an IDTA 02008 Time Series. The export is validated against the official AAS V3.0.6 JSON schema in the Python suite.
+- Units are not converted. Only spellings of the closed OpenUMP v1.0 unit set are accepted; the source spelling is kept as `source_unit`.
 
 ## Sources
 
