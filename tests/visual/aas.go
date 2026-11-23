@@ -256,7 +256,7 @@ func runAAS(debug string, cfg aasConfig) error {
 		}
 	}
 	if len(failures) > 0 {
-		return fmt.Errorf("%d check(s) failed:\n  %s", len(failures), strings.Join(failures, "\n  "))
+		return fmt.Errorf("%d check(s) failed:\n  %s", len(failures)+len(visual), strings.Join(append(failures, visual...), "\n  "))
 	}
 	// A baseline difference still lets the video build, so the run's
 	// artifacts hold everything a reviewer needs.
