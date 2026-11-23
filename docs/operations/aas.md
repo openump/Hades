@@ -142,6 +142,11 @@ deterministic and holds:
 | `OperationalData` | only with `-status` or `-telemetry`: producer and acquisition state, and each measurement's latest value with `openump:quality` and `openump:observed_at` qualifiers |
 | Concept descriptions | one per measurement, `urn:openump:concept:{enterprise}:{site}:{asset}:{measurement}`, with IEC 61360 preferred name, unit (the OpenUMP code) and data type, and `isCaseOf` the dictionary concept |
 
+Qualifier kinds are explicit: the interval, source tag, source unit and dictionary are
+`ConceptQualifier`s (facts about the definition); quality and observed time are
+`ValueQualifier`s (facts about the current value). A repository therefore stores the
+export unchanged: Eclipse BaSyx reads it back identically.
+
 A measurement with a dictionary `semantic_id` uses it as the element `semanticId` and
 links its own concept description as a supplemental semantic id; two measurements can
 share one dictionary concept without sharing a unit.

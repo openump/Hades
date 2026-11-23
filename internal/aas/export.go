@@ -77,16 +77,16 @@ func Export(c Catalog, snap Snapshots, v *contracts.Validator) (Environment, err
 			e.Min, e.Max = &lo, &hi
 		}
 		semantics(&e, name)
-		e.Qualifiers = append(e.Qualifiers, Qualifier{Type: QualifierInterval, ValueType: "xs:long", Value: strconv.FormatInt(d.ExpectedIntervalMS, 10)})
+		e.Qualifiers = append(e.Qualifiers, Qualifier{Kind: conceptQualifier, Type: QualifierInterval, ValueType: "xs:long", Value: strconv.FormatInt(d.ExpectedIntervalMS, 10)})
 		if mapped.SourceTag != "" {
-			e.Qualifiers = append(e.Qualifiers, Qualifier{Type: QualifierSourceTag, ValueType: "xs:string", Value: mapped.SourceTag})
+			e.Qualifiers = append(e.Qualifiers, Qualifier{Kind: conceptQualifier, Type: QualifierSourceTag, ValueType: "xs:string", Value: mapped.SourceTag})
 		}
 		if mapped.SourceUnit != "" {
-			e.Qualifiers = append(e.Qualifiers, Qualifier{Type: QualifierSourceUnit, ValueType: "xs:string", Value: mapped.SourceUnit})
+			e.Qualifiers = append(e.Qualifiers, Qualifier{Kind: conceptQualifier, Type: QualifierSourceUnit, ValueType: "xs:string", Value: mapped.SourceUnit})
 		}
 		if mapped.SemanticID != "" && mapped.Dictionary != contracts.InferDictionary(mapped.SemanticID) {
 			// opcua_companion, or iec_cdd for a URI: not recoverable from the form.
-			e.Qualifiers = append(e.Qualifiers, Qualifier{Type: QualifierDictionary, ValueType: "xs:string", Value: mapped.Dictionary})
+			e.Qualifiers = append(e.Qualifiers, Qualifier{Kind: conceptQualifier, Type: QualifierDictionary, ValueType: "xs:string", Value: mapped.Dictionary})
 		}
 		technical = append(technical, e)
 
@@ -170,8 +170,8 @@ func operationalElements(m Metadata, snap Snapshots, names []string, semantics f
 			}
 			semantics(&e, name)
 			e.Qualifiers = []Qualifier{
-				{Type: QualifierQuality, ValueType: "xs:string", Value: r["quality"].(string)},
-				{Type: QualifierObserved, ValueType: "xs:dateTime", Value: t["observed_at"].(string)},
+				{Kind: valueQualifier, Type: QualifierQuality, ValueType: "xs:string", Value: r["quality"].(string)},
+				{Kind: valueQualifier, Type: QualifierObserved, ValueType: "xs:dateTime", Value: t["observed_at"].(string)},
 			}
 			out = append(out, e)
 		}
@@ -194,6 +194,14 @@ func pinned(m Metadata, metadata map[string]any, snap Snapshots) error {
 	}
 	return nil
 }
+
+// Qualifier kinds (AAS V3.0): facts about an element's definition are
+// concept qualifiers; quality and observation time qualify the current value.
+// They are explicit so a repository does not substitute its default.
+const (
+	conceptQualifier = "ConceptQualifier"
+	valueQualifier   = "ValueQualifier"
+)
 
 const (
 	conceptPrefix   = "urn:openump:concept:"
