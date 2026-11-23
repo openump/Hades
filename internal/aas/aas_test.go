@@ -216,6 +216,11 @@ func TestCSVDiagnostics(t *testing.T) {
 	if d, ok := err.(Diagnostics); !ok || len(d) != 2 {
 		t.Fatalf("want both unit and interval diagnostics, got %v", err)
 	}
+	// A rejected row does not also raise the asset-level "nothing to map" error.
+	_, err = ImportCSV(strings.NewReader(header+"acme,berlin,a,l,press-04,Bad-Name,REAL,Cel,1000,,,,,t,\n"), pressSettings, v)
+	if d, ok := err.(Diagnostics); !ok || len(d) != 1 || !strings.Contains(d[0], "Bad-Name") {
+		t.Fatalf("want only the measurement-name diagnostic, got %v", err)
+	}
 	// Excel's BOM is accepted.
 	if _, err := ImportCSV(strings.NewReader("\xef\xbb\xbf"+header+good), pressSettings, v); err != nil {
 		t.Fatal(err)

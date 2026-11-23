@@ -66,7 +66,8 @@ var valueTypes = map[string]string{
 
 type assetRows struct {
 	catalog Catalog
-	line    int // first row, for diagnostics about the asset
+	line    int  // first row, for diagnostics about the asset
+	failed  bool // a row already has a diagnostic; asset-level checks would only echo it
 }
 
 // ImportCSV compiles a brownfield tag table (one row per measurement, any
@@ -155,6 +156,9 @@ func ImportCSV(r io.Reader, s Settings, v *contracts.Validator) ([]Catalog, erro
 	for _, id := range ids {
 		a := assets[id]
 		c := a.catalog
+		if a.failed {
+			continue
+		}
 		if len(c.Metadata.Measurements) > maxMeasurements {
 			diags.add("line %d: %s declares %d measurements; at most %d", a.line, id, len(c.Metadata.Measurements), maxMeasurements)
 			continue
@@ -207,6 +211,11 @@ func csvRow(get func(string) string, line int, s Settings, assets map[string]*as
 		}}
 		assets[assetID] = a
 	}
+	defer func() {
+		if len(*diags) > before {
+			a.failed = true
+		}
+	}()
 	meta := &a.catalog.Metadata
 	if meta.Hierarchy != h {
 		diags.add("line %d: %s area/line %s/%s disagrees with line %d (%s/%s)", line, assetID, h.Area, h.Line, a.line, meta.Hierarchy.Area, meta.Hierarchy.Line)
