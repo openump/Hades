@@ -1,0 +1,24 @@
+{
+  "schema_version": "1.0",
+  "asset_id": "urn:openump:acme:berlin:press-04",
+  "metadata_revision": 1,
+  "semantic_id": "0173-1#01-AKJ975#017",
+  "dictionary": "eclass",
+  "aas": {
+    "aas_id": "urn:openump:aas:acme:berlin:press-04",
+    "global_asset_id": "urn:openump:acme:berlin:press-04",
+    "submodel_ids": {
+      "nameplate": "urn:openump:aas:acme:berlin:press-04:nameplate",
+      "technical_data": "urn:openump:aas:acme:berlin:press-04:technical-data",
+      "operational_data": "urn:openump:aas:acme:berlin:press-04:operational-data"
+    }
+  },
+  "measurements": {
+    "motor_temperature": {
+      "semantic_id": "0173-1#02-AAB991#008",
+      "dictionary": "eclass",
+      "source_tag": "DB102.DBD12",
+      "source_unit": "degC"
+    }
+  }
+}

@@ -8,6 +8,7 @@ import (
 	"io"
 	"io/fs"
 	"math"
+	"os"
 	"regexp"
 	"strconv"
 	"strings"
@@ -102,7 +103,7 @@ func New(files fs.FS) (*Validator, error) {
 func profileKinds(ids map[string]bool) ([]string, error) {
 	const prefix = "urn:openump:schema:1.0:"
 	profiles := [][]string{{"common", "telemetry", "metadata", "status"}, {"command", "command-receipt", "actuation-policy"}}
-	optional := []string{"model-manifest", "inference-event", "derived-value"}
+	optional := []string{"model-manifest", "inference-event", "derived-value", "semantic-mapping"}
 	known := map[string]bool{}
 	var kinds []string
 	for i, profile := range profiles {
@@ -132,6 +133,24 @@ func profileKinds(ids map[string]bool) ([]string, error) {
 		}
 	}
 	return kinds, nil
+}
+
+// ReadFile reads a payload file, refusing one larger than MaxPayloadBytes
+// before parsing.
+func ReadFile(path string) ([]byte, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+	raw, err := io.ReadAll(io.LimitReader(f, MaxPayloadBytes+1))
+	if err != nil {
+		return nil, err
+	}
+	if len(raw) > MaxPayloadBytes {
+		return nil, fail("wire", "%s exceeds %d bytes", path, MaxPayloadBytes)
+	}
+	return raw, nil
 }
 
 // Decode rejects oversized, non-UTF-8, duplicate-key, non-finite, and deep JSON.
@@ -293,6 +312,11 @@ func (v *Validator) Validate(kind string, raw []byte) (map[string]any, error) {
 	}
 	if kind == "derived-value" {
 		if err := derivedValueSemantics(object); err != nil {
+			return nil, err
+		}
+	}
+	if kind == "semantic-mapping" {
+		if err := semanticMappingSemantics(object); err != nil {
 			return nil, err
 		}
 	}

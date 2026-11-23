@@ -26,6 +26,14 @@ go run ./cmd/hades-check -kind telemetry -file /absolute/path/to/payload.json
 
 This validates encoding, schema, and metadata-local semantics when applicable; it does not supply the external metadata/registry needed to validate a publication end to end. Exit status is nonzero on failure and diagnostics identify the category and field/case. The CLI bounds file reads before parsing.
 
+A semantic mapping (Hades-045) is reconciled with its metadata snapshot by adding `-metadata`:
+
+```sh
+go run ./cmd/hades-check -kind semantic-mapping -file press-04.semantic-mapping.json -metadata press-04.metadata.json
+```
+
+Both files are validated, then the mapping must name the snapshot's `asset_id` and `metadata_revision` and only measurements the snapshot declares. See [the standards boundary guide](../operations/aas.md).
+
 ## Drift and compatibility guard
 
 `tests/conformance/baseline.json` hashes the complete JSON inventory under `schemas/` and `examples/contracts/`. Changed, removed, or added files fail verification, including edits that flip a negative fixture to valid. This conservatively flags every schema change, including incompatible changes; it is not a general algorithm proving semantic compatibility.

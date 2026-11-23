@@ -1,0 +1,64 @@
+{
+  "assetAdministrationShells": [
+    {
+      "modelType": "AssetAdministrationShell",
+      "id": "https://vendor.example.com/ids/aas/CP-200-0042",
+      "idShort": "CoolantPump",
+      "displayName": [{"language": "de", "text": "Kühlmittelpumpe"}, {"language": "en", "text": "Coolant pump CP-200"}],
+      "assetInformation": {"assetKind": "Instance", "globalAssetId": "https://vendor.example.com/ids/asset/CP-200-0042"},
+      "submodels": [
+        {"type": "ModelReference", "keys": [{"type": "Submodel", "value": "https://vendor.example.com/ids/sm/CP-200-0042/nameplate"}]},
+        {"type": "ModelReference", "keys": [{"type": "Submodel", "value": "https://vendor.example.com/ids/sm/CP-200-0042/condition"}]}
+      ]
+    }
+  ],
+  "submodels": [
+    {
+      "modelType": "Submodel",
+      "id": "https://vendor.example.com/ids/sm/CP-200-0042/nameplate",
+      "idShort": "Nameplate",
+      "semanticId": {"type": "ExternalReference", "keys": [{"type": "GlobalReference", "value": "https://admin-shell.io/zvei/nameplate/2/0/Nameplate"}]},
+      "submodelElements": [
+        {"modelType": "Property", "idShort": "SerialNumber", "valueType": "xs:string", "value": "0042"}
+      ]
+    },
+    {
+      "modelType": "Submodel",
+      "id": "https://vendor.example.com/ids/sm/CP-200-0042/condition",
+      "idShort": "ConditionMonitoring",
+      "submodelElements": [
+        {
+          "modelType": "Property", "idShort": "BearingTemperature", "valueType": "xs:float",
+          "semanticId": {"type": "ExternalReference", "keys": [{"type": "GlobalReference", "value": "irdi:0173-1#02-AAB991#008"}]}
+        },
+        {
+          "modelType": "SubmodelElementCollection", "idShort": "Electrical",
+          "value": [
+            {
+              "modelType": "Range", "idShort": "MotorCurrent", "valueType": "xs:double", "min": "0", "max": "32",
+              "semanticId": {"type": "ExternalReference", "keys": [{"type": "GlobalReference", "value": "0112/2///61987#ABK075#001"}]}
+            },
+            {"modelType": "File", "idShort": "WiringDiagram", "contentType": "application/pdf", "value": "file:/aasx/wiring.pdf"}
+          ]
+        },
+        {"modelType": "Property", "idShort": "PumpRunning", "valueType": "xs:boolean"}
+      ]
+    }
+  ],
+  "conceptDescriptions": [
+    {
+      "modelType": "ConceptDescription", "id": "0173-1#02-AAB991#008",
+      "embeddedDataSpecifications": [{
+        "dataSpecification": {"type": "ExternalReference", "keys": [{"type": "GlobalReference", "value": "https://admin-shell.io/DataSpecificationTemplates/DataSpecificationIec61360/3/0"}]},
+        "dataSpecificationContent": {"modelType": "DataSpecificationIec61360", "preferredName": [{"language": "en", "text": "Bearing temperature"}], "unit": "°C"}
+      }]
+    },
+    {
+      "modelType": "ConceptDescription", "id": "0112/2///61987#ABK075#001",
+      "embeddedDataSpecifications": [{
+        "dataSpecification": {"type": "ExternalReference", "keys": [{"type": "GlobalReference", "value": "https://admin-shell.io/DataSpecificationTemplates/DataSpecificationIec61360/3/0"}]},
+        "dataSpecificationContent": {"modelType": "DataSpecificationIec61360", "preferredName": [{"language": "en", "text": "Motor current"}], "unit": "A"}
+      }]
+    }
+  ]
+}

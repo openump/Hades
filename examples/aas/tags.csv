@@ -1,0 +1,5 @@
+enterprise,site,area,line,asset,asset_display_name,asset_type,measurement,display_name,source_tag,type,unit,expected_interval_ms,min,max,semantic_id
+acme,berlin,assembly,line-01,press-04,Hydraulic Press,hydraulic-press,motor_temperature,Motor temperature,DB102.DBD12,REAL,°C,1000,-40,150,0173-1#02-AAB991#008
+acme,berlin,assembly,line-01,press-04,Hydraulic Press,hydraulic-press,hydraulic_pressure,Hydraulic pressure,DB102.DBD16,REAL,bar,1000,0,350,
+acme,berlin,assembly,line-01,press-04,Hydraulic Press,hydraulic-press,door_closed,Safety door closed,DB102.DBX20.0,BOOL,,500,,,
+acme,berlin,assembly,line-01,pump-02,Coolant pump,pump,motor_current,Motor current,ns=2;s=Pump02.Current,REAL,A,1000,0,32,https://example.com/concepts/motor-current

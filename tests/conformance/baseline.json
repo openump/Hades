@@ -10,6 +10,9 @@
   "examples/contracts/inference/cases.json": "5c9452698ed5fae870643e3abd188e36e6a81e10ed6251af661b03124a5acd24",
   "examples/contracts/inference/inference-event.json": "24adc532cc296b6d031e529f467b34e6558510dda3a191ccce0788fa90796eb0",
   "examples/contracts/inference/model-manifest.json": "b16629fce265a9078fbc3fff87d33b13f6f6404951c69a8ec75270ff435cec59",
+  "examples/contracts/semantic-mapping/cases.json": "a8c019ca739983309e1a6552b3317a173655d60805cfa6b98785655482b76a18",
+  "examples/contracts/semantic-mapping/reconcile-cases.json": "330cb3278069f3204286260bef283196bf8d5c2f74641b7f45e64f70fde35020",
+  "examples/contracts/semantic-mapping/semantic-mapping.json": "021555344d627fef5b3b8b5187ce5ecf64857e1d203140930947f72b7cf18825",
   "examples/contracts/telemetry/cases.json": "c3a522cabd6c192cfeedfe6afa857eb563259fa2de84cbee134a2e31de0ef7dc",
   "examples/contracts/topics.json": "af8a62258fda9f66a8b5abd043b17e52fac84ab19ea43a0a11220e87afa81e04",
   "examples/contracts/wire-cases.json": "c221361b5138c5fd11f218e91ca952fb5dd68cdb8ff9c744daf16b451df6b9e1",
@@ -21,6 +24,7 @@
   "schemas/v1/inference-event.schema.json": "81610dd0c12c46c4737809e5604fb8ef272621d566dba111564febabe4f4a0ee",
   "schemas/v1/metadata.schema.json": "c388d8e3a5c70d32ccafb2ee4a18163330f3833aa4014490666074f45733ffff",
   "schemas/v1/model-manifest.schema.json": "d829fed2c01c51fd7a293b023d6f6723601d86809bb3e68f956ce3d4cc0f42b3",
+  "schemas/v1/semantic-mapping.schema.json": "187f5a2fa52d60e257c576f523b3c8c0d3267d0ef1419494b10690f7366855eb",
   "schemas/v1/status.schema.json": "cfaa1ae18497d2aa2e5e75b85dc9e09540feca8f1e6e3ba8add0323a6385cb7b",
   "schemas/v1/telemetry.schema.json": "29dab39fc953d8fe3aa952b044adee146c7fc3be59251e2fa079dc4b2bd8aa66"
 }

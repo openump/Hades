@@ -1,0 +1,17 @@
+{
+  "schema_version": "1.0",
+  "message_id": "019a1234-5678-7000-8000-000000000120",
+  "asset_id": "urn:openump:acme:berlin:press-04",
+  "metadata_revision": 1,
+  "reported_at": "2026-10-13T14:00:01.000Z",
+  "kind": "heartbeat",
+  "source": {
+    "gateway_id": "simulator-01",
+    "boot_id": "019a1234-5678-7000-8000-000000000102",
+    "session_id": "019a1234-5678-7000-8000-000000000103"
+  },
+  "producer_state": "online",
+  "acquisition_state": "healthy",
+  "last_observed_at": "2026-10-13T14:00:00.000Z",
+  "valid_for_ms": 30000
+}

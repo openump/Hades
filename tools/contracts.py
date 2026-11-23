@@ -44,7 +44,7 @@ def validate_payload(kind, raw):
     from referencing import Registry, Resource
 
     if kind not in ('telemetry', 'metadata', 'status', 'command', 'command-receipt', 'actuation-policy',
-                    'model-manifest', 'inference-event', 'derived-value'):
+                    'model-manifest', 'inference-event', 'derived-value', 'semantic-mapping'):
         raise ValueError('unsupported message type')
     if not isinstance(raw, bytes) or len(raw) > 65536:
         raise ValueError('payload must be bytes of at most 65536 bytes')
@@ -115,6 +115,9 @@ def validate_payload(kind, raw):
     if kind == "derived-value":
         from tools.inference_contracts import validate_derived
         validate_derived(payload)
+    if kind == "semantic-mapping":
+        from tools.semantic_contracts import validate_semantic_mapping
+        validate_semantic_mapping(payload)
     return payload
 
 

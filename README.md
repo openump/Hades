@@ -145,6 +145,7 @@ See [packaging and verified installation](docs/operations/packaging.md).
 | Cloud delivery | Independent transfer queue, exact-byte retry and durable-receipt interface | Receiver fixtures do not establish deployed Zeus acceptance. |
 | Actuation | Signed proposals, gates, audit/replay protection, local confirmation/kill and signed receipts | Loopback uint16 Modbus staging pilot only; no production PLC or fleet control qualification. |
 | Operations | Reviewed supervision, live status, rollout/rollback and cold recovery tooling | Physical plant commissioning and production PKI remain site-specific. |
+| Interoperability | Tag-table CSV and AAS V3.0 JSON import into OpenUMP metadata with an ECLASS / IEC CDD crosswalk; metamodel-valid AAS V3.0 export | No `.aasx`, no complete IDTA template instances, no Time Series submodel; units are not converted. |
 
 The Software Pilot MVP baseline is recorded in the [evaluation package](docs/releases/mvp-evaluation.md).
 Acceptance guarantees are explicit: MQTT PUBACK, historian API acceptance and a
@@ -160,6 +161,7 @@ verified durable receiver receipt are different boundaries. See
 | **Understand the contracts** | [Namespace and identity](docs/protocol/namespace.md) · [Telemetry](docs/protocol/telemetry.md) · [Metadata/status](docs/protocol/metadata-status.md) · [Write control](docs/contracts/write-control-plane.md) |
 | **Install and release** | [Packaging and verified install](docs/operations/packaging.md) · [`hades` multicall and `hades up`](docs/operations/multicall.md) · [Releases](CONTRIBUTING.md#releases) |
 | **Operate and secure** | [Runbook](docs/operations/runbook.md) · [Identity/networking](docs/operations/identity-networking.md) · [Actuator](docs/operations/actuator.md) · [Backup/restore](docs/operations/backup-restore.md) · [Inspector and `hades top`](docs/operations/inspector.md) |
+| **Interoperate** | [AAS, ECLASS and tag-table import/export](docs/operations/aas.md) · [ADR-0005](docs/decisions/0005-data-contract-and-standards-interoperability.md) |
 | **Measure and verify** | [Capacity report](docs/operations/capacity-report.md) · [Retention sizing](docs/operations/retention-sizing.md) · [Recovery evidence](docs/operations/recovery-evidence.md) · [Conformance](docs/protocol/conformance.md) · [Visual testing](docs/operations/visual-testing.md) |
 | **Inspect implementation choices** | [Dependency inventory](docs/dependencies.md) · [Go runtime decision](docs/decisions/0003-runtime-language.md) · [Durability decision](docs/decisions/0004-delivery-durability.md) · [Standards interoperability decision](docs/decisions/0005-data-contract-and-standards-interoperability.md) |
 

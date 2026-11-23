@@ -88,6 +88,10 @@ func Run(argv []string, stdout, stderr io.Writer) int {
 		return check.Main(args)
 	case "release":
 		return Release(args, stdout, stderr)
+	case "import":
+		return Import(args, stdout, stderr)
+	case "aas":
+		return AAS(args, stdout, stderr)
 	case "top":
 		return ctl.Main(append([]string{"top"}, args...))
 	case "version", "--version":
@@ -127,6 +131,10 @@ Bootstrap:
   top      read-only terminal dashboard (hades-ctl top)
   check    -site-dir <dir> validates a scaffolded site; otherwise hades-check
   release  keygen|pubkey|sign|sign-file|verify|notices|sbom|tarball
+
+Standards boundary (OpenUMP stays the edge contract):
+  import   -from-csv|-from-aas: compile a metadata + semantic-mapping pair
+  aas      export: project a verified catalog into an AAS V3.0 environment
 
 Every standalone binary is also a command, with the same flags:
 `)
