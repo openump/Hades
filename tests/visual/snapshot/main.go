@@ -83,18 +83,26 @@ func run(broker, root, catalog, out string, timeout time.Duration) error {
 	return nil
 }
 
-// describe prints the fields an operator recognizes from the summary.
+// describe prints what an operator recognizes: the producer and acquisition
+// state of a status, the readings of a telemetry message.
 func describe(s map[string]any) string {
-	keys := make([]string, 0, len(s))
-	for k := range s {
-		if k != "type" && k != "message_id" && k != "topic" {
-			keys = append(keys, k)
+	switch s["type"] {
+	case "status":
+		return fmt.Sprintf("producer=%v acquisition=%v", s["producer_state"], s["acquisition_state"])
+	case "telemetry":
+		var parts []string
+		if readings, ok := s["measurements"].(map[string]any); ok {
+			names := make([]string, 0, len(readings))
+			for n := range readings {
+				names = append(names, n)
+			}
+			sort.Strings(names)
+			for _, n := range names {
+				r, _ := readings[n].(map[string]any)
+				parts = append(parts, fmt.Sprintf("%s=%v %v (%v)", n, r["value"], r["unit"], r["quality"]))
+			}
 		}
+		return strings.Join(parts, " ")
 	}
-	sort.Strings(keys)
-	var parts []string
-	for _, k := range keys {
-		parts = append(parts, fmt.Sprintf("%s=%v", k, s[k]))
-	}
-	return strings.Join(parts, " ")
+	return ""
 }
